@@ -8,12 +8,14 @@ import {
 export default function Page() {
   const { alunos = [], turmas = [], modalidades = [] } = useData()
 
-  const ativos = alunos.filter((a:any)=>a.status==="ativo").length
-  const inativos = alunos.filter((a:any)=>a.status==="inativo").length
+  // ✅ corrigido: usa boolean do banco
+  const ativos = alunos.filter((a:any)=>a.ativo).length
+  const inativos = alunos.filter((a:any)=>!a.ativo).length
 
+  // gráfico por modalidade
   const dadosModalidades = modalidades.map((m:any)=>({
     nome: m.nome,
-    alunos: alunos.filter((a:any)=>a.modalidades?.includes(m.nome)).length
+    alunos: alunos.filter((a:any)=>a.modalidade === m.nome).length
   }))
 
   return (
@@ -78,7 +80,7 @@ export default function Page() {
           <h2 className="font-bold mb-3 text-red-400">Modalidades</h2>
 
           {modalidades.map((m:any)=>{
-            const total = alunos.filter((a:any)=>a.modalidades?.includes(m.nome)).length
+            const total = alunos.filter((a:any)=>a.modalidade === m.nome).length
 
             return (
               <div key={m.nome} className="flex justify-between border-b border-zinc-800 py-1 text-sm">
@@ -97,7 +99,7 @@ export default function Page() {
           <h2 className="font-bold mb-3 text-red-400">Turmas</h2>
 
           {turmas.map((t:any)=>{
-            const total = alunos.filter((a:any)=>a.turmaId === t.id).length
+            const total = alunos.filter((a:any)=>a.turma === t.nome).length
 
             return (
               <div key={t.id} className="flex justify-between border-b border-zinc-800 py-1 text-sm">

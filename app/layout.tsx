@@ -1,6 +1,5 @@
 import "./globals.css"
 import { StoreProvider } from "../lib/store"
-import { DataProvider } from "@/hooks/useData"
 import MenuCT from "../componentes/menu"
 
 export const metadata = {
@@ -17,21 +16,19 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body>
         <StoreProvider>
-          <DataProvider> {/* 👈 AQUI ESTÁ O SEGREDO */}
+          
+          <div style={{ display: "flex" }}>
             
-            <div style={{ display: "flex" }}>
-              
-              {/* MENU */}
-              <MenuCT />
+            {/* MENU */}
+            <MenuCT />
 
-              {/* CONTEÚDO */}
-              <div style={{ flex: 1, padding: 20 }}>
-                {children}
-              </div>
-
+            {/* CONTEÚDO */}
+            <div style={{ flex: 1, padding: 20 }}>
+              {children}
             </div>
 
-          </DataProvider>
+          </div>
+
         </StoreProvider>
       </body>
     </html>

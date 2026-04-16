@@ -1,61 +1,43 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
 
-const DataContext = createContext<any>(null)
-
-export const DataProvider = ({ children }: any) => {
-
+export function useData() {
   const [alunos, setAlunos] = useState<any[]>([])
-  const [professores, setProfessores] = useState<any[]>([])
-  const [modalidades, setModalidades] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
-  const [vendas, setVendas] = useState<any[]>([])
-  const [produtos, setProdutos] = useState<any[]>([])
-  const [parceiros, setParceiros] = useState<any[]>([])
+  const [modalidades, setModalidades] = useState<any[]>([])
 
-  // 🔥 CARREGAR DO LOCALSTORAGE
   useEffect(() => {
-    const data = localStorage.getItem("ct-data")
-    if (data) {
-      const parsed = JSON.parse(data)
+    async function fetchData() {
+      const { data, error } = await supabase
+        .from("alunos")
+        .select("*")
 
-      setAlunos(parsed.alunos || [])
-      setProfessores(parsed.professores || [])
-      setModalidades(parsed.modalidades || [])
-      setTurmas(parsed.turmas || [])
-      setVendas(parsed.vendas || [])
-      setProdutos(parsed.produtos || [])
-      setParceiros(parsed.parceiros || [])
+      if (error) {
+        console.error("Erro ao buscar alunos:", error)
+        return
+      }
+
+      setAlunos(data || [])
+
+      // gerar modalidades únicas a partir dos alunos
+      const mods = [...new Set(data?.map((a:any) => a.modalidade))]
+        .filter(Boolean)
+        .map((m) => ({ nome: m }))
+
+      setModalidades(mods)
+
+      // gerar turmas únicas
+      const trs = [...new Set(data?.map((a:any) => a.turma))]
+        .filter(Boolean)
+        .map((t, i) => ({ id: i, nome: t }))
+
+      setTurmas(trs)
     }
+
+    fetchData()
   }, [])
 
-  // 🔥 SALVAR AUTOMATICAMENTE
-  useEffect(() => {
-    localStorage.setItem("ct-data", JSON.stringify({
-      alunos,
-      professores,
-      modalidades,
-      turmas,
-      vendas,
-      produtos,
-      parceiros
-    }))
-  }, [alunos, professores, modalidades, turmas, vendas, produtos, parceiros])
-
-  return (
-    <DataContext.Provider value={{
-      alunos, setAlunos,
-      professores, setProfessores,
-      modalidades, setModalidades,
-      turmas, setTurmas,
-      vendas, setVendas,
-      produtos, setProdutos,
-      parceiros, setParceiros
-    }}>
-      {children}
-    </DataContext.Provider>
-  )
+  return { alunos, turmas, modalidades }
 }
-
-export const useData = () => useContext(DataContext)
