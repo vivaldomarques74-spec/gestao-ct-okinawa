@@ -7,37 +7,54 @@ export function useData() {
   const [alunos, setAlunos] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
   const [modalidades, setModalidades] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchData() {
+      setLoading(true)
+
       const { data, error } = await supabase
         .from("alunos")
         .select("*")
 
+      console.log("SUPABASE DATA:", data)
+      console.log("SUPABASE ERROR:", error)
+
       if (error) {
         console.error("Erro ao buscar alunos:", error)
+        setLoading(false)
         return
       }
 
-      setAlunos(data || [])
+      const lista = data || []
 
-      // gerar modalidades únicas a partir dos alunos
-      const mods = [...new Set(data?.map((a:any) => a.modalidade))]
+      setAlunos(lista)
+
+      // 🔥 Detecta automaticamente se é modalidade OU disciplina
+      const mods = [
+        ...new Set(
+          lista.map((a: any) => a.modalidade || a.disciplina)
+        ),
+      ]
         .filter(Boolean)
         .map((m) => ({ nome: m }))
 
       setModalidades(mods)
 
-      // gerar turmas únicas
-      const trs = [...new Set(data?.map((a:any) => a.turma))]
+      // 🔥 Turmas
+      const trs = [
+        ...new Set(lista.map((a: any) => a.turma))
+      ]
         .filter(Boolean)
         .map((t, i) => ({ id: i, nome: t }))
 
       setTurmas(trs)
+
+      setLoading(false)
     }
 
     fetchData()
   }, [])
 
-  return { alunos, turmas, modalidades }
+  return { alunos, turmas, modalidades, loading }
 }
