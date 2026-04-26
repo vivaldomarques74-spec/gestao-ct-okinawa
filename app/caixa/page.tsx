@@ -3,155 +3,331 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
-type Movimento = {
-  id: string
-  tipo: string
-  descricao: string
-  valor: number
-  forma_pagamento: string
-  created_at: string
-}
-
-export default function CaixaPage() {
-  const [tipo, setTipo] =
-    useState("entrada")
-
-  const [descricao, setDescricao] =
+export default function Caixa() {
+  const [codigo, setCodigo] =
     useState("")
 
-  const [valor, setValor] =
+  const [valorInicial, setValorInicial] =
     useState("")
 
-  const [
-    formaPagamento,
-    setFormaPagamento,
-  ] = useState("dinheiro")
+  const [caixa, setCaixa] =
+    useState<any>(null)
 
-  const [lista, setLista] =
-    useState<Movimento[]>([])
-
-  const [saldo, setSaldo] =
-    useState(0)
+  const [resumo, setResumo] =
+    useState({
+      total: 0,
+      pdv: 0,
+      matricula: 0,
+      mensalidade: 0,
+    })
 
   useEffect(() => {
-    carregar()
+    carregarCaixa()
   }, [])
 
-  const carregar =
+  const carregarCaixa =
     async () => {
+      const { data } =
+        await supabase
+          .from("caixa_turno")
+          .select("*")
+          .eq("status", "aberto")
+          .maybeSingle()
+
+      setCaixa(data)
+
+      if (data) {
+        carregarResumo(
+          data.id
+        )
+      }
+    }
+
+  const carregarResumo =
+    async (
+      caixaId: any
+    ) => {
       const { data } =
         await supabase
           .from("caixa")
           .select("*")
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
+          .eq(
+            "caixa_id",
+            caixaId
           )
-
-      const itens =
-        (data ||
-          []) as Movimento[]
-
-      setLista(itens)
 
       let total = 0
+      let pdv = 0
+      let matricula = 0
+      let mensalidade = 0
 
-      itens.forEach((i) => {
-        if (
-          i.tipo ===
-          "entrada"
-        ) {
+      ;(
+        data || []
+      ).forEach(
+        (item: any) => {
           total += Number(
-            i.valor
+            item.valor || 0
           )
-        } else {
-          total -= Number(
-            i.valor
-          )
-        }
-      })
 
-      setSaldo(total)
+          if (
+            item.tipo ===
+            "venda"
+          )
+            pdv += Number(
+              item.valor
+            )
+
+          if (
+            item.tipo ===
+            "matricula"
+          )
+            matricula +=
+              Number(
+                item.valor
+              )
+
+          if (
+            item.tipo ===
+            "mensalidade"
+          )
+            mensalidade +=
+              Number(
+                item.valor
+              )
+        }
+      )
+
+      setResumo({
+        total,
+        pdv,
+        matricula,
+        mensalidade,
+      })
     }
 
-  const salvar =
+  const abrirCaixa =
     async () => {
-      if (
-        !descricao ||
-        !valor
-      ) {
+      if (!codigo) {
         alert(
-          "Preencha descrição e valor"
+          "Digite código"
         )
         return
       }
 
-      const numero =
-        Number(valor)
+      const {
+        data:
+          operador,
+      } = await supabase
+        .from(
+          "operadores"
+        )
+        .select("*")
+        .eq(
+          "codigo",
+          codigo
+        )
+        .maybeSingle()
 
-      if (
-        isNaN(numero) ||
-        numero <= 0
-      ) {
+      if (!operador) {
         alert(
-          "Valor inválido"
+          "Código inválido"
         )
         return
       }
 
       const { error } =
         await supabase
-          .from("caixa")
+          .from(
+            "caixa_turno"
+          )
           .insert([
             {
-              tipo,
-              descricao,
-              valor:
-                numero,
-              forma_pagamento:
-                formaPagamento,
+              usuario:
+                operador.nome,
+              codigo_abertura:
+                codigo,
+              valor_inicial:
+                Number(
+                  valorInicial ||
+                    0
+                ),
+              status:
+                "aberto",
             },
           ])
 
       if (error) {
         alert(
-          "Erro ao lançar no caixa"
+          "Erro ao abrir caixa"
         )
         return
       }
 
       alert(
-        "Movimento salvo"
+        "Caixa aberto"
       )
 
-      setDescricao("")
-      setValor("")
-      setFormaPagamento(
-        "dinheiro"
-      )
-
-      carregar()
+      setCodigo("")
+      setValorInicial("")
+      carregarCaixa()
     }
 
-  const excluir =
-    async (
-      id: string
-    ) => {
-      const ok =
-        confirm(
-          "Excluir lançamento?"
-        )
+  const fecharCaixa =
+    async () => {
+      if (!caixa) return
 
-      if (!ok) return
+      const {
+        data:
+          operador,
+      } = await supabase
+        .from(
+          "operadores"
+        )
+        .select("*")
+        .eq(
+          "codigo",
+          codigo
+        )
+        .maybeSingle()
+
+      if (!operador) {
+        alert(
+          "Digite código válido para fechar"
+        )
+        return
+      }
+
+      const valorFinal =
+        Number(
+          caixa.valor_inicial ||
+            0
+        ) +
+        resumo.total
 
       await supabase
-        .from("caixa")
-        .delete()
-        .eq("id", id)
+        .from(
+          "caixa_turno"
+        )
+        .update({
+          status:
+            "fechado",
+          fechado_em:
+            new Date(),
+          operador_fechamento:
+            operador.nome,
+          codigo_fechamento:
+            codigo,
+          valor_final:
+            valorFinal,
+        })
+        .eq(
+          "id",
+          caixa.id
+        )
 
-      carregar()
+      gerarRecibo(
+        operador.nome,
+        valorFinal
+      )
+
+      alert(
+        "Caixa fechado"
+      )
+
+      setCodigo("")
+      setCaixa(null)
+      setResumo({
+        total: 0,
+        pdv: 0,
+        matricula: 0,
+        mensalidade: 0,
+      })
+
+      carregarCaixa()
+    }
+
+  const gerarRecibo =
+    (
+      fechou: string,
+      total: number
+    ) => {
+      const w =
+        window.open(
+          "",
+          "",
+          "width=320,height=700"
+        )
+
+      w?.document.write(`
+<html>
+<body style="font-family:monospace;width:58mm">
+
+<div style="text-align:center">
+<img src="${window.location.origin}/logo.png" style="width:90px"/>
+<h2>CT OKINAWA</h2>
+<p>FECHAMENTO DE CAIXA</p>
+</div>
+
+<hr/>
+
+<p>Aberto por: ${
+        caixa.usuario
+      }</p>
+
+<p>Fechado por: ${fechou}</p>
+
+<p>Abertura: ${new Date(
+        caixa.created_at
+      ).toLocaleString()}</p>
+
+<p>Fechamento: ${new Date().toLocaleString()}</p>
+
+<hr/>
+
+<p>Valor Inicial: R$ ${Number(
+        caixa.valor_inicial || 0
+      ).toFixed(2)}</p>
+
+<p>PDV: R$ ${resumo.pdv.toFixed(
+        2
+      )}</p>
+
+<p>Matrículas: R$ ${resumo.matricula.toFixed(
+        2
+      )}</p>
+
+<p>Mensalidades: R$ ${resumo.mensalidade.toFixed(
+        2
+      )}</p>
+
+<hr/>
+
+<h3>TOTAL: R$ ${total.toFixed(
+        2
+      )}</h3>
+
+<hr/>
+
+<p style="text-align:center">
+Provérbios 16:3
+</p>
+
+<p style="text-align:center">
+Obrigado!!!
+</p>
+
+<script>
+window.onload = ()=>{
+window.print();
+setTimeout(()=>window.close(),500);
+}
+</script>
+
+</body>
+</html>
+      `)
+
+      w?.document.close()
     }
 
   return (
@@ -161,209 +337,150 @@ export default function CaixaPage() {
         Controle de Caixa
       </h1>
 
-      {/* saldo */}
-      <div className="bg-zinc-900 text-white p-5 rounded-2xl mb-6 border border-red-900">
-        <p className="text-sm text-zinc-400">
-          Saldo Atual
-        </p>
+      {!caixa ? (
+        <div className="box">
 
-        <p className="text-3xl font-bold text-green-400">
-          R${" "}
-          {saldo.toFixed(2)}
-        </p>
-      </div>
+          <h2 className="font-bold mb-4">
+            Abrir Caixa
+          </h2>
 
-      {/* form */}
-      <div className="bg-white text-black p-6 rounded-2xl shadow mb-6 grid md:grid-cols-2 gap-3">
-
-        <select
-          className="input"
-          value={tipo}
-          onChange={(e) =>
-            setTipo(
-              e.target
-                .value
-            )
-          }
-        >
-          <option value="entrada">
-            Entrada
-          </option>
-
-          <option value="saida">
-            Saída
-          </option>
-        </select>
-
-        <select
-          className="input"
-          value={
-            formaPagamento
-          }
-          onChange={(e) =>
-            setFormaPagamento(
-              e.target
-                .value
-            )
-          }
-        >
-          <option value="dinheiro">
-            Dinheiro
-          </option>
-
-          <option value="pix">
-            Pix
-          </option>
-
-          <option value="debito">
-            Débito
-          </option>
-
-          <option value="credito">
-            Crédito
-          </option>
-        </select>
-
-        <input
-          placeholder="Descrição"
-          className="input md:col-span-2"
-          value={descricao}
-          onChange={(e) =>
-            setDescricao(
-              e.target
-                .value
-            )
-          }
-        />
-
-        <input
-          placeholder="Valor"
-          type="number"
-          step="0.01"
-          className="input md:col-span-2"
-          value={valor}
-          onChange={(e) =>
-            setValor(
-              e.target
-                .value
-            )
-          }
-        />
-
-        <button
-          onClick={salvar}
-          className="bg-red-600 text-white p-3 rounded-xl md:col-span-2"
-        >
-          Salvar Movimento
-        </button>
-
-      </div>
-
-      {/* tabela */}
-      <div className="bg-white text-black rounded-2xl shadow overflow-hidden">
-
-        <table className="w-full">
-
-          <thead className="bg-zinc-100">
-            <tr>
-              <th className="p-3 text-left">
-                Data
-              </th>
-              <th className="p-3 text-left">
-                Tipo
-              </th>
-              <th className="p-3 text-left">
-                Descrição
-              </th>
-              <th className="p-3 text-left">
-                Forma
-              </th>
-              <th className="p-3 text-left">
-                Valor
-              </th>
-              <th className="p-3 text-left">
-                Ação
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {lista.map(
-              (item) => (
-                <tr
-                  key={
-                    item.id
-                  }
-                  className="border-t"
-                >
-                  <td className="p-3">
-                    {new Date(
-                      item.created_at
-                    ).toLocaleDateString(
-                      "pt-BR"
-                    )}
-                  </td>
-
-                  <td className="p-3 capitalize">
-                    {
-                      item.tipo
-                    }
-                  </td>
-
-                  <td className="p-3">
-                    {
-                      item.descricao
-                    }
-                  </td>
-
-                  <td className="p-3 capitalize">
-                    {
-                      item.forma_pagamento
-                    }
-                  </td>
-
-                  <td
-                    className={`p-3 font-bold ${
-                      item.tipo ===
-                      "entrada"
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    R${" "}
-                    {Number(
-                      item.valor
-                    ).toFixed(
-                      2
-                    )}
-                  </td>
-
-                  <td className="p-3">
-                    <button
-                      onClick={() =>
-                        excluir(
-                          item.id
-                        )
-                      }
-                      className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm"
-                    >
-                      Excluir
-                    </button>
-                  </td>
-                </tr>
+          <input
+            placeholder="Código Operador"
+            className="input"
+            value={codigo}
+            onChange={(e) =>
+              setCodigo(
+                e.target.value
               )
+            }
+          />
+
+          <input
+            placeholder="Valor Inicial"
+            className="input"
+            value={
+              valorInicial
+            }
+            onChange={(e) =>
+              setValorInicial(
+                e.target.value
+              )
+            }
+          />
+
+          <button
+            onClick={
+              abrirCaixa
+            }
+            className="btn"
+          >
+            Abrir Caixa
+          </button>
+
+        </div>
+      ) : (
+        <div className="box">
+
+          <h2 className="font-bold mb-4 text-green-600">
+            Caixa Aberto
+          </h2>
+
+          <p>
+            Operador:{" "}
+            {
+              caixa.usuario
+            }
+          </p>
+
+          <p>
+            Inicial: R${" "}
+            {Number(
+              caixa.valor_inicial
+            ).toFixed(
+              2
             )}
-          </tbody>
+          </p>
 
-        </table>
+          <hr className="my-4" />
 
-      </div>
+          <p>
+            PDV: R${" "}
+            {resumo.pdv.toFixed(
+              2
+            )}
+          </p>
+
+          <p>
+            Matrículas: R${" "}
+            {resumo.matricula.toFixed(
+              2
+            )}
+          </p>
+
+          <p>
+            Mensalidades: R${" "}
+            {resumo.mensalidade.toFixed(
+              2
+            )}
+          </p>
+
+          <h3 className="mt-4 text-xl font-bold">
+            Total Sistema: R${" "}
+            {(
+              Number(
+                caixa.valor_inicial
+              ) +
+              resumo.total
+            ).toFixed(
+              2
+            )}
+          </h3>
+
+          <input
+            placeholder="Código para fechar"
+            className="input mt-4"
+            value={codigo}
+            onChange={(e) =>
+              setCodigo(
+                e.target.value
+              )
+            }
+          />
+
+          <button
+            onClick={
+              fecharCaixa
+            }
+            className="btn mt-3"
+          >
+            Fechar Caixa
+          </button>
+
+        </div>
+      )}
 
       <style jsx>{`
+        .box {
+          background: white;
+          color: black;
+          padding: 24px;
+          border-radius: 16px;
+          max-width: 500px;
+        }
+
         .input {
           width: 100%;
           padding: 12px;
           border: 1px solid #ccc;
+          border-radius: 10px;
+          margin-bottom: 12px;
+        }
+
+        .btn {
+          width: 100%;
+          background: red;
+          color: white;
+          padding: 12px;
           border-radius: 10px;
         }
       `}</style>
