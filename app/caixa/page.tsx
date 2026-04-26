@@ -3,548 +3,368 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
-export default function PDV() {
-  const [produtos, setProdutos] = useState<any[]>([])
-  const [carrinho, setCarrinho] = useState<any[]>([])
+type Movimento = {
+  id: string
+  tipo: string
+  descricao: string
+  valor: number
+  forma_pagamento: string
+  created_at: string
+}
 
-  const [formaPagamento, setFormaPagamento] =
-    useState("Pix")
+export default function CaixaPage() {
+  const [tipo, setTipo] =
+    useState("entrada")
 
-  const [tipoCartao, setTipoCartao] =
-    useState("Crédito")
+  const [descricao, setDescricao] =
+    useState("")
 
-  const [parcelas, setParcelas] =
-    useState("1x")
+  const [valor, setValor] =
+    useState("")
+
+  const [
+    formaPagamento,
+    setFormaPagamento,
+  ] = useState("dinheiro")
+
+  const [lista, setLista] =
+    useState<Movimento[]>([])
+
+  const [saldo, setSaldo] =
+    useState(0)
 
   useEffect(() => {
-    carregarProdutos()
+    carregar()
   }, [])
 
-  const carregarProdutos = async () => {
-    const { data } = await supabase
-      .from("produtos")
-      .select("*")
-      .eq("status", "ativo")
-      .order("nome")
-
-    setProdutos(data || [])
-  }
-
-  const adicionar = (produto: any) => {
-    setCarrinho([...carrinho, produto])
-  }
-
-  const remover = (index: number) => {
-    const copia = [...carrinho]
-    copia.splice(index, 1)
-    setCarrinho(copia)
-  }
-
-  const totalBase = carrinho.reduce(
-    (acc, item) =>
-      acc +
-      Number(item.preco || 0),
-    0
-  )
-
-  const taxaCredito = (
-    parcela: number
-  ) => {
-    const taxas: any = {
-      1: 3.05,
-      2: 6.59,
-      3: 8.19,
-      4: 8.89,
-      5: 9.76,
-      6: 11.10,
-      7: 11.68,
-      8: 11.73,
-      9: 11.78,
-      10: 11.83,
-      11: 11.88,
-      12: 11.95,
-      13: 12.59,
-      14: 13.23,
-      15: 13.87,
-      16: 14.51,
-      17: 15.15,
-      18: 15.79,
-    }
-
-    return (
-      taxas[parcela] || 0
-    )
-  }
-
-  const calcularTotal =
-    () => {
-      let total =
-        totalBase
-
-      if (
-        formaPagamento ===
-        "Cartão"
-      ) {
-        if (
-          tipoCartao ===
-          "Débito"
-        ) {
-          total =
-            totalBase *
-            1.0125
-        }
-
-        if (
-          tipoCartao ===
-          "Crédito"
-        ) {
-          const num =
-            parseInt(
-              parcelas.replace(
-                "x",
-                ""
-              )
-            )
-
-          const taxa =
-            taxaCredito(
-              num
-            )
-
-          total =
-            totalBase *
-            (1 +
-              taxa /
-                100)
-        }
-      }
-
-      return Number(
-        total.toFixed(
-          2
-        )
-      )
-    }
-
-  const totalFinal =
-    calcularTotal()
-
-  const finalizar =
+  const carregar =
     async () => {
-      if (
-        carrinho.length ===
-        0
-      ) {
-        alert(
-          "Adicione produtos"
-        )
-        return
-      }
-
-      const {
-        data: caixa,
-      } =
+      const { data } =
         await supabase
-          .from(
-            "caixa_turno"
-          )
+          .from("caixa")
           .select("*")
-          .eq(
-            "status",
-            "aberto"
-          )
           .order(
-            "aberto_em",
+            "created_at",
             {
               ascending: false,
             }
           )
-          .limit(1)
-          .maybeSingle()
 
-      if (!caixa) {
+      const itens =
+        (data ||
+          []) as Movimento[]
+
+      setLista(itens)
+
+      let total = 0
+
+      itens.forEach((i) => {
+        if (
+          i.tipo ===
+          "entrada"
+        ) {
+          total += Number(
+            i.valor
+          )
+        } else {
+          total -= Number(
+            i.valor
+          )
+        }
+      })
+
+      setSaldo(total)
+    }
+
+  const salvar =
+    async () => {
+      if (
+        !descricao ||
+        !valor
+      ) {
         alert(
-          "Nenhum caixa aberto"
+          "Preencha descrição e valor"
         )
         return
       }
 
-      const nomes =
-        carrinho
-          .map(
-            (
-              p
-            ) =>
-              p.nome
-          )
-          .join(", ")
+      const numero =
+        Number(valor)
 
-      const {
-        error,
-      } =
+      if (
+        isNaN(numero) ||
+        numero <= 0
+      ) {
+        alert(
+          "Valor inválido"
+        )
+        return
+      }
+
+      const { error } =
         await supabase
-          .from(
-            "caixa"
-          )
+          .from("caixa")
           .insert([
             {
-              tipo: "venda",
-              nome: nomes,
+              tipo,
+              descricao,
               valor:
-                totalFinal,
-              valor_base:
-                totalBase,
+                numero,
               forma_pagamento:
                 formaPagamento,
-              tipo_cartao:
-                formaPagamento ===
-                "Cartão"
-                  ? tipoCartao
-                  : null,
-              parcelas:
-                formaPagamento ===
-                  "Cartão" &&
-                tipoCartao ===
-                  "Crédito"
-                  ? parcelas
-                  : null,
-              caixa_id:
-                caixa.id,
             },
           ])
 
       if (error) {
         alert(
-          "Erro ao salvar venda"
+          "Erro ao lançar no caixa"
         )
         return
       }
 
-      gerarRecibo()
-      setCarrinho([])
       alert(
-        "Venda finalizada!"
+        "Movimento salvo"
       )
+
+      setDescricao("")
+      setValor("")
+      setFormaPagamento(
+        "dinheiro"
+      )
+
+      carregar()
     }
 
-  const gerarRecibo =
-    () => {
-      const agora =
-        new Date()
-
-      const taxa =
-        totalFinal -
-        totalBase
-
-      const itens =
-        carrinho
-          .map(
-            (
-              item
-            ) =>
-              `${item.nome} .... R$ ${Number(
-                item.preco
-              ).toFixed(
-                2
-              )}`
-          )
-          .join(
-            "<br/>"
-          )
-
-      const w =
-        window.open(
-          "",
-          "",
-          "width=300,height=700"
+  const excluir =
+    async (
+      id: string
+    ) => {
+      const ok =
+        confirm(
+          "Excluir lançamento?"
         )
 
-      w?.document.write(`
-      <html>
-      <body style="font-family:monospace;width:58mm">
+      if (!ok) return
 
-      <div style="text-align:center">
-        <img src="${window.location.origin}/logo.png" style="width:90px"/>
-      </div>
+      await supabase
+        .from("caixa")
+        .delete()
+        .eq("id", id)
 
-      <div style="text-align:center"><b>CT OKINAWA</b></div>
-      <div style="text-align:center">Disciplina • Respeito • Evolução</div>
-
-      <hr/>
-
-      ${itens}
-
-      <hr/>
-
-      <div>Subtotal: R$ ${totalBase.toFixed(
-        2
-      )}</div>
-
-      <div>Taxa: R$ ${taxa.toFixed(
-        2
-      )}</div>
-
-      <div><b>TOTAL: R$ ${totalFinal.toFixed(
-        2
-      )}</b></div>
-
-      <hr/>
-
-      <div>Pagamento: ${formaPagamento}</div>
-
-      ${
-        formaPagamento ===
-        "Cartão"
-          ? `<div>${tipoCartao} ${
-              tipoCartao ===
-              "Crédito"
-                ? "- " +
-                  parcelas
-                : ""
-            }</div>`
-          : ""
-      }
-
-      <hr/>
-
-      <div>${agora.toLocaleDateString()}</div>
-      <div>${agora.toLocaleTimeString()}</div>
-
-      <hr/>
-
-      <div style="text-align:center">Provérbios 13:3</div>
-
-      <br/>
-
-      <div style="text-align:center">
-        Obrigado pela preferência!
-      </div>
-
-      <div style="text-align:center">
-        Volte sempre 🙏
-      </div>
-
-      <script>
-        window.onload=()=>{
-          setTimeout(()=>{
-            window.print();
-            window.close();
-          },300)
-        }
-      </script>
-
-      </body>
-      </html>
-      `)
-
-      w?.document.close()
+      carregar()
     }
 
   return (
-    <div className="p-4 max-w-md mx-auto">
+    <div className="p-6">
 
-      <h1 className="text-xl font-bold mb-4 text-center">
-        PDV
+      <h1 className="text-2xl font-bold mb-6">
+        Controle de Caixa
       </h1>
 
-      {/* PRODUTOS */}
-      <div className="grid grid-cols-2 gap-2">
-        {produtos.map(
-          (
-            p
-          ) => (
-            <button
-              key={
-                p.id
-              }
-              className="bg-white p-3 rounded shadow text-black"
-              onClick={() =>
-                adicionar(
-                  p
-                )
-              }
-            >
-              {p.nome}
-              <br />
-              R$ {Number(
-                p.preco
-              ).toFixed(
-                2
-              )}
-            </button>
-          )
-        )}
-      </div>
-
-      {/* CARRINHO */}
-      <div className="mt-4 bg-white p-4 rounded shadow text-black">
-
-        <h2 className="font-bold mb-2">
-          Carrinho
-        </h2>
-
-        {carrinho.map(
-          (
-            item,
-            i
-          ) => (
-            <div
-              key={i}
-              className="flex justify-between border-b py-1"
-            >
-              <span>
-                {
-                  item.nome
-                }
-              </span>
-
-              <button
-                onClick={() =>
-                  remover(
-                    i
-                  )
-                }
-              >
-                ❌
-              </button>
-            </div>
-          )
-        )}
-
-      </div>
-
-      {/* TOTAL */}
-      <div className="mt-4 bg-black text-white p-4 rounded">
-
-        <p>
-          Base: R$ {totalBase.toFixed(
-            2
-          )}
+      {/* saldo */}
+      <div className="bg-zinc-900 text-white p-5 rounded-2xl mb-6 border border-red-900">
+        <p className="text-sm text-zinc-400">
+          Saldo Atual
         </p>
 
-        <p className="text-xl">
-          <b>
-            Total: R$ {totalFinal.toFixed(
-              2
-            )}
-          </b>
+        <p className="text-3xl font-bold text-green-400">
+          R${" "}
+          {saldo.toFixed(2)}
         </p>
+      </div>
+
+      {/* form */}
+      <div className="bg-white text-black p-6 rounded-2xl shadow mb-6 grid md:grid-cols-2 gap-3">
+
+        <select
+          className="input"
+          value={tipo}
+          onChange={(e) =>
+            setTipo(
+              e.target
+                .value
+            )
+          }
+        >
+          <option value="entrada">
+            Entrada
+          </option>
+
+          <option value="saida">
+            Saída
+          </option>
+        </select>
+
+        <select
+          className="input"
+          value={
+            formaPagamento
+          }
+          onChange={(e) =>
+            setFormaPagamento(
+              e.target
+                .value
+            )
+          }
+        >
+          <option value="dinheiro">
+            Dinheiro
+          </option>
+
+          <option value="pix">
+            Pix
+          </option>
+
+          <option value="debito">
+            Débito
+          </option>
+
+          <option value="credito">
+            Crédito
+          </option>
+        </select>
+
+        <input
+          placeholder="Descrição"
+          className="input md:col-span-2"
+          value={descricao}
+          onChange={(e) =>
+            setDescricao(
+              e.target
+                .value
+            )
+          }
+        />
+
+        <input
+          placeholder="Valor"
+          type="number"
+          step="0.01"
+          className="input md:col-span-2"
+          value={valor}
+          onChange={(e) =>
+            setValor(
+              e.target
+                .value
+            )
+          }
+        />
+
+        <button
+          onClick={salvar}
+          className="bg-red-600 text-white p-3 rounded-xl md:col-span-2"
+        >
+          Salvar Movimento
+        </button>
 
       </div>
 
-      {/* PAGAMENTO */}
-      <select
-        className="input mt-3"
-        value={
-          formaPagamento
-        }
-        onChange={(
-          e
-        ) =>
-          setFormaPagamento(
-            e.target
-              .value
-          )
-        }
-      >
-        <option>
-          Pix
-        </option>
-        <option>
-          Dinheiro
-        </option>
-        <option>
-          Cartão
-        </option>
-      </select>
+      {/* tabela */}
+      <div className="bg-white text-black rounded-2xl shadow overflow-hidden">
 
-      {formaPagamento ===
-        "Cartão" && (
-        <>
-          <select
-            className="input mt-2"
-            value={
-              tipoCartao
-            }
-            onChange={(
-              e
-            ) =>
-              setTipoCartao(
-                e.target
-                  .value
-              )
-            }
-          >
-            <option>
-              Débito
-            </option>
-            <option>
-              Crédito
-            </option>
-          </select>
+        <table className="w-full">
 
-          {tipoCartao ===
-            "Crédito" && (
-            <select
-              className="input mt-2"
-              value={
-                parcelas
-              }
-              onChange={(
-                e
-              ) =>
-                setParcelas(
-                  e.target
-                    .value
-                )
-              }
-            >
-              {Array.from(
-                {
-                  length: 18,
-                },
-                (
-                  _,
-                  i
-                ) => (
-                  <option
-                    key={
-                      i
+          <thead className="bg-zinc-100">
+            <tr>
+              <th className="p-3 text-left">
+                Data
+              </th>
+              <th className="p-3 text-left">
+                Tipo
+              </th>
+              <th className="p-3 text-left">
+                Descrição
+              </th>
+              <th className="p-3 text-left">
+                Forma
+              </th>
+              <th className="p-3 text-left">
+                Valor
+              </th>
+              <th className="p-3 text-left">
+                Ação
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {lista.map(
+              (item) => (
+                <tr
+                  key={
+                    item.id
+                  }
+                  className="border-t"
+                >
+                  <td className="p-3">
+                    {new Date(
+                      item.created_at
+                    ).toLocaleDateString(
+                      "pt-BR"
+                    )}
+                  </td>
+
+                  <td className="p-3 capitalize">
+                    {
+                      item.tipo
                     }
-                  >
-                    {i +
-                      1}
-                    x
-                  </option>
-                )
-              )}
-            </select>
-          )}
-        </>
-      )}
+                  </td>
 
-      <button
-        onClick={
-          finalizar
-        }
-        className="btn mt-4 w-full"
-      >
-        Finalizar Venda
-      </button>
+                  <td className="p-3">
+                    {
+                      item.descricao
+                    }
+                  </td>
+
+                  <td className="p-3 capitalize">
+                    {
+                      item.forma_pagamento
+                    }
+                  </td>
+
+                  <td
+                    className={`p-3 font-bold ${
+                      item.tipo ===
+                      "entrada"
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    R${" "}
+                    {Number(
+                      item.valor
+                    ).toFixed(
+                      2
+                    )}
+                  </td>
+
+                  <td className="p-3">
+                    <button
+                      onClick={() =>
+                        excluir(
+                          item.id
+                        )
+                      }
+                      className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm"
+                    >
+                      Excluir
+                    </button>
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+
+        </table>
+
+      </div>
 
       <style jsx>{`
         .input {
           width: 100%;
           padding: 12px;
           border: 1px solid #ccc;
-          border-radius: 8px;
-        }
-
-        .btn {
-          background: red;
-          color: white;
-          padding: 12px;
-          border-radius: 8px;
+          border-radius: 10px;
         }
       `}</style>
 
