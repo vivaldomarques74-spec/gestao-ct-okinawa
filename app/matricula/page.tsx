@@ -8,12 +8,9 @@ export default function Matricula() {
   const [saude, setSaude] = useState(false)
   const [remedio, setRemedio] = useState(false)
 
-  /* NOVO */
-  const [modalidadesLista, setModalidadesLista] =
-    useState<any[]>([])
-
-  const [turmasDb, setTurmasDb] =
-    useState<any[]>([])
+  const [modalidadesLista, setModalidadesLista] = useState<any[]>([])
+  const [turmasDb, setTurmasDb] = useState<any[]>([])
+  const [conveniosDb, setConveniosDb] = useState<any[]>([])
 
   const [form, setForm] = useState<any>({
     nome: "",
@@ -42,138 +39,133 @@ export default function Matricula() {
     modalidades: [{ modalidade: "", turma: "" }],
   })
 
-  const convenios = [
-    "Nenhum",
-    "Convênio Empresa",
-    "Desconto Família",
-  ]
-
-  /* =========================
-     CARREGAR MODALIDADES/TURMAS
-  ========================= */
   useEffect(() => {
     carregarBases()
   }, [])
 
-  const carregarBases =
-    async () => {
-      const { data: mods } =
-        await supabase
-          .from("modalidades")
-          .select("*")
-          .eq("status", "ativo")
-          .order("nome")
+  const carregarBases = async () => {
+    const { data: mods } = await supabase
+      .from("modalidades")
+      .select("*")
+      .eq("status", "ativo")
+      .order("nome")
 
-      const { data: tur } =
-        await supabase
-          .from("turmas")
-          .select("*")
-          .eq("status", "ativo")
-          .order("nome")
+    const { data: tur } = await supabase
+      .from("turmas")
+      .select("*")
+      .eq("status", "ativo")
+      .order("nome")
 
-      setModalidadesLista(
-        mods || []
-      )
+    const { data: conv } = await supabase
+      .from("convenios")
+      .select("*")
+      .eq("ativo", true)
+      .order("nome")
 
-      setTurmasDb(
-        tur || []
-      )
-    }
+    setModalidadesLista(mods || [])
+    setTurmasDb(tur || [])
+    setConveniosDb(conv || [])
+  }
 
-  /* =========================
-     CALCULO AUTOMATICO
-  ========================= */
   useEffect(() => {
     let baseTotal = 0
 
-    form.modalidades.forEach(
-      (m: any) => {
-        const mod =
-          modalidadesLista.find(
-            (x) =>
-              x.nome ===
-              m.modalidade
-          )
+    form.modalidades.forEach((m: any) => {
+      const mod = modalidadesLista.find(
+        (x: any) => x.nome === m.modalidade
+      )
 
-        if (mod)
-          baseTotal += Number(
-            mod.valor_geral ||
-              0
-          )
+      if (mod) {
+        baseTotal += Number(mod.valor_geral || 0)
       }
-    )
+    })
 
     let desconto = 0
-    let valorFinal = baseTotal
 
     if (
-      form.formaPagamento ===
-        "Pix" ||
-      form.formaPagamento ===
-        "Dinheiro"
+      form.formaPagamento === "Pix" ||
+      form.formaPagamento === "Dinheiro"
     ) {
-      desconto = 10
-      valorFinal =
-        baseTotal -
-        desconto
+      desconto += 10
     }
 
-    setForm(
-      (prev: any) => ({
-        ...prev,
-        valorBase:
-          baseTotal,
-        valorFinal,
-        desconto,
-      })
-    )
+    if (form.convenio !== "Nenhum") {
+      const conv = conveniosDb.find(
+        (c: any) => c.nome === form.convenio
+      )
+
+      if (conv) {
+        if (conv.tipo === "percentual") {
+          desconto +=
+            (baseTotal *
+              Number(conv.desconto || 0)) /
+            100
+        } else {
+          desconto += Number(
+            conv.desconto || 0
+          )
+        }
+      }
+    }
+
+    let valorFinal =
+      baseTotal - desconto
+
+    if (valorFinal < 0)
+      valorFinal = 0
+
+    setForm((prev: any) => ({
+      ...prev,
+      valorBase: baseTotal,
+      valorFinal,
+      desconto,
+    }))
   }, [
     form.modalidades,
     form.formaPagamento,
+    form.convenio,
     modalidadesLista,
+    conveniosDb,
   ])
 
-  const adicionarModalidade =
-    () => {
-      setForm({
-        ...form,
-        modalidades: [
-          ...form.modalidades,
-          {
-            modalidade:
-              "",
-            turma: "",
-          },
-        ],
-      })
-    }
-
-  const atualizarModalidade =
-    (
-      index: number,
-      campo: string,
-      valor: string
-    ) => {
-      const lista = [
+  const adicionarModalidade = () => {
+    setForm({
+      ...form,
+      modalidades: [
         ...form.modalidades,
-      ]
+        {
+          modalidade: "",
+          turma: "",
+        },
+      ],
+    })
+  }
 
-      lista[index][campo] =
-        valor
+  const atualizarModalidade = (
+    index: number,
+    campo: string,
+    valor: string
+  ) => {
+    const lista = [
+      ...form.modalidades,
+    ]
 
-      if (
-        campo ===
-        "modalidade"
-      ) {
-        lista[index].turma =
-          ""
-      }
+    lista[index][campo] =
+      valor
 
-      setForm({
-        ...form,
-        modalidades: lista,
-      })
+    if (
+      campo ===
+      "modalidade"
+    ) {
+      lista[index].turma =
+        ""
     }
+
+    setForm({
+      ...form,
+      modalidades: lista,
+    })
+  }
 
   const salvarDados =
     async () => {
@@ -190,13 +182,6 @@ export default function Matricula() {
             .eq(
               "status",
               "aberto"
-            )
-            .order(
-              "aberto_em",
-              {
-                ascending:
-                  false,
-              }
             )
             .limit(1)
             .single()
@@ -223,6 +208,8 @@ export default function Matricula() {
                   form.whatsapp,
                 endereco:
                   form.endereco,
+                convenio:
+                  form.convenio,
               },
             ])
             .select()
@@ -258,6 +245,10 @@ export default function Matricula() {
                 form.valorFinal,
               valor_base:
                 form.valorBase,
+              desconto:
+                form.desconto,
+              convenio:
+                form.convenio,
               forma_pagamento:
                 form.formaPagamento,
               caixa_id:
@@ -289,6 +280,12 @@ export default function Matricula() {
               nome: form.nome,
               valor:
                 form.valorFinal,
+              valor_base:
+                form.valorBase,
+              desconto:
+                form.desconto,
+              convenio:
+                form.convenio,
               vencimento:
                 hoje,
               status:
@@ -303,7 +300,13 @@ export default function Matricula() {
                 aluno.id,
               nome: form.nome,
               valor:
+                form.valorFinal,
+              valor_base:
                 form.valorBase,
+              desconto:
+                form.desconto,
+              convenio:
+                form.convenio,
               vencimento:
                 proximoVencimento,
               status:
@@ -350,81 +353,82 @@ export default function Matricula() {
         )
 
       w?.document.write(`
-      <html>
-      <body style="font-family:monospace;width:58mm">
+<html>
+<body style="font-family:monospace;width:58mm">
 
-      <div style="text-align:center">
-        <img src="${window.location.origin}/logo.png" style="width:100px"/>
-      </div>
+<div style="text-align:center">
+<img src="${window.location.origin}/logo.png" style="width:100px"/>
+</div>
 
-      <div style="text-align:center"><b>CT OKINAWA</b></div>
+<div style="text-align:center"><b>CT OKINAWA</b></div>
 
-      <div style="text-align:center">
-        Disciplina - Respeito - Evolução
-      </div>
+<div style="text-align:center">
+Disciplina - Respeito - Evolução
+</div>
 
-      <hr/>
+<hr/>
 
-      <div><b>Recibo de Matrícula</b></div>
+<div><b>Recibo de Matrícula</b></div>
 
-      <hr/>
+<hr/>
 
-      <div>NOME: ${form.nome}</div>
-      <div>CPF: ${form.cpf}</div>
+<div>NOME: ${form.nome}</div>
+<div>CPF: ${form.cpf}</div>
 
-      <hr/>
+<hr/>
 
-      <div>MODALIDADES:</div>
-      <div>${modalidadesTexto}</div>
+<div>MODALIDADES:</div>
+<div>${modalidadesTexto}</div>
 
-      <hr/>
+<hr/>
 
-      <div>VALOR TOTAL: R$ ${form.valorBase}</div>
-      <div>DESCONTO: R$ ${form.desconto}</div>
-      <div><b>VALOR: R$ ${form.valorFinal}</b></div>
+<div>CONVÊNIO: ${form.convenio}</div>
+<div>VALOR TOTAL: R$ ${form.valorBase}</div>
+<div>DESCONTO: R$ ${form.desconto}</div>
+<div><b>VALOR: R$ ${form.valorFinal}</b></div>
 
-      <hr/>
+<hr/>
 
-      <div>FORMA: ${form.formaPagamento}</div>
+<div>FORMA: ${form.formaPagamento}</div>
 
-      ${
-        form.formaPagamento ===
-        "Cartão"
-          ? `
-        <div>${form.tipoCartao} - ${form.parcelas}</div>
-      `
-          : ""
-      }
+${
+  form.formaPagamento ===
+  "Cartão"
+    ? `
+<div>${form.tipoCartao} - ${form.parcelas}</div>
+`
+    : ""
+}
 
-      <hr/>
+<hr/>
 
-      <div>Data: ${agora.toLocaleDateString()}</div>
-      <div>Hora: ${agora.toLocaleTimeString()}</div>
+<div>Data: ${agora.toLocaleDateString()}</div>
+<div>Hora: ${agora.toLocaleTimeString()}</div>
 
-      <div>Cupom não fiscal</div>
+<div>Cupom não fiscal</div>
 
-      <hr/>
+<hr/>
 
-      <div style="text-align:center">
-        Provérbios 13:3
-      </div>
+<div style="text-align:center">
+Provérbios 13:3
+</div>
 
-      <div style="text-align:center">
-        Deus abençoe!
-      </div>
+<div style="text-align:center">
+Deus abençoe!
+</div>
 
-      <script>
-        window.onload = () => {
-          setTimeout(()=>{
-            window.print();
-            window.close()
-          },300)
-        }
-      </script>
+<script>
+window.onload = () => {
+setTimeout(()=>{
+window.print();
+window.close()
+},300)
+}
+</script>
 
-      </body>
-      </html>
-    `)
+</body>
+</html>
+`)
 
       w?.document.close()
     }
@@ -599,7 +603,7 @@ export default function Matricula() {
               const turmasFiltradas =
                 turmasDb.filter(
                   (
-                    t
+                    t: any
                   ) =>
                     t.modalidade ===
                     m.modalidade
@@ -630,7 +634,7 @@ export default function Matricula() {
 
                     {modalidadesLista.map(
                       (
-                        mod
+                        mod: any
                       ) => (
                         <option
                           key={
@@ -665,7 +669,7 @@ export default function Matricula() {
 
                     {turmasFiltradas.map(
                       (
-                        t
+                        t: any
                       ) => (
                         <option
                           key={
@@ -695,13 +699,29 @@ export default function Matricula() {
         </div>
 
         <div className="mt-6">
-          <select className="input">
-            {convenios.map(
-              (c) => (
+          <select
+            className="input"
+            value={
+              form.convenio
+            }
+            onChange={(e) =>
+              setForm({
+                ...form,
+                convenio:
+                  e.target.value,
+              })
+            }
+          >
+            <option>
+              Nenhum
+            </option>
+
+            {conveniosDb.map(
+              (c: any) => (
                 <option
-                  key={c}
+                  key={c.id}
                 >
-                  {c}
+                  {c.nome}
                 </option>
               )
             )}
@@ -812,8 +832,7 @@ export default function Matricula() {
           }}
           className="mt-6 w-full bg-red-600 text-white p-3 rounded-lg"
         >
-          Matricular e imprimir
-          recibo
+          Matricular e imprimir recibo
         </button>
 
       </div>

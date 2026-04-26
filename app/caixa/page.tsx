@@ -21,18 +21,33 @@ export default function Caixa() {
       mensalidade: 0,
     })
 
+  const [loading, setLoading] =
+    useState(true)
+
   useEffect(() => {
     carregarCaixa()
   }, [])
 
   const carregarCaixa =
     async () => {
-      const { data } =
-        await supabase
-          .from("caixa_turno")
-          .select("*")
-          .eq("status", "aberto")
-          .maybeSingle()
+      setLoading(true)
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("caixa_turno")
+        .select("*")
+        .eq("status", "aberto")
+        .order("created_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle()
+
+      if (error) {
+        console.log(error)
+      }
 
       setCaixa(data)
 
@@ -40,7 +55,16 @@ export default function Caixa() {
         carregarResumo(
           data.id
         )
+      } else {
+        setResumo({
+          total: 0,
+          pdv: 0,
+          matricula: 0,
+          mensalidade: 0,
+        })
       }
+
+      setLoading(false)
     }
 
   const carregarResumo =
@@ -65,35 +89,30 @@ export default function Caixa() {
         data || []
       ).forEach(
         (item: any) => {
-          total += Number(
-            item.valor || 0
-          )
+          const valor =
+            Number(
+              item.valor || 0
+            )
+
+          total += valor
 
           if (
             item.tipo ===
             "venda"
           )
-            pdv += Number(
-              item.valor
-            )
+            pdv += valor
 
           if (
             item.tipo ===
             "matricula"
           )
-            matricula +=
-              Number(
-                item.valor
-              )
+            matricula += valor
 
           if (
             item.tipo ===
             "mensalidade"
           )
-            mensalidade +=
-              Number(
-                item.valor
-              )
+            mensalidade += valor
         }
       )
 
@@ -109,8 +128,42 @@ export default function Caixa() {
     async () => {
       if (!codigo) {
         alert(
-          "Digite código"
+          "Digite o código do operador"
         )
+        return
+      }
+
+      const {
+        data:
+          caixaAberto,
+      } = await supabase
+        .from(
+          "caixa_turno"
+        )
+        .select("*")
+        .eq(
+          "status",
+          "aberto"
+        )
+        .maybeSingle()
+
+      if (caixaAberto) {
+        alert(
+          `Caixa já aberto por ${caixaAberto.usuario} às ${new Date(
+            caixaAberto.created_at
+          ).toLocaleString(
+            "pt-BR"
+          )}`
+        )
+
+        setCaixa(
+          caixaAberto
+        )
+
+        carregarResumo(
+          caixaAberto.id
+        )
+
         return
       }
 
@@ -135,40 +188,45 @@ export default function Caixa() {
         return
       }
 
-      const { error } =
-        await supabase
-          .from(
-            "caixa_turno"
-          )
-          .insert([
-            {
-              usuario:
-                operador.nome,
-              codigo_abertura:
-                codigo,
-              valor_inicial:
-                Number(
-                  valorInicial ||
-                    0
-                ),
-              status:
-                "aberto",
-            },
-          ])
+      const {
+        error,
+      } = await supabase
+        .from(
+          "caixa_turno"
+        )
+        .insert([
+          {
+            usuario:
+              operador.nome,
+            codigo_abertura:
+              codigo,
+            valor_inicial:
+              Number(
+                valorInicial ||
+                  0
+              ),
+            status:
+              "aberto",
+          },
+        ])
 
       if (error) {
+        console.log(error)
+
         alert(
-          "Erro ao abrir caixa"
+          "Erro ao abrir caixa: " +
+            error.message
         )
         return
       }
 
       alert(
-        "Caixa aberto"
+        "Caixa aberto com sucesso"
       )
 
       setCodigo("")
       setValorInicial("")
+
       carregarCaixa()
     }
 
@@ -197,14 +255,16 @@ export default function Caixa() {
         return
       }
 
-      const valorFinal =
+      const totalFinal =
         Number(
           caixa.valor_inicial ||
             0
         ) +
         resumo.total
 
-      await supabase
+      const {
+        error,
+      } = await supabase
         .from(
           "caixa_turno"
         )
@@ -218,30 +278,34 @@ export default function Caixa() {
           codigo_fechamento:
             codigo,
           valor_final:
-            valorFinal,
+            totalFinal,
         })
         .eq(
           "id",
           caixa.id
         )
 
+      if (error) {
+        console.log(error)
+
+        alert(
+          "Erro ao fechar caixa: " +
+            error.message
+        )
+        return
+      }
+
       gerarRecibo(
         operador.nome,
-        valorFinal
+        totalFinal
       )
 
       alert(
-        "Caixa fechado"
+        "Caixa fechado com sucesso"
       )
 
       setCodigo("")
       setCaixa(null)
-      setResumo({
-        total: 0,
-        pdv: 0,
-        matricula: 0,
-        mensalidade: 0,
-      })
 
       carregarCaixa()
     }
@@ -278,9 +342,13 @@ export default function Caixa() {
 
 <p>Abertura: ${new Date(
         caixa.created_at
-      ).toLocaleString()}</p>
+      ).toLocaleString(
+        "pt-BR"
+      )}</p>
 
-<p>Fechamento: ${new Date().toLocaleString()}</p>
+<p>Fechamento: ${new Date().toLocaleString(
+        "pt-BR"
+      )}</p>
 
 <hr/>
 
@@ -329,6 +397,14 @@ setTimeout(()=>window.close(),500);
 
       w?.document.close()
     }
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        Carregando caixa...
+      </div>
+    )
+  }
 
   return (
     <div className="p-6">
@@ -381,7 +457,7 @@ setTimeout(()=>window.close(),500);
       ) : (
         <div className="box">
 
-          <h2 className="font-bold mb-4 text-green-600">
+          <h2 className="font-bold text-green-600 mb-3">
             Caixa Aberto
           </h2>
 
@@ -393,9 +469,19 @@ setTimeout(()=>window.close(),500);
           </p>
 
           <p>
-            Inicial: R${" "}
+            Aberto em:{" "}
+            {new Date(
+              caixa.created_at
+            ).toLocaleString(
+              "pt-BR"
+            )}
+          </p>
+
+          <p>
+            Valor Inicial:
+            R$ {" "}
             {Number(
-              caixa.valor_inicial
+              caixa.valor_inicial || 0
             ).toFixed(
               2
             )}
@@ -411,24 +497,27 @@ setTimeout(()=>window.close(),500);
           </p>
 
           <p>
-            Matrículas: R${" "}
+            Matrículas:
+            R${" "}
             {resumo.matricula.toFixed(
               2
             )}
           </p>
 
           <p>
-            Mensalidades: R${" "}
+            Mensalidades:
+            R${" "}
             {resumo.mensalidade.toFixed(
               2
             )}
           </p>
 
           <h3 className="mt-4 text-xl font-bold">
-            Total Sistema: R${" "}
+            Total Sistema:
+            R${" "}
             {(
               Number(
-                caixa.valor_inicial
+                caixa.valor_inicial || 0
               ) +
               resumo.total
             ).toFixed(

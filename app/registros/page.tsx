@@ -1,454 +1,593 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { supabase } from "../../lib/supabase"
-import AdminGuard from "../../components/AdminGuard"
 
-export default function RegistrosPage() {
+export default function Registros() {
   const [aba, setAba] =
     useState("alunos")
-
-  const [dados, setDados] =
-    useState<any[]>([])
-
-  const [loading, setLoading] =
-    useState(false)
 
   const [busca, setBusca] =
     useState("")
 
+  const [alunos, setAlunos] =
+    useState<any[]>([])
+
+  const [
+    mensalidades,
+    setMensalidades,
+  ] = useState<any[]>([])
+
+  const [vendas, setVendas] =
+    useState<any[]>([])
+
   useEffect(() => {
-    carregar()
-  }, [aba])
+    carregarTudo()
+  }, [])
 
-  const carregar =
+  const carregarTudo =
     async () => {
-      setLoading(true)
+      const {
+        data: alunosDb,
+      } = await supabase
+        .from("alunos")
+        .select("*")
+        .order("id", {
+          ascending: false,
+        })
 
-      /* ALUNOS */
-      if (aba === "alunos") {
-        const { data } =
-          await supabase
-            .from("alunos")
-            .select("*")
-            .order("nome")
+      const {
+        data: mensDb,
+      } = await supabase
+        .from(
+          "mensalidades"
+        )
+        .select("*")
+        .order("id", {
+          ascending: false,
+        })
 
-        setDados(data || [])
-        setLoading(false)
-        return
-      }
+      const {
+        data: vendasDb,
+      } = await supabase
+        .from("vendas")
+        .select("*")
+        .order("id", {
+          ascending: false,
+        })
 
-      /* MENSALIDADES */
-      if (
-        aba ===
-        "mensalidades"
-      ) {
-        const { data } =
-          await supabase
-            .from(
-              "mensalidades"
-            )
-            .select("*")
-            .order(
-              "vencimento",
-              {
-                ascending: false,
-              }
-            )
+      setAlunos(
+        alunosDb || []
+      )
 
-        setDados(data || [])
-        setLoading(false)
-        return
-      }
+      setMensalidades(
+        mensDb || []
+      )
 
-      /* VENDAS */
-      if (aba === "vendas") {
-        const { data } =
-          await supabase
-            .from("caixa")
-            .select("*")
-            .eq("tipo", "venda")
-            .order("data", {
-              ascending: false,
-            })
+      setVendas(
+        vendasDb || []
+      )
+    }
 
-        setDados(data || [])
-        setLoading(false)
-        return
-      }
+  const excluirAluno =
+    async (
+      id: any
+    ) => {
+      const ok =
+        confirm(
+          "Apagar aluno?"
+        )
 
-      setLoading(false)
+      if (!ok) return
+
+      await supabase
+        .from("alunos")
+        .delete()
+        .eq("id", id)
+
+      carregarTudo()
+    }
+
+  const excluirMens =
+    async (
+      id: any
+    ) => {
+      const ok =
+        confirm(
+          "Apagar mensalidade?"
+        )
+
+      if (!ok) return
+
+      await supabase
+        .from(
+          "mensalidades"
+        )
+        .delete()
+        .eq("id", id)
+
+      carregarTudo()
     }
 
   const excluirVenda =
     async (
-      id: string
+      id: any
     ) => {
-      if (
-        !confirm(
+      const ok =
+        confirm(
           "Apagar venda?"
         )
-      )
-        return
+
+      if (!ok) return
 
       await supabase
-        .from("caixa")
+        .from("vendas")
         .delete()
         .eq("id", id)
 
-      carregar()
+      carregarTudo()
     }
 
-  const dadosFiltrados =
-    dados.filter(
-      (item) => {
-        const texto =
-          (
-            item.nome ||
-            item.aluno ||
-            ""
-          )
-            .toLowerCase()
+  const texto =
+    busca.toLowerCase()
 
-        return texto.includes(
-          busca.toLowerCase()
-        )
-      }
+  const alunosFiltrado =
+    alunos.filter(
+      (a) =>
+        a.nome
+          ?.toLowerCase()
+          .includes(
+            texto
+          ) ||
+        a.cpf
+          ?.toLowerCase()
+          .includes(
+            texto
+          )
+    )
+
+  const mensPend =
+    mensalidades.filter(
+      (m) =>
+        m.status !==
+          "pago" &&
+        m.nome
+          ?.toLowerCase()
+          .includes(
+            texto
+          )
+    )
+
+  const mensPago =
+    mensalidades.filter(
+      (m) =>
+        m.status ===
+          "pago" &&
+        m.nome
+          ?.toLowerCase()
+          .includes(
+            texto
+          )
+    )
+
+  const vendasFiltrado =
+    vendas.filter(
+      (v) =>
+        v.nome
+          ?.toLowerCase()
+          .includes(
+            texto
+          )
     )
 
   return (
-    <AdminGuard>
-      <div className="p-4 max-w-7xl mx-auto">
+    <div className="p-6">
 
-        <h1 className="text-2xl font-bold mb-6">
-          Central de
-          Registros
-        </h1>
+      <h1 className="text-2xl font-bold mb-6">
+        Central de Registros
+      </h1>
 
-        {/* ABAS */}
-        <div className="flex gap-2 flex-wrap mb-6">
+      <input
+        className="input mb-4"
+        placeholder="Buscar nome / cpf..."
+        value={busca}
+        onChange={(e) =>
+          setBusca(
+            e.target.value
+          )
+        }
+      />
 
-          <button
-            className={`tab ${
-              aba ===
+      <div className="flex gap-2 mb-6">
+
+        <button
+          className={`tab ${
+            aba ===
+            "alunos"
+              ? "on"
+              : ""
+          }`}
+          onClick={() =>
+            setAba(
               "alunos"
-                ? "ativo"
-                : ""
-            }`}
-            onClick={() =>
-              setAba(
-                "alunos"
-              )
-            }
-          >
-            Alunos
-          </button>
-
-          <button
-            className={`tab ${
-              aba ===
-              "mensalidades"
-                ? "ativo"
-                : ""
-            }`}
-            onClick={() =>
-              setAba(
-                "mensalidades"
-              )
-            }
-          >
-            Mensalidades
-          </button>
-
-          <button
-            className={`tab ${
-              aba ===
-              "vendas"
-                ? "ativo"
-                : ""
-            }`}
-            onClick={() =>
-              setAba(
-                "vendas"
-              )
-            }
-          >
-            Vendas
-          </button>
-
-        </div>
-
-        {/* BUSCA */}
-        <input
-          className="input mb-6"
-          placeholder="Buscar..."
-          value={busca}
-          onChange={(
-            e
-          ) =>
-            setBusca(
-              e.target
-                .value
             )
           }
-        />
+        >
+          Alunos
+        </button>
 
-        {/* CONTEUDO */}
-        <div className="bg-white rounded-2xl shadow overflow-auto">
+        <button
+          className={`tab ${
+            aba ===
+            "mens"
+              ? "on"
+              : ""
+          }`}
+          onClick={() =>
+            setAba(
+              "mens"
+            )
+          }
+        >
+          Mensalidades
+        </button>
 
-          {loading ? (
-            <div className="p-6 text-black">
-              Carregando...
-            </div>
-          ) : aba ===
-            "alunos" ? (
-            <table className="w-full text-black">
-              <thead className="bg-gray-100">
+        <button
+          className={`tab ${
+            aba ===
+            "vendas"
+              ? "on"
+              : ""
+          }`}
+          onClick={() =>
+            setAba(
+              "vendas"
+            )
+          }
+        >
+          Vendas
+        </button>
+
+      </div>
+
+      {/* ALUNOS */}
+      {aba ===
+        "alunos" && (
+        <div className="box">
+
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th>
+                  Nome
+                </th>
+                <th>
+                  CPF
+                </th>
+                <th>
+                  Ações
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+
+              {alunosFiltrado.map(
+                (
+                  a
+                ) => (
+                  <tr
+                    key={
+                      a.id
+                    }
+                  >
+                    <td>
+                      {
+                        a.nome
+                      }
+                    </td>
+
+                    <td>
+                      {
+                        a.cpf
+                      }
+                    </td>
+
+                    <td className="flex gap-2">
+
+                      <Link
+                        href={`/registros/aluno/${a.id}`}
+                        className="mini azul"
+                      >
+                        Ver
+                      </Link>
+
+                      <button
+                        onClick={() =>
+                          excluirAluno(
+                            a.id
+                          )
+                        }
+                        className="mini vermelho"
+                      >
+                        Apagar
+                      </button>
+
+                    </td>
+                  </tr>
+                )
+              )}
+
+            </tbody>
+          </table>
+
+        </div>
+      )}
+
+      {/* MENSALIDADES */}
+      {aba ===
+        "mens" && (
+        <div>
+
+          <div className="box mb-6">
+
+            <h2 className="font-bold mb-4 text-red-600">
+              Pendentes
+            </h2>
+
+            <table className="w-full">
+
+              <thead>
                 <tr>
-                  <th className="p-4 text-left">
+                  <th>
                     Nome
                   </th>
-                  <th className="p-4 text-left">
-                    Status
+                  <th>
+                    Valor
                   </th>
-                  <th className="p-4 text-left">
-                    Modalidade
+                  <th>
+                    Venc.
                   </th>
-                  <th className="p-4 text-left">
-                    Turma
+                </tr>
+              </thead>
+
+              <tbody>
+
+                {mensPend.map(
+                  (
+                    m
+                  ) => (
+                    <tr
+                      key={
+                        m.id
+                      }
+                    >
+                      <td>
+                        {
+                          m.nome
+                        }
+                      </td>
+
+                      <td>
+                        R$ {" "}
+                        {
+                          m.valor
+                        }
+                      </td>
+
+                      <td>
+                        {new Date(
+                          m.vencimento
+                        ).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  )
+                )}
+
+              </tbody>
+
+            </table>
+
+          </div>
+
+          <div className="box">
+
+            <h2 className="font-bold mb-4 text-green-600">
+              Pagas
+            </h2>
+
+            <table className="w-full">
+
+              <thead>
+                <tr>
+                  <th>
+                    Nome
                   </th>
-                  <th className="p-4 text-left">
+                  <th>
+                    Valor
+                  </th>
+                  <th>
                     Ações
                   </th>
                 </tr>
               </thead>
 
               <tbody>
-                {dadosFiltrados.map(
+
+                {mensPago.map(
                   (
-                    item,
-                    i
+                    m
                   ) => (
                     <tr
-                      key={i}
-                      className="border-t"
+                      key={
+                        m.id
+                      }
                     >
-                      <td className="p-4">
+                      <td>
                         {
-                          item.nome
+                          m.nome
                         }
                       </td>
 
-                      <td className="p-4 capitalize">
-                        {item.status ||
-                          "ativo"}
-                      </td>
-
-                      <td className="p-4">
-                        {item.modalidade ||
-                          "-"}
-                      </td>
-
-                      <td className="p-4">
-                        {item.turma ||
-                          "-"}
-                      </td>
-
-                      <td className="p-4">
-                        <a
-                          href={`/registros/aluno/${item.id}`}
-                          className="mini azul"
-                        >
-                          Editar
-                        </a>
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          ) : aba ===
-            "mensalidades" ? (
-            <table className="w-full text-black">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="p-4 text-left">
-                    Aluno
-                  </th>
-                  <th className="p-4 text-left">
-                    Valor
-                  </th>
-                  <th className="p-4 text-left">
-                    Vencimento
-                  </th>
-                  <th className="p-4 text-left">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {dadosFiltrados.map(
-                  (
-                    item,
-                    i
-                  ) => (
-                    <tr
-                      key={i}
-                      className="border-t"
-                    >
-                      <td className="p-4">
-                        {item.nome ||
-                          item.aluno}
-                      </td>
-
-                      <td className="p-4">
-                        R${" "}
-                        {Number(
-                          item.valor ||
-                            0
-                        ).toFixed(
-                          2
-                        )}
-                      </td>
-
-                      <td className="p-4">
-                        {new Date(
-                          item.vencimento
-                        ).toLocaleDateString()}
-                      </td>
-
-                      <td className="p-4 capitalize">
+                      <td>
+                        R$ {" "}
                         {
-                          item.status
-                        }
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          ) : (
-            <table className="w-full text-black">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="p-4 text-left">
-                    Data
-                  </th>
-                  <th className="p-4 text-left">
-                    Produto(s)
-                  </th>
-                  <th className="p-4 text-left">
-                    Pagamento
-                  </th>
-                  <th className="p-4 text-left">
-                    Valor
-                  </th>
-                  <th className="p-4 text-left">
-                    Ações
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {dadosFiltrados.map(
-                  (
-                    item,
-                    i
-                  ) => (
-                    <tr
-                      key={i}
-                      className="border-t"
-                    >
-                      <td className="p-4">
-                        {new Date(
-                          item.created_at ||
-                            item.data
-                        ).toLocaleDateString()}
-                      </td>
-
-                      <td className="p-4">
-                        {
-                          item.nome
+                          m.valor
                         }
                       </td>
 
-                      <td className="p-4">
-                        {item.forma_pagamento ||
-                          "-"}
-                      </td>
+                      <td>
 
-                      <td className="p-4 font-bold">
-                        R${" "}
-                        {Number(
-                          item.valor ||
-                            0
-                        ).toFixed(
-                          2
-                        )}
-                      </td>
-
-                      <td className="p-4">
                         <button
                           onClick={() =>
-                            excluirVenda(
-                              item.id
+                            excluirMens(
+                              m.id
                             )
                           }
                           className="mini vermelho"
                         >
                           Apagar
                         </button>
+
                       </td>
                     </tr>
                   )
                 )}
+
               </tbody>
+
             </table>
-          )}
+
+          </div>
 
         </div>
+      )}
 
-        <style jsx>{`
-          .input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            background: white;
-          }
+      {/* VENDAS */}
+      {aba ===
+        "vendas" && (
+        <div className="box">
 
-          .tab {
-            background: white;
-            color: black;
-            padding: 10px 16px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
-          }
+          <table className="w-full">
 
-          .ativo {
-            background: red;
-            color: white;
-            border-color: red;
-          }
+            <thead>
+              <tr>
+                <th>
+                  Produto
+                </th>
+                <th>
+                  Valor
+                </th>
+                <th>
+                  Ações
+                </th>
+              </tr>
+            </thead>
 
-          .mini {
-            color: white;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-          }
+            <tbody>
 
-          .azul {
-            background: #2563eb;
-          }
+              {vendasFiltrado.map(
+                (
+                  v
+                ) => (
+                  <tr
+                    key={
+                      v.id
+                    }
+                  >
+                    <td>
+                      {
+                        v.nome
+                      }
+                    </td>
 
-          .vermelho {
-            background: #dc2626;
-          }
-        `}</style>
+                    <td>
+                      R$ {" "}
+                      {
+                        v.valor
+                      }
+                    </td>
 
-      </div>
-    </AdminGuard>
+                    <td>
+
+                      <button
+                        onClick={() =>
+                          excluirVenda(
+                            v.id
+                          )
+                        }
+                        className="mini vermelho"
+                      >
+                        Apagar
+                      </button>
+
+                    </td>
+                  </tr>
+                )
+              )}
+
+            </tbody>
+
+          </table>
+
+        </div>
+      )}
+
+      <style jsx>{`
+        .input {
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #ccc;
+          border-radius: 10px;
+        }
+
+        .tab {
+          padding: 10px 16px;
+          border-radius: 10px;
+          background: #27272a;
+          color: white;
+        }
+
+        .on {
+          background: red;
+        }
+
+        .box {
+          background: white;
+          color: black;
+          padding: 20px;
+          border-radius: 16px;
+          overflow: auto;
+        }
+
+        table {
+          border-collapse: collapse;
+        }
+
+        th,
+        td {
+          padding: 10px;
+          border-bottom: 1px solid #eee;
+          text-align: left;
+        }
+
+        .mini {
+          color: white;
+          padding: 6px 10px;
+          border-radius: 8px;
+          font-size: 12px;
+        }
+
+        .azul {
+          background: #2563eb;
+        }
+
+        .vermelho {
+          background: #dc2626;
+        }
+      `}</style>
+
+    </div>
   )
 }

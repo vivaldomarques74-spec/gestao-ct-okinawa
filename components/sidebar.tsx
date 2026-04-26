@@ -5,16 +5,20 @@ import Link from "next/link"
 export default function Sidebar() {
   return (
     <aside className="w-64 h-screen bg-zinc-950 border-r border-red-900 p-4 text-white">
+
       <h1 className="text-xl font-bold text-red-600 mb-6">
         CT OKINAWA
       </h1>
 
+      {/* ATENDIMENTO */}
       <div className="mb-6">
+
         <p className="text-xs text-zinc-400 mb-2">
           ATENDIMENTO
         </p>
 
         <ul className="space-y-2">
+
           <li>
             <Link href="/">
               Visão Geral
@@ -56,10 +60,14 @@ export default function Sidebar() {
               Imprimir Recibos
             </Link>
           </li>
+
         </ul>
+
       </div>
 
+      {/* ADMIN */}
       <div>
+
         <p className="text-xs text-zinc-400 mb-2">
           PAINEL ADMINISTRATIVO
         </p>
@@ -87,6 +95,12 @@ export default function Sidebar() {
           <li>
             <Link href="/operadores">
               Operadores
+            </Link>
+          </li>
+
+          <li>
+            <Link href="/convenios">
+              Convênios
             </Link>
           </li>
 
@@ -127,7 +141,9 @@ export default function Sidebar() {
           </li>
 
         </ul>
+
       </div>
+
     </aside>
   )
 }
