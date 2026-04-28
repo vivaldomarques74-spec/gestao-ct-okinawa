@@ -3,22 +3,24 @@
 import { useMemo, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
-export default function PresencasPage() {
+export default function PresencaPage() {
   const [codigo, setCodigo] = useState("")
   const [loading, setLoading] = useState(false)
 
   const [professor, setProfessor] = useState<any>(null)
   const [turmas, setTurmas] = useState<any[]>([])
 
-  const [turmaSelecionada, setTurmaSelecionada] = useState<any>(null)
+  const [turmaSelecionada, setTurmaSelecionada] =
+    useState<any>(null)
+
   const [alunos, setAlunos] = useState<any[]>([])
   const [busca, setBusca] = useState("")
+  const [presentesIds, setPresentesIds] =
+    useState<number[]>([])
 
-  const [presentesIds, setPresentesIds] = useState<number[]>([])
-
-  // =========================
+  // ==========================
   // LOGIN PROFESSOR
-  // =========================
+  // ==========================
   async function entrar() {
     if (!codigo.trim()) {
       alert("Digite o código.")
@@ -27,11 +29,12 @@ export default function PresencasPage() {
 
     setLoading(true)
 
-    const { data, error } = await supabase
-      .from("professores")
-      .select("*")
-      .eq("codigo", codigo.trim())
-      .maybeSingle()
+    const { data, error } =
+      await supabase
+        .from("professores")
+        .select("*")
+        .eq("codigo", codigo.trim())
+        .maybeSingle()
 
     if (error || !data) {
       alert("Código inválido.")
@@ -41,40 +44,47 @@ export default function PresencasPage() {
 
     setProfessor(data)
 
-    const { data: turmasData } = await supabase
-      .from("turmas")
-      .select("*")
-      .eq("professor_id", data.id)
-      .order("nome")
+    // PUXA TURMAS PELO NOME DO PROFESSOR
+    const { data: listaTurmas } =
+      await supabase
+        .from("turmas")
+        .select("*")
+        .eq("professor", data.nome)
+        .order("nome")
 
-    setTurmas(turmasData || [])
+    setTurmas(listaTurmas || [])
     setLoading(false)
   }
 
-  // =========================
+  // ==========================
   // ABRIR TURMA
-  // =========================
+  // ==========================
   async function abrirTurma(turma: any) {
     setTurmaSelecionada(turma)
     setBusca("")
     setAlunos([])
     setPresentesIds([])
 
-    const { data } = await supabase
-      .from("matriculas")
-      .select("*")
-      .eq("turma", turma.nome)
-      .order("nome")
+    const { data } =
+      await supabase
+        .from("matriculas")
+        .select("*")
+        .eq("turma", turma.nome)
+        .order("nome")
 
     setAlunos(data || [])
 
-    await carregarPresentesHoje(turma.nome)
+    await carregarPresencasHoje(
+      turma.nome
+    )
   }
 
-  // =========================
-  // CARREGAR PRESENÇAS DE HOJE
-  // =========================
-  async function carregarPresentesHoje(nomeTurma: string) {
+  // ==========================
+  // PRESENÇAS DE HOJE
+  // ==========================
+  async function carregarPresencasHoje(
+    nomeTurma: string
+  ) {
     const hoje = new Date()
 
     const inicio = new Date(
@@ -95,37 +105,62 @@ export default function PresencasPage() {
       59
     ).toISOString()
 
-    const { data } = await supabase
-      .from("presencas")
-      .select("aluno_id")
-      .eq("turma", nomeTurma)
-      .gte("created_at", inicio)
-      .lte("created_at", fim)
+    const { data } =
+      await supabase
+        .from("presencas")
+        .select("aluno_id")
+        .eq("turma", nomeTurma)
+        .gte("created_at", inicio)
+        .lte("created_at", fim)
 
-    const ids = (data || []).map((item: any) => item.aluno_id)
+    const ids =
+      (data || []).map(
+        (item: any) =>
+          item.aluno_id
+      )
+
     setPresentesIds(ids)
   }
 
-  // =========================
-  // BLOQUEIO FINANCEIRO
-  // =========================
-  async function verificarBloqueio(aluno: any) {
-    const { data } = await supabase
-      .from("mensalidades")
-      .select("*")
-      .eq("aluno_id", aluno.aluno_id)
-      .eq("status", "pendente")
+  // ==========================
+  // BLOQUEIO
+  // ==========================
+  async function verificarBloqueio(
+    aluno: any
+  ) {
+    const { data } =
+      await supabase
+        .from("mensalidades")
+        .select("*")
+        .eq(
+          "aluno_id",
+          aluno.aluno_id
+        )
+        .eq(
+          "status",
+          "pendente"
+        )
 
-    if (!data || data.length === 0) return false
+    if (!data || data.length === 0)
+      return false
 
     const hoje = new Date()
 
     for (const item of data) {
-      const venc = new Date(item.vencimento + "T00:00:00")
-
-      const dias = Math.floor(
-        (hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24)
+      const venc = new Date(
+        item.vencimento +
+          "T00:00:00"
       )
+
+      const dias =
+        Math.floor(
+          (hoje.getTime() -
+            venc.getTime()) /
+            (1000 *
+              60 *
+              60 *
+              24)
+        )
 
       if (dias > 5) return true
     }
@@ -133,174 +168,255 @@ export default function PresencasPage() {
     return false
   }
 
-  // =========================
-  // SALVAR PRESENÇA NO SUPABASE
-  // =========================
-  async function marcarPresenca(aluno: any) {
-    if (!professor || !turmaSelecionada) return
-
-    if (presentesIds.includes(aluno.aluno_id)) {
-      alert("Esse aluno já marcou presença hoje.")
+  // ==========================
+  // MARCAR PRESENÇA
+  // ==========================
+  async function marcarPresenca(
+    aluno: any
+  ) {
+    if (
+      presentesIds.includes(
+        aluno.aluno_id
+      )
+    ) {
+      alert(
+        "Esse aluno já marcou hoje."
+      )
       return
     }
 
-    const bloqueado = await verificarBloqueio(aluno)
+    const bloqueado =
+      await verificarBloqueio(
+        aluno
+      )
 
     if (bloqueado) {
-      alert("ALUNO BLOQUEADO POR PENDÊNCIA.\nPROCURAR SECRETARIA.")
+      alert(
+        "ALUNO BLOQUEADO.\nPROCURAR SECRETARIA."
+      )
       return
     }
 
-    const { error } = await supabase.from("presencas").insert([
-      {
-        aluno_id: aluno.aluno_id,
-        nome: aluno.nome,
-        turma: turmaSelecionada.nome,
-        professor: professor.nome,
-        data: new Date().toISOString(),
-        status: "presente",
-      },
-    ])
+    const { error } =
+      await supabase
+        .from("presencas")
+        .insert([
+          {
+            aluno_id:
+              aluno.aluno_id,
+            nome: aluno.nome,
+            turma:
+              turmaSelecionada.nome,
+            professor:
+              professor.nome,
+            status:
+              "presente",
+            data:
+              new Date().toISOString(),
+          },
+        ])
 
     if (error) {
-      alert("Erro ao salvar presença.")
+      alert(
+        "Erro ao salvar presença."
+      )
       return
     }
 
-    setPresentesIds((prev) => [...prev, aluno.aluno_id])
+    setPresentesIds(
+      (prev) => [
+        ...prev,
+        aluno.aluno_id,
+      ]
+    )
   }
 
-  // =========================
-  // FILTRO BUSCA
-  // =========================
-  const alunosFiltrados = useMemo(() => {
-    return alunos.filter((a) =>
-      a.nome.toLowerCase().includes(busca.toLowerCase())
-    )
-  }, [alunos, busca])
+  const alunosFiltrados =
+    useMemo(() => {
+      return alunos.filter(
+        (item) =>
+          item.nome
+            .toLowerCase()
+            .includes(
+              busca.toLowerCase()
+            )
+      )
+    }, [alunos, busca])
 
-  // =========================
-  // VOLTAR
-  // =========================
-  function voltar() {
+  function voltarTurmas() {
     setTurmaSelecionada(null)
     setAlunos([])
     setBusca("")
-    setPresentesIds([])
   }
 
   function sair() {
     setProfessor(null)
     setTurmas([])
-    voltar()
+    setTurmaSelecionada(null)
+    setAlunos([])
+    setBusca("")
     setCodigo("")
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-4">
+    <div className="min-h-screen bg-white text-black p-4">
       <div className="max-w-md mx-auto">
 
-        <h1 className="text-3xl font-bold text-center text-red-500 mb-1">
-          CT OKINAWA
-        </h1>
+        {/* TOPO */}
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-red-600">
+            CT OKINAWA
+          </h1>
 
-        <p className="text-center text-gray-300 mb-6">
-          CHECK-IN DE PRESENÇA
-        </p>
+          <p className="text-gray-600 mt-1">
+            CHECK-IN DE PRESENÇA
+          </p>
+        </div>
 
         {/* LOGIN */}
         {!professor && (
           <>
             <input
-              className="w-full p-4 rounded-xl text-black"
+              className="w-full p-4 rounded-xl border border-gray-300 bg-white text-black"
               placeholder="Código do professor"
               value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
+              onChange={(e) =>
+                setCodigo(
+                  e.target.value
+                )
+              }
             />
 
             <button
               onClick={entrar}
-              className="w-full bg-red-600 p-4 rounded-xl mt-3 font-bold"
+              className="w-full mt-3 bg-red-600 text-white p-4 rounded-xl font-bold"
             >
-              {loading ? "Entrando..." : "ENTRAR"}
+              {loading
+                ? "Entrando..."
+                : "ENTRAR"}
             </button>
           </>
         )}
 
         {/* TURMAS */}
-        {professor && !turmaSelecionada && (
-          <>
-            <p className="mb-4 text-center">
-              Professor: <b>{professor.nome}</b>
-            </p>
+        {professor &&
+          !turmaSelecionada && (
+            <>
+              <p className="text-center mb-4">
+                Professor:{" "}
+                <b>
+                  {
+                    professor.nome
+                  }
+                </b>
+              </p>
 
-            <div className="space-y-3">
-              {turmas.map((t, i) => (
-                <button
-                  key={i}
-                  onClick={() => abrirTurma(t)}
-                  className="w-full bg-white text-black p-4 rounded-xl text-left font-bold"
-                >
-                  {t.nome}
-                </button>
-              ))}
-            </div>
+              <div className="space-y-3">
+                {turmas.map(
+                  (
+                    turma,
+                    i
+                  ) => (
+                    <button
+                      key={i}
+                      onClick={() =>
+                        abrirTurma(
+                          turma
+                        )
+                      }
+                      className="w-full bg-gray-100 p-4 rounded-xl text-left font-bold border"
+                    >
+                      {
+                        turma.nome
+                      }
+                    </button>
+                  )
+                )}
+              </div>
 
-            <button
-              onClick={sair}
-              className="w-full border border-gray-600 p-3 rounded-xl mt-4"
-            >
-              Sair
-            </button>
-          </>
-        )}
+              <button
+                onClick={sair}
+                className="w-full mt-4 border border-gray-400 p-3 rounded-xl"
+              >
+                Sair
+              </button>
+            </>
+          )}
 
         {/* ALUNOS */}
-        {professor && turmaSelecionada && (
-          <>
-            <button
-              onClick={voltar}
-              className="text-sm text-gray-400 mb-3"
-            >
-              ← Voltar
-            </button>
+        {professor &&
+          turmaSelecionada && (
+            <>
+              <button
+                onClick={
+                  voltarTurmas
+                }
+                className="text-sm text-gray-500 mb-3"
+              >
+                ← Voltar
+              </button>
 
-            <h2 className="text-2xl font-bold mb-2">
-              {turmaSelecionada.nome}
-            </h2>
+              <h2 className="text-2xl font-bold mb-3">
+                {
+                  turmaSelecionada.nome
+                }
+              </h2>
 
-            <input
-              className="w-full p-4 rounded-xl text-black mb-4"
-              placeholder="Pesquisar aluno..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-            />
+              <input
+                className="w-full p-4 rounded-xl border border-gray-300 bg-white mb-4"
+                placeholder="Pesquisar aluno..."
+                value={busca}
+                onChange={(e) =>
+                  setBusca(
+                    e.target.value
+                  )
+                }
+              />
 
-            <div className="space-y-2">
-              {alunosFiltrados.map((aluno, i) => {
-                const marcado = presentesIds.includes(aluno.aluno_id)
+              <div className="space-y-2">
+                {alunosFiltrados.map(
+                  (
+                    aluno,
+                    i
+                  ) => {
+                    const marcado =
+                      presentesIds.includes(
+                        aluno.aluno_id
+                      )
 
-                return (
-                  <button
-                    key={i}
-                    disabled={marcado}
-                    onClick={() => marcarPresenca(aluno)}
-                    className={`w-full p-4 rounded-xl text-left font-bold ${
-                      marcado
-                        ? "bg-green-700 opacity-70"
-                        : "bg-white text-black"
-                    }`}
-                  >
-                    {aluno.nome}
-                    {marcado && (
-                      <span className="float-right">✓</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        )}
+                    return (
+                      <button
+                        key={i}
+                        disabled={
+                          marcado
+                        }
+                        onClick={() =>
+                          marcarPresenca(
+                            aluno
+                          )
+                        }
+                        className={`w-full p-4 rounded-xl text-left font-bold border ${
+                          marcado
+                            ? "bg-green-600 text-white"
+                            : "bg-white"
+                        }`}
+                      >
+                        {
+                          aluno.nome
+                        }
+
+                        {marcado && (
+                          <span className="float-right">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    )
+                  }
+                )}
+              </div>
+            </>
+          )}
       </div>
     </div>
   )
