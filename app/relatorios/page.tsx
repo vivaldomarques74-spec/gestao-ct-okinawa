@@ -4,545 +4,740 @@ import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
 
-export default function RelatoriosPage() {
-  const [aba, setAba] = useState("professores")
-  const [loading, setLoading] = useState(false)
+export default function RegistrosPage() {
+  const [aba, setAba] = useState("alunos")
 
-  const [dados, setDados] = useState<any[]>([])
-  const [professores, setProfessores] = useState<any[]>([])
+  const [busca, setBusca] = useState("")
+  const [alunos, setAlunos] = useState<any[]>([])
+  const [selecionado, setSelecionado] = useState<any>(null)
+
+  const [mensalidades, setMensalidades] = useState<any[]>([])
+  const [vendas, setVendas] = useState<any[]>([])
+
+  const [modalidades, setModalidades] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
-  const [parceiros, setParceiros] = useState<any[]>([])
 
-  const [professor, setProfessor] = useState("")
-  const [turma, setTurma] = useState("")
-  const [parceiro, setParceiro] = useState("")
-
-  const [inicio, setInicio] = useState("")
-  const [fim, setFim] = useState("")
+  const [form, setForm] = useState<any>({
+    nome: "",
+    cpf: "",
+    whatsapp: "",
+    endereco: "",
+    status: "Ativo",
+    modalidade: "",
+    turma: "",
+  })
 
   useEffect(() => {
-    carregarBases()
+    iniciar()
   }, [])
 
-  useEffect(() => {
-    carregar()
-  }, [aba, professor, turma, parceiro, inicio, fim])
+  const iniciar = async () => {
+    await carregarBases()
+    await carregarAlunos()
+    await carregarMensalidades()
+    await carregarVendas()
+  }
 
-  async function carregarBases() {
-    const { data: p } = await supabase
-      .from("professores")
+  const carregarBases = async () => {
+    const { data: mods } = await supabase
+      .from("modalidades")
       .select("*")
       .order("nome")
 
-    const { data: t } = await supabase
+    const { data: trs } = await supabase
       .from("turmas")
       .select("*")
       .order("nome")
 
-    const { data: pr } = await supabase
-      .from("parceiros")
+    setModalidades(mods || [])
+    setTurmas(trs || [])
+  }
+
+  const carregarAlunos = async () => {
+    const { data } = await supabase
+      .from("alunos")
       .select("*")
       .order("nome")
 
-    setProfessores(p || [])
-    setTurmas(t || [])
-    setParceiros(pr || [])
+    setAlunos(data || [])
   }
 
-  function dentroPeriodo(base: any) {
-    if (!base) return true
+  const carregarMensalidades = async () => {
+    const { data } = await supabase
+      .from("mensalidades")
+      .select("*")
+      .order("vencimento", {
+        ascending: false,
+      })
 
-    const data = new Date(base)
-
-    let inicioOk = true
-    let fimOk = true
-
-    if (inicio) {
-      inicioOk = data >= new Date(inicio)
-    }
-
-    if (fim) {
-      const final = new Date(fim)
-      final.setHours(23, 59, 59)
-      fimOk = data <= final
-    }
-
-    return inicioOk && fimOk
+    setMensalidades(data || [])
   }
 
-  async function carregar() {
-    setLoading(true)
-    setDados([])
+  const carregarVendas = async () => {
+    const { data } = await supabase
+      .from("caixa")
+      .select("*")
+      .eq("tipo", "venda")
+      .order("created_at", {
+        ascending: false,
+      })
 
-    // ==========================
-    // PROFESSORES
-    // ==========================
-    if (aba === "professores") {
-      let query = supabase
-        .from("mensalidades")
-        .select("*")
-        .eq("status", "pago")
+    setVendas(data || [])
+  }
 
-      if (professor) {
-        query = query.eq("professor", professor)
-      }
+  const buscarAlunos = useMemo(() => {
+    return alunos.filter((a) =>
+      (a.nome || "")
+        .toLowerCase()
+        .includes(busca.toLowerCase())
+    )
+  }, [alunos, busca])
 
-      const { data } = await query
+  const abrirAluno = async (aluno: any) => {
+    const { data: mat } = await supabase
+      .from("matriculas")
+      .select("*")
+      .eq("aluno_id", aluno.id)
+      .limit(1)
+      .single()
 
-      const filtrado = (data || []).filter((item) =>
-        dentroPeriodo(
-          item.created_at ||
-            item.data_pagamento ||
-            item.data
-        )
-      )
+    setSelecionado(aluno)
 
-      setDados(filtrado)
-    }
+    setForm({
+      nome: aluno.nome || "",
+      cpf: aluno.cpf || "",
+      whatsapp: aluno.whatsapp || "",
+      endereco: aluno.endereco || "",
+      status: aluno.status || "Ativo",
+      modalidade: mat?.modalidade || "",
+      turma: mat?.turma || "",
+    })
+  }
 
-    // ==========================
-    // PRESENÇA
-    // ==========================
-    if (aba === "presenca") {
-      let query = supabase
-        .from("presencas")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
+  const salvarAluno = async () => {
+    if (!selecionado) return
+
+    await supabase
+      .from("alunos")
+      .update({
+        nome: form.nome,
+        cpf: form.cpf,
+        whatsapp: form.whatsapp,
+        endereco: form.endereco,
+        status: form.status,
+      })
+      .eq("id", selecionado.id)
+
+    const { data: mat } = await supabase
+      .from("matriculas")
+      .select("id")
+      .eq("aluno_id", selecionado.id)
+      .limit(1)
+      .single()
+
+    if (mat) {
+      await supabase
+        .from("matriculas")
+        .update({
+          modalidade: form.modalidade,
+          turma: form.turma,
         })
-
-      if (turma) {
-        query = query.eq("turma", turma)
-      }
-
-      const { data } = await query
-
-      const filtrado = (data || []).filter((item) =>
-        dentroPeriodo(
-          item.created_at || item.data
-        )
-      )
-
-      setDados(filtrado)
+        .eq("id", mat.id)
+    } else {
+      await supabase
+        .from("matriculas")
+        .insert([
+          {
+            aluno_id: selecionado.id,
+            modalidade: form.modalidade,
+            turma: form.turma,
+          },
+        ])
     }
 
-    // ==========================
-    // PARCEIROS
-    // ==========================
-    if (aba === "parceiros") {
-      let query = supabase
-        .from("caixa")
-        .select("*")
-        .eq("tipo", "venda")
-
-      const { data } = await query
-
-      let filtrado = (data || []).filter((item) =>
-        dentroPeriodo(
-          item.created_at || item.data
-        )
-      )
-
-      if (parceiro) {
-        filtrado = filtrado.filter(
-          (item) =>
-            item.parceiro === parceiro ||
-            item.parceiro_nome === parceiro
-        )
-      }
-
-      setDados(filtrado)
-    }
-
-    setLoading(false)
+    alert("Aluno atualizado")
+    carregarAlunos()
   }
 
-  const total = useMemo(() => {
-    return dados.reduce(
-      (acc, item) =>
-        acc + Number(item.valor || 0),
-      0
-    )
-  }, [dados])
+  const excluirAluno = async (id: any) => {
+    if (!confirm("Excluir aluno?")) return
 
-  const quantidade = dados.length
+    await supabase
+      .from("matriculas")
+      .delete()
+      .eq("aluno_id", id)
 
-  function imprimir() {
-    window.print()
+    await supabase
+      .from("mensalidades")
+      .delete()
+      .eq("aluno_id", id)
+
+    await supabase
+      .from("alunos")
+      .delete()
+      .eq("id", id)
+
+    setSelecionado(null)
+    carregarAlunos()
   }
 
-  // ==========================
-  // CABEÇALHO TABELA
-  // ==========================
-  function cabecalho() {
-    if (aba === "presenca") {
-      return (
-        <tr>
-          <th className="p-4 text-left">Data</th>
-          <th className="p-4 text-left">Aluno</th>
-          <th className="p-4 text-left">Turma</th>
-          <th className="p-4 text-left">Professor</th>
-        </tr>
-      )
-    }
+  const pagarMensalidade = async (
+    item: any
+  ) => {
+    await supabase
+      .from("mensalidades")
+      .update({
+        status: "pago",
+      })
+      .eq("id", item.id)
 
-    return (
-      <tr>
-        <th className="p-4 text-left">Data</th>
-        <th className="p-4 text-left">Nome</th>
-        <th className="p-4 text-left">Tipo</th>
-        <th className="p-4 text-left">Valor</th>
-      </tr>
-    )
+    carregarMensalidades()
   }
 
-  // ==========================
-  // LINHAS TABELA
-  // ==========================
-  function linhas() {
-    if (loading) {
-      return (
-        <tr>
-          <td
-            colSpan={4}
-            className="p-4"
-          >
-            Carregando...
-          </td>
-        </tr>
-      )
-    }
+  const apagarMensalidade = async (
+    id: any
+  ) => {
+    if (!confirm("Apagar mensalidade?"))
+      return
 
-    if (dados.length === 0) {
-      return (
-        <tr>
-          <td
-            colSpan={4}
-            className="p-4"
-          >
-            Nenhum dado encontrado
-          </td>
-        </tr>
-      )
-    }
+    await supabase
+      .from("mensalidades")
+      .delete()
+      .eq("id", id)
 
-    if (aba === "presenca") {
-      return dados.map((item, i) => (
-        <tr
-          key={i}
-          className="border-t"
-        >
-          <td className="p-4">
-            {new Date(
-              item.created_at ||
-                item.data
-            ).toLocaleDateString()}
-          </td>
-
-          <td className="p-4">
-            {item.nome}
-          </td>
-
-          <td className="p-4">
-            {item.turma}
-          </td>
-
-          <td className="p-4">
-            {item.professor}
-          </td>
-        </tr>
-      ))
-    }
-
-    return dados.map((item, i) => (
-      <tr
-        key={i}
-        className="border-t"
-      >
-        <td className="p-4">
-          {new Date(
-            item.created_at ||
-              item.data_pagamento ||
-              item.data
-          ).toLocaleDateString()}
-        </td>
-
-        <td className="p-4">
-          {item.nome ||
-            item.aluno ||
-            item.parceiro ||
-            "-"}
-        </td>
-
-        <td className="p-4 capitalize">
-          {item.tipo || aba}
-        </td>
-
-        <td className="p-4 font-bold">
-          R$ {Number(
-            item.valor || 0
-          ).toFixed(2)}
-        </td>
-      </tr>
-    ))
+    carregarMensalidades()
   }
+
+  const apagarVenda = async (id: any) => {
+    if (!confirm("Apagar venda?"))
+      return
+
+    await supabase
+      .from("caixa")
+      .delete()
+      .eq("id", id)
+
+    carregarVendas()
+  }
+
+  const totalVendas = vendas.reduce(
+    (acc, item) =>
+      acc + Number(item.valor || 0),
+    0
+  )
+
+  const inadimplentes =
+    mensalidades.filter(
+      (m) =>
+        m.status === "pendente"
+    ).length
 
   return (
     <AdminGuard>
-      <div className="p-4 max-w-7xl mx-auto">
+      <div className="p-6 max-w-7xl mx-auto">
 
-        {/* TOPO */}
-        <div className="flex justify-between gap-3 flex-wrap mb-6">
-          <h1 className="text-2xl font-bold">
-            Central de Relatórios
-          </h1>
+        <h1 className="text-3xl font-bold mb-6">
+          Central de Registros
+        </h1>
 
-          <button
-            onClick={imprimir}
-            className="btn"
-          >
-            🖨️ Imprimir
-          </button>
-        </div>
-
-        {/* ABAS */}
-        <div className="flex gap-2 flex-wrap mb-6">
-
+        <div className="grid grid-cols-4 gap-3 mb-6">
           <button
             onClick={() =>
-              setAba("professores")
+              setAba("alunos")
             }
-            className={`tab ${
-              aba === "professores"
-                ? "ativo"
-                : ""
-            }`}
+            className="tab"
           >
-            Professores
+            Alunos
           </button>
 
           <button
             onClick={() =>
-              setAba("presenca")
-            }
-            className={`tab ${
-              aba === "presenca"
-                ? "ativo"
-                : ""
-            }`}
-          >
-            Presença
-          </button>
-
-          <button
-            onClick={() =>
-              setAba("parceiros")
-            }
-            className={`tab ${
-              aba === "parceiros"
-                ? "ativo"
-                : ""
-            }`}
-          >
-            Parceiros
-          </button>
-
-        </div>
-
-        {/* FILTROS */}
-        <div className="grid md:grid-cols-4 gap-4 mb-6">
-
-          {aba === "professores" && (
-            <select
-              className="input"
-              value={professor}
-              onChange={(e) =>
-                setProfessor(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Todos professores
-              </option>
-
-              {professores.map(
-                (item, i) => (
-                  <option
-                    key={i}
-                  >
-                    {item.nome}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-
-          {aba === "presenca" && (
-            <select
-              className="input"
-              value={turma}
-              onChange={(e) =>
-                setTurma(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Todas turmas
-              </option>
-
-              {turmas.map(
-                (item, i) => (
-                  <option
-                    key={i}
-                  >
-                    {item.nome}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-
-          {aba === "parceiros" && (
-            <select
-              className="input"
-              value={parceiro}
-              onChange={(e) =>
-                setParceiro(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Todos parceiros
-              </option>
-
-              {parceiros.map(
-                (item, i) => (
-                  <option
-                    key={i}
-                  >
-                    {item.nome}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-
-          <input
-            type="date"
-            className="input"
-            value={inicio}
-            onChange={(e) =>
-              setInicio(
-                e.target.value
+              setAba(
+                "mensalidades"
               )
             }
-          />
+            className="tab"
+          >
+            Mensalidades
+          </button>
 
-          <input
-            type="date"
-            className="input"
-            value={fim}
-            onChange={(e) =>
-              setFim(
-                e.target.value
+          <button
+            onClick={() =>
+              setAba("vendas")
+            }
+            className="tab"
+          >
+            Vendas
+          </button>
+
+          <button
+            onClick={() =>
+              setAba(
+                "dashboard"
               )
             }
-          />
-
+            className="tab"
+          >
+            Dashboard
+          </button>
         </div>
 
-        {/* CARDS */}
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
-
+        {aba === "alunos" && (
           <div className="card">
-            <small>
-              Quantidade
-            </small>
-            <h2>
-              {quantidade}
-            </h2>
-          </div>
 
+            <input
+              className="input mb-4"
+              placeholder="Buscar aluno"
+              value={busca}
+              onChange={(e) =>
+                setBusca(
+                  e.target.value
+                )
+              }
+            />
+
+            <div className="grid md:grid-cols-2 gap-6">
+
+              <div>
+                {buscarAlunos.map(
+                  (a: any) => (
+                    <div
+                      key={a.id}
+                      onClick={() =>
+                        abrirAluno(a)
+                      }
+                      className="linha"
+                    >
+                      {a.nome}
+                    </div>
+                  )
+                )}
+              </div>
+
+              {selecionado && (
+                <div className="space-y-3">
+
+                  <input
+                    className="input"
+                    value={form.nome}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        nome:
+                          e.target
+                            .value,
+                      })
+                    }
+                  />
+
+                  <input
+                    className="input"
+                    value={form.cpf}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        cpf:
+                          e.target
+                            .value,
+                      })
+                    }
+                  />
+
+                  <input
+                    className="input"
+                    value={
+                      form.whatsapp
+                    }
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        whatsapp:
+                          e.target
+                            .value,
+                      })
+                    }
+                  />
+
+                  <input
+                    className="input"
+                    value={
+                      form.endereco
+                    }
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        endereco:
+                          e.target
+                            .value,
+                      })
+                    }
+                  />
+
+                  <select
+                    className="input"
+                    value={
+                      form.status
+                    }
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        status:
+                          e.target
+                            .value,
+                      })
+                    }
+                  >
+                    <option>
+                      Ativo
+                    </option>
+                    <option>
+                      Bloqueado
+                    </option>
+                    <option>
+                      Inativo
+                    </option>
+                  </select>
+
+                  <select
+                    className="input"
+                    value={
+                      form.modalidade
+                    }
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        modalidade:
+                          e.target
+                            .value,
+                        turma:
+                          "",
+                      })
+                    }
+                  >
+                    <option value="">
+                      Modalidade
+                    </option>
+
+                    {modalidades.map(
+                      (
+                        m: any
+                      ) => (
+                        <option
+                          key={
+                            m.id
+                          }
+                          value={
+                            m.nome
+                          }
+                        >
+                          {m.nome}
+                        </option>
+                      )
+                    )}
+                  </select>
+
+                  <select
+                    className="input"
+                    value={
+                      form.turma
+                    }
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        turma:
+                          e.target
+                            .value,
+                      })
+                    }
+                  >
+                    <option value="">
+                      Turma
+                    </option>
+
+                    {turmas
+                      .filter(
+                        (
+                          t: any
+                        ) =>
+                          t.modalidade ===
+                          form.modalidade
+                      )
+                      .map(
+                        (
+                          t: any
+                        ) => (
+                          <option
+                            key={
+                              t.id
+                            }
+                            value={
+                              t.nome
+                            }
+                          >
+                            {
+                              t.nome
+                            }
+                          </option>
+                        )
+                      )}
+                  </select>
+
+                  <button
+                    onClick={
+                      salvarAluno
+                    }
+                    className="btn red"
+                  >
+                    Salvar
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      excluirAluno(
+                        selecionado.id
+                      )
+                    }
+                    className="btn black"
+                  >
+                    Excluir
+                  </button>
+
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {aba ===
+          "mensalidades" && (
           <div className="card">
-            <small>
-              Total Geral
-            </small>
-            <h2>
-              R$ {total.toFixed(2)}
-            </h2>
+
+            {mensalidades.map(
+              (m: any) => (
+                <div
+                  key={m.id}
+                  className="linha between"
+                >
+                  <div>
+                    {m.nome} - R$
+                    {m.valor}
+                    <br />
+                    <small>
+                      {
+                        m.status
+                      }
+                    </small>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {m.status !==
+                      "pago" && (
+                      <button
+                        onClick={() =>
+                          pagarMensalidade(
+                            m
+                          )
+                        }
+                        className="mini green"
+                      >
+                        Pagar
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() =>
+                        apagarMensalidade(
+                          m.id
+                        )
+                      }
+                      className="mini red"
+                    >
+                      Apagar
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+
           </div>
+        )}
 
-        </div>
+        {aba === "vendas" && (
+          <div className="card">
 
-        {/* TABELA */}
-        <div className="bg-white rounded-2xl shadow overflow-auto">
+            {vendas.map(
+              (v: any) => (
+                <div
+                  key={v.id}
+                  className="linha between"
+                >
+                  <div>
+                    {v.nome}
+                    <br />
+                    <small>
+                      {
+                        v.forma_pagamento
+                      }
+                    </small>
+                  </div>
 
-          <table className="w-full text-black">
+                  <div className="flex gap-2 items-center">
+                    R$
+                    {Number(
+                      v.valor
+                    ).toFixed(
+                      2
+                    )}
 
-            <thead className="bg-gray-100">
-              {cabecalho()}
-            </thead>
+                    <button
+                      onClick={() =>
+                        apagarVenda(
+                          v.id
+                        )
+                      }
+                      className="mini red"
+                    >
+                      Apagar
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
 
-            <tbody>
-              {linhas()}
-            </tbody>
+          </div>
+        )}
 
-          </table>
+        {aba ===
+          "dashboard" && (
+          <div className="grid md:grid-cols-4 gap-4">
 
-        </div>
+            <div className="card2">
+              <small>
+                Alunos
+              </small>
+              <h2>
+                {
+                  alunos.length
+                }
+              </h2>
+            </div>
+
+            <div className="card2">
+              <small>
+                Pendentes
+              </small>
+              <h2>
+                {
+                  inadimplentes
+                }
+              </h2>
+            </div>
+
+            <div className="card2">
+              <small>
+                Vendas
+              </small>
+              <h2>
+                R$
+                {totalVendas.toFixed(
+                  2
+                )}
+              </h2>
+            </div>
+
+            <div className="card2">
+              <small>
+                Ativos
+              </small>
+              <h2>
+                {
+                  alunos.filter(
+                    (
+                      a
+                    ) =>
+                      a.status ===
+                      "Ativo"
+                  ).length
+                }
+              </h2>
+            </div>
+
+          </div>
+        )}
 
         <style jsx>{`
-          .input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            background: white;
-          }
-
-          .btn {
-            background: red;
-            color: white;
-            padding: 12px 16px;
-            border-radius: 10px;
-          }
-
           .tab {
             background: white;
-            color: black;
-            padding: 10px 16px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
-          }
-
-          .ativo {
-            background: red;
-            color: white;
-            border-color: red;
+            padding: 14px;
+            border-radius: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
           }
 
           .card {
             background: white;
             padding: 24px;
-            border-radius: 18px;
+            border-radius: 20px;
             box-shadow: 0 2px 10px rgba(0,0,0,.08);
           }
 
-          .card h2 {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-top: 10px;
+          .card2 {
+            background: white;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.08);
           }
 
-          @media print {
-            button,
-            select,
-            input {
-              display: none !important;
-            }
+          .card2 h2 {
+            font-size: 2rem;
+            font-weight: bold;
+          }
+
+          .input {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+          }
+
+          .linha {
+            padding: 14px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+          }
+
+          .between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+
+          .btn {
+            width: 100%;
+            color: white;
+            padding: 14px;
+            border-radius: 12px;
+            font-weight: bold;
+          }
+
+          .red {
+            background: #dc2626;
+          }
+
+          .black {
+            background: #111;
+          }
+
+          .green {
+            background: #16a34a;
+          }
+
+          .mini {
+            color: white;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 13px;
           }
         `}</style>
 
