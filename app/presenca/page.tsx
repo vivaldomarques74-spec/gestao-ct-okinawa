@@ -7,16 +7,27 @@ export default function PresencaPage() {
   const [codigo, setCodigo] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const [professor, setProfessor] = useState<any>(null)
-  const [turmas, setTurmas] = useState<any[]>([])
-
-  const [turmaSelecionada, setTurmaSelecionada] =
+  const [professor, setProfessor] =
     useState<any>(null)
 
-  const [alunos, setAlunos] = useState<any[]>([])
-  const [busca, setBusca] = useState("")
-  const [presentesIds, setPresentesIds] =
-    useState<number[]>([])
+  const [turmas, setTurmas] =
+    useState<any[]>([])
+
+  const [
+    turmaSelecionada,
+    setTurmaSelecionada,
+  ] = useState<any>(null)
+
+  const [alunos, setAlunos] =
+    useState<any[]>([])
+
+  const [busca, setBusca] =
+    useState("")
+
+  const [
+    presentesIds,
+    setPresentesIds,
+  ] = useState<number[]>([])
 
   // ==========================
   // LOGIN PROFESSOR
@@ -29,12 +40,17 @@ export default function PresencaPage() {
 
     setLoading(true)
 
-    const { data, error } =
-      await supabase
-        .from("professores")
-        .select("*")
-        .eq("codigo", codigo.trim())
-        .maybeSingle()
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("professores")
+      .select("*")
+      .eq(
+        "codigo",
+        codigo.trim()
+      )
+      .maybeSingle()
 
     if (error || !data) {
       alert("Código inválido.")
@@ -44,22 +60,34 @@ export default function PresencaPage() {
 
     setProfessor(data)
 
-    // PUXA TURMAS PELO NOME DO PROFESSOR
-    const { data: listaTurmas } =
-      await supabase
-        .from("turmas")
-        .select("*")
-        .eq("professor", data.nome)
-        .order("nome")
+    const {
+      data: listaTurmas,
+    } = await supabase
+      .from("turmas")
+      .select("*")
+      .eq(
+        "professor",
+        data.nome
+      )
+      .eq(
+        "status",
+        "ativo"
+      )
+      .order("nome")
 
-    setTurmas(listaTurmas || [])
+    setTurmas(
+      listaTurmas || []
+    )
+
     setLoading(false)
   }
 
   // ==========================
   // ABRIR TURMA
   // ==========================
-  async function abrirTurma(turma: any) {
+  async function abrirTurma(
+    turma: any
+  ) {
     setTurmaSelecionada(turma)
     setBusca("")
     setAlunos([])
@@ -69,7 +97,14 @@ export default function PresencaPage() {
       await supabase
         .from("matriculas")
         .select("*")
-        .eq("turma", turma.nome)
+        .eq(
+          "turma",
+          turma.nome
+        )
+        .eq(
+          "status",
+          "ativo"
+        )
         .order("nome")
 
     setAlunos(data || [])
@@ -80,38 +115,51 @@ export default function PresencaPage() {
   }
 
   // ==========================
-  // PRESENÇAS DE HOJE
+  // PRESENÇAS HOJE
   // ==========================
   async function carregarPresencasHoje(
     nomeTurma: string
   ) {
     const hoje = new Date()
 
-    const inicio = new Date(
-      hoje.getFullYear(),
-      hoje.getMonth(),
-      hoje.getDate(),
-      0,
-      0,
-      0
-    ).toISOString()
+    const inicio =
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth(),
+        hoje.getDate(),
+        0,
+        0,
+        0
+      ).toISOString()
 
-    const fim = new Date(
-      hoje.getFullYear(),
-      hoje.getMonth(),
-      hoje.getDate(),
-      23,
-      59,
-      59
-    ).toISOString()
+    const fim =
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth(),
+        hoje.getDate(),
+        23,
+        59,
+        59
+      ).toISOString()
 
     const { data } =
       await supabase
         .from("presencas")
-        .select("aluno_id")
-        .eq("turma", nomeTurma)
-        .gte("created_at", inicio)
-        .lte("created_at", fim)
+        .select(
+          "aluno_id"
+        )
+        .eq(
+          "turma",
+          nomeTurma
+        )
+        .gte(
+          "created_at",
+          inicio
+        )
+        .lte(
+          "created_at",
+          fim
+        )
 
     const ids =
       (data || []).map(
@@ -123,14 +171,16 @@ export default function PresencaPage() {
   }
 
   // ==========================
-  // BLOQUEIO
+  // BLOQUEIO INADIMPLENTE
   // ==========================
   async function verificarBloqueio(
     aluno: any
   ) {
     const { data } =
       await supabase
-        .from("mensalidades")
+        .from(
+          "mensalidades"
+        )
         .select("*")
         .eq(
           "aluno_id",
@@ -141,16 +191,21 @@ export default function PresencaPage() {
           "pendente"
         )
 
-    if (!data || data.length === 0)
+    if (
+      !data ||
+      data.length === 0
+    )
       return false
 
-    const hoje = new Date()
+    const hoje =
+      new Date()
 
     for (const item of data) {
-      const venc = new Date(
-        item.vencimento +
-          "T00:00:00"
-      )
+      const venc =
+        new Date(
+          item.vencimento +
+            "T00:00:00"
+        )
 
       const dias =
         Math.floor(
@@ -162,7 +217,8 @@ export default function PresencaPage() {
               24)
         )
 
-      if (dias > 5) return true
+      if (dias > 5)
+        return true
     }
 
     return false
@@ -199,16 +255,21 @@ export default function PresencaPage() {
 
     const { error } =
       await supabase
-        .from("presencas")
+        .from(
+          "presencas"
+        )
         .insert([
           {
             aluno_id:
               aluno.aluno_id,
-            nome: aluno.nome,
+            nome:
+              aluno.nome,
             turma:
               turmaSelecionada.nome,
             professor:
               professor.nome,
+            modalidade:
+              aluno.modalidade,
             status:
               "presente",
             data:
@@ -252,7 +313,9 @@ export default function PresencaPage() {
   function sair() {
     setProfessor(null)
     setTurmas([])
-    setTurmaSelecionada(null)
+    setTurmaSelecionada(
+      null
+    )
     setAlunos([])
     setBusca("")
     setCodigo("")
@@ -260,10 +323,12 @@ export default function PresencaPage() {
 
   return (
     <div className="min-h-screen bg-white text-black p-4">
+
       <div className="max-w-md mx-auto">
 
         {/* TOPO */}
         <div className="text-center mb-6">
+
           <h1 className="text-3xl font-bold text-red-600">
             CT OKINAWA
           </h1>
@@ -271,6 +336,7 @@ export default function PresencaPage() {
           <p className="text-gray-600 mt-1">
             CHECK-IN DE PRESENÇA
           </p>
+
         </div>
 
         {/* LOGIN */}
@@ -312,6 +378,7 @@ export default function PresencaPage() {
               </p>
 
               <div className="space-y-3">
+
                 {turmas.map(
                   (
                     turma,
@@ -332,6 +399,7 @@ export default function PresencaPage() {
                     </button>
                   )
                 )}
+
               </div>
 
               <button
@@ -374,6 +442,7 @@ export default function PresencaPage() {
               />
 
               <div className="space-y-2">
+
                 {alunosFiltrados.map(
                   (
                     aluno,
@@ -405,6 +474,12 @@ export default function PresencaPage() {
                           aluno.nome
                         }
 
+                        <span className="block text-xs opacity-70 mt-1">
+                          {
+                            aluno.modalidade
+                          }
+                        </span>
+
                         {marcado && (
                           <span className="float-right">
                             ✓
@@ -414,10 +489,13 @@ export default function PresencaPage() {
                     )
                   }
                 )}
+
               </div>
             </>
           )}
+
       </div>
+
     </div>
   )
 }

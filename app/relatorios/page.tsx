@@ -5,20 +5,53 @@ import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
 
 export default function RelatoriosPage() {
-  const [aba, setAba] = useState("professores")
-  const [loading, setLoading] = useState(false)
+  const [aba, setAba] =
+    useState("professores")
 
-  const [dados, setDados] = useState<any[]>([])
-  const [professores, setProfessores] = useState<any[]>([])
-  const [turmas, setTurmas] = useState<any[]>([])
-  const [parceiros, setParceiros] = useState<any[]>([])
+  const [loading, setLoading] =
+    useState(false)
 
-  const [professor, setProfessor] = useState("")
-  const [turma, setTurma] = useState("")
-  const [parceiro, setParceiro] = useState("")
+  const [dados, setDados] =
+    useState<any[]>([])
 
-  const [inicio, setInicio] = useState("")
-  const [fim, setFim] = useState("")
+  const [professores, setProfessores] =
+    useState<any[]>([])
+
+  const [turmas, setTurmas] =
+    useState<any[]>([])
+
+  const [parceiros, setParceiros] =
+    useState<any[]>([])
+
+  const [professor, setProfessor] =
+    useState("")
+
+  const [turma, setTurma] =
+    useState("")
+
+  const [parceiro, setParceiro] =
+    useState("")
+
+  const [inicio, setInicio] =
+    useState("")
+
+  const [fim, setFim] =
+    useState("")
+
+  const [
+    chamadaSelecionada,
+    setChamadaSelecionada,
+  ] = useState<any>(null)
+
+  const [
+    detalheChamada,
+    setDetalheChamada,
+  ] = useState<any[]>([])
+
+  const [
+    alunosTurma,
+    setAlunosTurma,
+  ] = useState<any[]>([])
 
   useEffect(() => {
     carregarBases()
@@ -26,334 +59,481 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     carregar()
-  }, [aba, professor, turma, parceiro, inicio, fim])
+  }, [
+    aba,
+    professor,
+    turma,
+    parceiro,
+    inicio,
+    fim,
+  ])
 
   async function carregarBases() {
-    const { data: p } = await supabase
-      .from("professores")
-      .select("*")
-      .order("nome")
+    const { data: p } =
+      await supabase
+        .from(
+          "professores"
+        )
+        .select("*")
+        .order("nome")
 
-    const { data: t } = await supabase
-      .from("turmas")
-      .select("*")
-      .order("nome")
+    const { data: t } =
+      await supabase
+        .from("turmas")
+        .select("*")
+        .order("nome")
 
-    const { data: pr } = await supabase
-      .from("parceiros")
-      .select("*")
-      .order("nome")
+    const { data: pr } =
+      await supabase
+        .from(
+          "parceiros"
+        )
+        .select("*")
+        .order("nome")
 
     setProfessores(p || [])
     setTurmas(t || [])
     setParceiros(pr || [])
   }
 
-  function dentroPeriodo(base: any) {
+  function dentroPeriodo(
+    base: any
+  ) {
     if (!base) return true
 
-    const data = new Date(base)
+    const data =
+      new Date(base)
 
     let inicioOk = true
     let fimOk = true
 
-    if (inicio) inicioOk = data >= new Date(inicio)
-
-    if (fim) {
-      const final = new Date(fim)
-      final.setHours(23, 59, 59)
-      fimOk = data <= final
+    if (inicio) {
+      inicioOk =
+        data >=
+        new Date(inicio)
     }
 
-    return inicioOk && fimOk
+    if (fim) {
+      const final =
+        new Date(fim)
+
+      final.setHours(
+        23,
+        59,
+        59
+      )
+
+      fimOk =
+        data <= final
+    }
+
+    return (
+      inicioOk &&
+      fimOk
+    )
   }
 
-  function periodoProfessor(dataBase: any) {
-    const data = new Date(dataBase)
+  function periodoProfessor(
+    base: any
+  ) {
+    const data =
+      new Date(base)
 
-    if (inicio || fim) return dentroPeriodo(data)
-
-    const hoje = new Date()
-
-    const fimCiclo = new Date(
-      hoje.getFullYear(),
-      hoje.getMonth(),
-      9,
-      23,
-      59,
-      59
+    if (
+      inicio ||
+      fim
     )
+      return dentroPeriodo(
+        data
+      )
 
-    const inicioCiclo = new Date(
-      hoje.getFullYear(),
-      hoje.getMonth() - 1,
-      10,
-      0,
-      0,
-      0
+    const hoje =
+      new Date()
+
+    const ini =
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth() - 1,
+        10,
+        0,
+        0,
+        0
+      )
+
+    const fimc =
+      new Date(
+        hoje.getFullYear(),
+        hoje.getMonth(),
+        9,
+        23,
+        59,
+        59
+      )
+
+    return (
+      data >= ini &&
+      data <= fimc
     )
-
-    return data >= inicioCiclo && data <= fimCiclo
   }
 
   async function carregar() {
     setLoading(true)
     setDados([])
 
-    // =====================================
+    // =========================
     // PROFESSORES
-    // =====================================
-    if (aba === "professores") {
-      let query = supabase
-        .from("caixa")
-        .select("*")
-        .in("tipo", ["matricula", "mensalidade"])
+    // =========================
+    if (
+      aba ===
+      "professores"
+    ) {
+      let query =
+        supabase
+          .from(
+            "caixa"
+          )
+          .select("*")
+          .in(
+            "tipo",
+            [
+              "matricula",
+              "mensalidade",
+            ]
+          )
 
       if (professor) {
-        query = query.eq("professor", professor)
+        query =
+          query.eq(
+            "professor",
+            professor
+          )
       }
 
-      const { data } = await query
+      const {
+        data,
+      } =
+        await query
 
-      const filtrado = (data || []).filter((item) =>
-        periodoProfessor(
-          item.created_at ||
-            item.data_pagamento ||
-            item.data
+      const lista =
+        (data ||
+          []).filter(
+          (
+            x
+          ) =>
+            periodoProfessor(
+              x.created_at ||
+                x.data
+            )
         )
-      )
 
-      const final = filtrado.map((item) => ({
-        ...item,
-        valor_comissao:
-          Number(item.valor_base || item.valor || 0) * 0.5,
-      }))
+      const final =
+        lista.map(
+          (
+            x
+          ) => ({
+            ...x,
+            valor_comissao:
+              Number(
+                x.valor_base ||
+                  x.valor ||
+                  0
+              ) *
+              0.5,
+          })
+        )
 
       setDados(final)
     }
 
-    // =====================================
+    // =========================
     // PRESENÇA
-    // =====================================
-    if (aba === "presenca") {
-      let query = supabase
-        .from("presencas")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        })
+    // =========================
+    if (
+      aba ===
+      "presenca"
+    ) {
+      let query =
+        supabase
+          .from(
+            "presencas"
+          )
+          .select("*")
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            }
+          )
 
-      if (turma) query = query.eq("turma", turma)
-
-      const { data } = await query
-
-      const filtrado = (data || []).filter((item) =>
-        dentroPeriodo(
-          item.created_at || item.data
-        )
-      )
-
-      setDados(filtrado)
-    }
-
-    // =====================================
-    // PARCEIROS
-    // =====================================
-    if (aba === "parceiros") {
-      let query = supabase
-        .from("caixa")
-        .select("*")
-        .eq("tipo", "venda")
-
-      const { data } = await query
-
-      let filtrado = (data || []).filter((item) =>
-        dentroPeriodo(
-          item.created_at || item.data
-        )
-      )
-
-      if (parceiro) {
-        filtrado = filtrado.filter(
-          (item) =>
-            item.parceiro === parceiro ||
-            item.parceiro_nome === parceiro
-        )
+      if (turma) {
+        query =
+          query.eq(
+            "turma",
+            turma
+          )
       }
 
-      setDados(filtrado)
+      const {
+        data,
+      } =
+        await query
+
+      const lista =
+        (data ||
+          []).filter(
+          (
+            x
+          ) =>
+            dentroPeriodo(
+              x.created_at ||
+                x.data
+            )
+        )
+
+      const grupos: any =
+        {}
+
+      lista.forEach(
+        (
+          item
+        ) => {
+          const dt =
+            new Date(
+              item.created_at ||
+                item.data
+            )
+
+          const chave = `${item.turma}_${dt.toLocaleDateString()}_${dt.getHours()}`
+
+          if (
+            !grupos[
+              chave
+            ]
+          ) {
+            grupos[
+              chave
+            ] = {
+              turma:
+                item.turma,
+              professor:
+                item.professor,
+              data:
+                item.created_at ||
+                item.data,
+              registros:
+                [],
+            }
+          }
+
+          grupos[
+            chave
+          ].registros.push(
+            item
+          )
+        }
+      )
+
+      setDados(
+        Object.values(
+          grupos
+        )
+      )
+    }
+
+    // =========================
+    // TURMAS
+    // =========================
+    if (
+      aba ===
+      "turmas"
+    ) {
+      setDados(turmas)
+    }
+
+    // =========================
+    // PARCEIROS
+    // =========================
+    if (
+      aba ===
+      "parceiros"
+    ) {
+      const {
+        data,
+      } =
+        await supabase
+          .from(
+            "caixa"
+          )
+          .select("*")
+          .eq(
+            "tipo",
+            "venda"
+          )
+
+      setDados(
+        (data ||
+          []).filter(
+          (
+            x
+          ) =>
+            dentroPeriodo(
+              x.created_at ||
+                x.data
+            )
+        )
+      )
     }
 
     setLoading(false)
   }
 
-  const total = useMemo(() => {
-    if (aba === "professores") {
-      return dados.reduce(
-        (acc, item) =>
-          acc +
-          Number(
-            item.valor_comissao || 0
-          ),
-        0
+  async function verChamada(
+    item: any
+  ) {
+    setChamadaSelecionada(
+      item
+    )
+
+    const {
+      data:
+        matriculados,
+    } =
+      await supabase
+        .from(
+          "matriculas"
+        )
+        .select("*")
+        .eq(
+          "turma",
+          item.turma
+        )
+        .eq(
+          "status",
+          "ativo"
+        )
+
+    const presentes =
+      item.registros.map(
+        (
+          x: any
+        ) =>
+          x.aluno_id
       )
+
+    const lista =
+      (
+        matriculados ||
+        []
+      ).map(
+        (
+          al: any
+        ) => ({
+          ...al,
+          presente:
+            presentes.includes(
+              al.aluno_id
+            ),
+        })
+      )
+
+    setDetalheChamada(
+      lista
+    )
+  }
+
+  async function abrirTurma(
+    nome: string
+  ) {
+    setTurma(nome)
+
+    const {
+      data,
+    } =
+      await supabase
+        .from(
+          "matriculas"
+        )
+        .select("*")
+        .eq(
+          "turma",
+          nome
+        )
+        .eq(
+          "status",
+          "ativo"
+        )
+        .order("nome")
+
+    setAlunosTurma(
+      data || []
+    )
+  }
+
+  async function apagarChamada() {
+    if (
+      !confirm(
+        "Apagar chamada?"
+      )
+    )
+      return
+
+    for (const item of detalheChamada) {
+      if (
+        item.presente
+      ) {
+        await supabase
+          .from(
+            "presencas"
+          )
+          .delete()
+          .eq(
+            "aluno_id",
+            item.aluno_id
+          )
+          .eq(
+            "turma",
+            chamadaSelecionada.turma
+          )
+      }
     }
 
-    return dados.reduce(
-      (acc, item) =>
-        acc + Number(item.valor || 0),
-      0
+    setChamadaSelecionada(
+      null
     )
-  }, [dados, aba])
+    setDetalheChamada(
+      []
+    )
 
-  const quantidade = dados.length
+    carregar()
+  }
 
   function imprimir() {
     window.print()
   }
 
-  function cabecalho() {
-    if (aba === "presenca") {
-      return (
-        <tr>
-          <th className="p-4 text-left">Data</th>
-          <th className="p-4 text-left">Aluno</th>
-          <th className="p-4 text-left">Turma</th>
-          <th className="p-4 text-left">Professor</th>
-        </tr>
-      )
-    }
-
-    if (aba === "professores") {
-      return (
-        <tr>
-          <th className="p-4 text-left">Data</th>
-          <th className="p-4 text-left">Aluno</th>
-          <th className="p-4 text-left">Tipo</th>
-          <th className="p-4 text-left">Base</th>
-          <th className="p-4 text-left">50%</th>
-        </tr>
-      )
-    }
-
-    return (
-      <tr>
-        <th className="p-4 text-left">Data</th>
-        <th className="p-4 text-left">Nome</th>
-        <th className="p-4 text-left">Tipo</th>
-        <th className="p-4 text-left">Valor</th>
-      </tr>
-    )
-  }
-
-  function linhas() {
-    if (loading) {
-      return (
-        <tr>
-          <td colSpan={5} className="p-4">
-            Carregando...
-          </td>
-        </tr>
-      )
-    }
-
-    if (dados.length === 0) {
-      return (
-        <tr>
-          <td colSpan={5} className="p-4">
-            Nenhum dado encontrado
-          </td>
-        </tr>
-      )
-    }
-
-    if (aba === "presenca") {
-      return dados.map((item, i) => (
-        <tr key={i} className="border-t">
-          <td className="p-4">
-            {new Date(
-              item.created_at ||
-                item.data
-            ).toLocaleDateString()}
-          </td>
-
-          <td className="p-4">
-            {item.nome}
-          </td>
-
-          <td className="p-4">
-            {item.turma}
-          </td>
-
-          <td className="p-4">
-            {item.professor}
-          </td>
-        </tr>
-      ))
-    }
-
-    if (aba === "professores") {
-      return dados.map((item, i) => (
-        <tr key={i} className="border-t">
-          <td className="p-4">
-            {new Date(
-              item.created_at ||
-                item.data
-            ).toLocaleDateString()}
-          </td>
-
-          <td className="p-4">
-            {item.nome}
-          </td>
-
-          <td className="p-4 capitalize">
-            {item.tipo}
-          </td>
-
-          <td className="p-4">
-            R$ {Number(
-              item.valor_base ||
-                item.valor ||
+  const total =
+    useMemo(() => {
+      if (
+        aba ===
+        "professores"
+      ) {
+        return dados.reduce(
+          (
+            acc,
+            x
+          ) =>
+            acc +
+            Number(
+              x.valor_comissao ||
                 0
-            ).toFixed(2)}
-          </td>
+            ),
+          0
+        )
+      }
 
-          <td className="p-4 font-bold text-green-600">
-            R$ {Number(
-              item.valor_comissao || 0
-            ).toFixed(2)}
-          </td>
-        </tr>
-      ))
-    }
-
-    return dados.map((item, i) => (
-      <tr key={i} className="border-t">
-        <td className="p-4">
-          {new Date(
-            item.created_at ||
-              item.data
-          ).toLocaleDateString()}
-        </td>
-
-        <td className="p-4">
-          {item.nome ||
-            item.parceiro ||
-            "-"}
-        </td>
-
-        <td className="p-4">
-          {item.tipo}
-        </td>
-
-        <td className="p-4 font-bold">
-          R$ {Number(
-            item.valor || 0
-          ).toFixed(2)}
-        </td>
-      </tr>
-    ))
-  }
+      return dados.length
+    }, [dados, aba])
 
   return (
     <AdminGuard>
@@ -365,7 +545,9 @@ export default function RelatoriosPage() {
           </h1>
 
           <button
-            onClick={imprimir}
+            onClick={
+              imprimir
+            }
             className="btn"
           >
             🖨️ Imprimir
@@ -374,42 +556,19 @@ export default function RelatoriosPage() {
 
         <div className="flex gap-2 flex-wrap mb-6">
 
-          <button
-            onClick={() =>
-              setAba("professores")
-            }
-            className={`tab ${
-              aba === "professores"
-                ? "ativo"
-                : ""
-            }`}
-          >
+          <button className={`tab ${aba==="professores"?"ativo":""}`} onClick={()=>setAba("professores")}>
             Professores
           </button>
 
-          <button
-            onClick={() =>
-              setAba("presenca")
-            }
-            className={`tab ${
-              aba === "presenca"
-                ? "ativo"
-                : ""
-            }`}
-          >
+          <button className={`tab ${aba==="presenca"?"ativo":""}`} onClick={()=>setAba("presenca")}>
             Presença
           </button>
 
-          <button
-            onClick={() =>
-              setAba("parceiros")
-            }
-            className={`tab ${
-              aba === "parceiros"
-                ? "ativo"
-                : ""
-            }`}
-          >
+          <button className={`tab ${aba==="turmas"?"ativo":""}`} onClick={()=>setAba("turmas")}>
+            Modalidades / Turmas
+          </button>
+
+          <button className={`tab ${aba==="parceiros"?"ativo":""}`} onClick={()=>setAba("parceiros")}>
             Parceiros
           </button>
 
@@ -417,181 +576,191 @@ export default function RelatoriosPage() {
 
         <div className="grid md:grid-cols-4 gap-4 mb-6">
 
-          {aba === "professores" && (
-            <select
-              className="input"
-              value={professor}
-              onChange={(e) =>
-                setProfessor(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Todos professores
-              </option>
-
-              {professores.map(
-                (item, i) => (
-                  <option key={i}>
-                    {item.nome}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-
-          {aba === "presenca" && (
-            <select
-              className="input"
-              value={turma}
-              onChange={(e) =>
-                setTurma(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Todas turmas
-              </option>
-
-              {turmas.map(
-                (item, i) => (
-                  <option key={i}>
-                    {item.nome}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-
-          {aba === "parceiros" && (
-            <select
-              className="input"
-              value={parceiro}
-              onChange={(e) =>
-                setParceiro(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Todos parceiros
-              </option>
-
-              {parceiros.map(
-                (item, i) => (
-                  <option key={i}>
-                    {item.nome}
-                  </option>
-                )
-              )}
-            </select>
-          )}
-
-          <input
-            type="date"
-            className="input"
-            value={inicio}
-            onChange={(e) =>
-              setInicio(
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            type="date"
-            className="input"
-            value={fim}
-            onChange={(e) =>
-              setFim(
-                e.target.value
-              )
-            }
-          />
+          <input type="date" className="input" value={inicio} onChange={(e)=>setInicio(e.target.value)}/>
+          <input type="date" className="input" value={fim} onChange={(e)=>setFim(e.target.value)}/>
 
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
+        {/* PROFESSORES */}
+        {aba==="professores" && (
+          <div className="card space-y-3">
 
-          <div className="card">
-            <small>Quantidade</small>
-            <h2>{quantidade}</h2>
+            {dados.map((x:any,i:number)=>(
+              <div key={i} className="linha between">
+                <div>
+                  {x.nome}<br/>
+                  {x.tipo}
+                </div>
+
+                <div className="text-right">
+                  <b>
+                    R$ {Number(x.valor_comissao).toFixed(2)}
+                  </b>
+                </div>
+              </div>
+            ))}
+
+            <div className="total">
+              TOTAL: R$ {Number(total).toFixed(2)}
+            </div>
+
           </div>
+        )}
 
-          <div className="card">
-            <small>
-              Total Geral
-            </small>
-            <h2>
-              R$ {total.toFixed(2)}
+        {/* PRESENÇA */}
+        {aba==="presenca" && (
+          <div className="card space-y-3">
+
+            {dados.map((x:any,i:number)=>(
+              <div key={i} className="linha between">
+
+                <div>
+                  <b>{x.turma}</b><br/>
+                  {new Date(x.data).toLocaleDateString()} {" "}
+                  {new Date(x.data).toLocaleTimeString()}
+                </div>
+
+                <button className="mini green" onClick={()=>verChamada(x)}>
+                  VER
+                </button>
+
+              </div>
+            ))}
+
+          </div>
+        )}
+
+        {/* DETALHE CHAMADA */}
+        {chamadaSelecionada && (
+          <div className="card mt-6">
+
+            <h2 className="font-bold text-xl mb-4">
+              {chamadaSelecionada.turma}
             </h2>
+
+            {detalheChamada.map((x:any,i:number)=>(
+              <div key={i} className="linha between">
+
+                <span>{x.nome}</span>
+
+                <span className={x.presente?"text-green-600":"text-red-600"}>
+                  {x.presente ? "Presente" : "Ausente"}
+                </span>
+
+              </div>
+            ))}
+
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button className="btn" onClick={imprimir}>
+                Imprimir
+              </button>
+
+              <button className="btn redbg" onClick={apagarChamada}>
+                Apagar
+              </button>
+            </div>
+
           </div>
+        )}
 
-        </div>
+        {/* TURMAS */}
+        {aba==="turmas" && (
+          <div className="grid md:grid-cols-2 gap-6">
 
-        <div className="bg-white rounded-2xl shadow overflow-auto">
+            <div className="card">
 
-          <table className="w-full text-black">
-            <thead className="bg-gray-100">
-              {cabecalho()}
-            </thead>
+              {turmas.map((t:any,i:number)=>(
+                <div key={i} className="linha" onClick={()=>abrirTurma(t.nome)}>
+                  <b>{t.nome}</b><br/>
+                  <small>{t.professor}</small>
+                </div>
+              ))}
 
-            <tbody>{linhas()}</tbody>
-          </table>
+            </div>
 
-        </div>
+            <div className="card">
+
+              <h2 className="font-bold mb-4">
+                {turma || "Selecione uma turma"}
+              </h2>
+
+              {alunosTurma.map((a:any,i:number)=>(
+                <div key={i} className="linha between">
+
+                  <span>{a.nome}</span>
+
+                  <span className="text-xs">
+                    {a.modalidade}
+                  </span>
+
+                </div>
+              ))}
+
+            </div>
+
+          </div>
+        )}
 
         <style jsx>{`
-          .input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            background: white;
+          .input{
+            width:100%;
+            padding:14px;
+            border:1px solid #ccc;
+            border-radius:10px;
           }
 
-          .btn {
-            background: red;
-            color: white;
-            padding: 12px 16px;
-            border-radius: 10px;
+          .btn{
+            background:red;
+            color:white;
+            padding:12px 16px;
+            border-radius:10px;
           }
 
-          .tab {
-            background: white;
-            color: black;
-            padding: 10px 16px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
+          .redbg{
+            background:#111;
           }
 
-          .ativo {
-            background: red;
-            color: white;
-            border-color: red;
+          .tab{
+            background:white;
+            padding:10px 16px;
+            border-radius:10px;
+            border:1px solid #ddd;
           }
 
-          .card {
-            background: white;
-            padding: 24px;
-            border-radius: 18px;
-            box-shadow: 0 2px 10px rgba(0,0,0,.08);
+          .ativo{
+            background:red;
+            color:white;
           }
 
-          .card h2 {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-top: 10px;
+          .card{
+            background:white;
+            padding:24px;
+            border-radius:18px;
+            box-shadow:0 2px 10px rgba(0,0,0,.08);
           }
 
-          @media print {
-            button,
-            select,
-            input {
-              display: none !important;
-            }
+          .linha{
+            padding:14px;
+            border-bottom:1px solid #eee;
+          }
+
+          .between{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+          }
+
+          .mini{
+            background:#16a34a;
+            color:white;
+            padding:8px 12px;
+            border-radius:10px;
+          }
+
+          .total{
+            margin-top:10px;
+            font-size:22px;
+            font-weight:bold;
           }
         `}</style>
 

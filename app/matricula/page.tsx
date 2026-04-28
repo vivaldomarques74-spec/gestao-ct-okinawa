@@ -53,7 +53,17 @@ export default function Matricula() {
     carregarBases()
   }, [])
 
-  const carregarBases = async () => {
+  useEffect(() => {
+    recalcularValores()
+  }, [
+    form.modalidades,
+    form.formaPagamento,
+    form.convenio,
+    modalidadesLista,
+    conveniosDb,
+  ])
+
+  async function carregarBases() {
     const { data: mods } = await supabase
       .from("modalidades")
       .select("*")
@@ -77,65 +87,38 @@ export default function Matricula() {
     setConveniosDb(conv || [])
   }
 
-  useEffect(() => {
-    recalcularValores()
-  }, [
-    form.modalidades,
-    form.formaPagamento,
-    form.convenio,
-    modalidadesLista,
-    conveniosDb,
-  ])
-
-  const recalcularValores = () => {
+  function recalcularValores() {
     let baseTotal = 0
 
     form.modalidades.forEach((m: any) => {
       const mod = modalidadesLista.find(
-        (x: any) =>
-          x.nome === m.modalidade
+        (x: any) => x.nome === m.modalidade
       )
 
       if (mod) {
-        baseTotal += Number(
-          mod.valor_geral || 0
-        )
+        baseTotal += Number(mod.valor_geral || 0)
       }
     })
 
     let desconto = 0
 
     if (
-      form.formaPagamento ===
-        "Pix" ||
-      form.formaPagamento ===
-        "Dinheiro"
+      form.formaPagamento === "Pix" ||
+      form.formaPagamento === "Dinheiro"
     ) {
       desconto += 10
     }
 
-    if (
-      form.convenio !==
-      "Nenhum"
-    ) {
-      const conv =
-        conveniosDb.find(
-          (c: any) =>
-            c.nome ===
-            form.convenio
-        )
+    if (form.convenio !== "Nenhum") {
+      const conv = conveniosDb.find(
+        (c: any) => c.nome === form.convenio
+      )
 
       if (conv) {
-        if (
-          conv.tipo ===
-          "percentual"
-        ) {
+        if (conv.tipo === "percentual") {
           desconto +=
             (baseTotal *
-              Number(
-                conv.desconto ||
-                  0
-              )) /
+              Number(conv.desconto || 0)) /
             100
         } else {
           desconto += Number(
@@ -159,85 +142,115 @@ export default function Matricula() {
     }))
   }
 
-  const setCampo = (
+  function setCampo(
     campo: string,
     valor: any
-  ) => {
+  ) {
     setForm({
       ...form,
       [campo]: valor,
     })
   }
 
-  const adicionarModalidade =
-    () => {
-      setForm({
-        ...form,
-        modalidades: [
-          ...form.modalidades,
+  function adicionarModalidade() {
+    setForm({
+      ...form,
+      modalidades: [
+        ...form.modalidades,
+        {
+          modalidade: "",
+          turma: "",
+        },
+      ],
+    })
+  }
+
+  function removerModalidade(
+    index: number
+  ) {
+    const lista = [
+      ...form.modalidades,
+    ]
+
+    lista.splice(index, 1)
+
+    setForm({
+      ...form,
+      modalidades:
+        lista.length > 0
+          ? lista
+          : [
+              {
+                modalidade:
+                  "",
+                turma: "",
+              },
+            ],
+    })
+  }
+
+  function atualizarModalidade(
+    index: number,
+    campo: string,
+    valor: string
+  ) {
+    const lista = [
+      ...form.modalidades,
+    ]
+
+    lista[index] = {
+      ...lista[index],
+      [campo]: valor,
+    }
+
+    if (campo === "modalidade") {
+      lista[index].turma = ""
+    }
+
+    setForm({
+      ...form,
+      modalidades: lista,
+    })
+  }
+
+  async function gerarMensalidades(
+    alunoId: any,
+    nome: string,
+    item: any,
+    professor: string,
+    valorBase: number
+  ) {
+    for (let i = 0; i < 120; i++) {
+      const venc = new Date()
+      venc.setMonth(
+        venc.getMonth() + i
+      )
+
+      await supabase
+        .from("mensalidades")
+        .insert([
           {
-            modalidade: "",
-            turma: "",
+            aluno_id: alunoId,
+            nome,
+            modalidade:
+              item.modalidade,
+            turma: item.turma,
+            professor,
+            valor: valorBase,
+            valor_base:
+              valorBase,
+            vencimento: venc,
+            status:
+              i === 0
+                ? "pago"
+                : "pendente",
           },
-        ],
-      })
+        ])
     }
+  }
 
-  const removerModalidade =
-    (index: number) => {
-      const lista = [
-        ...form.modalidades,
-      ]
-
-      lista.splice(index, 1)
-
-      setForm({
-        ...form,
-        modalidades:
-          lista.length > 0
-            ? lista
-            : [
-                {
-                  modalidade:
-                    "",
-                  turma: "",
-                },
-              ],
-      })
-    }
-
-  const atualizarModalidade =
-    (
-      index: number,
-      campo: string,
-      valor: string
-    ) => {
-      const lista = [
-        ...form.modalidades,
-      ]
-
-      lista[index] = {
-        ...lista[index],
-        [campo]: valor,
-      }
-
-      if (
-        campo ===
-        "modalidade"
-      ) {
-        lista[index].turma =
-          ""
-      }
-
-      setForm({
-        ...form,
-        modalidades: lista,
-      })
-    }
-
-  const gerarRecibo = () => {
-    const agora =
-      new Date()
+  function gerarRecibo() {
+    const agora = new Date()
 
     const mods =
       form.modalidades
@@ -252,17 +265,15 @@ export default function Matricula() {
         )
         .join("<br/>")
 
-    const w =
-      window.open(
-        "",
-        "",
-        "width=320,height=700"
-      )
+    const w = window.open(
+      "",
+      "",
+      "width=320,height=700"
+    )
 
     w?.document.write(`
 <html>
 <body style="font-family:monospace;width:58mm">
-
 <div style="text-align:center">
 <img src="${window.location.origin}/logo.png" style="width:90px"/>
 <h3>CT OKINAWA</h3>
@@ -276,320 +287,260 @@ export default function Matricula() {
 
 <hr/>
 
-<p>Modalidades:</p>
-${mods}
+<p>${mods}</p>
 
 <hr/>
 
-<p>Convênio: ${form.convenio}</p>
 <p>Base: R$ ${Number(
       form.valorBase
     ).toFixed(2)}</p>
+
 <p>Desconto: R$ ${Number(
       form.desconto
     ).toFixed(2)}</p>
+
 <p><b>Total: R$ ${Number(
       form.valorFinal
     ).toFixed(2)}</b></p>
 
 <hr/>
 
-<p>Pagamento: ${form.formaPagamento}</p>
-
-${
-  form.formaPagamento ===
-  "Cartão"
-    ? `<p>${form.tipoCartao} - ${form.parcelas}</p>`
-    : ""
-}
-
-<hr/>
+<p>${form.formaPagamento}</p>
 
 <p>${agora.toLocaleDateString()} ${agora.toLocaleTimeString()}</p>
 
-<hr/>
-
-<p style="text-align:center">Provérbios 16:3</p>
-
 <script>
-window.onload = () => {
+window.onload=()=>{
 window.print()
 setTimeout(()=>window.close(),500)
 }
 </script>
-
 </body>
 </html>
 `)
     w?.document.close()
   }
 
-  const salvarDados =
-    async () => {
-      try {
-        setLoading(true)
+  async function salvarDados() {
+    try {
+      setLoading(true)
 
-        const {
-          data:
-            caixaAberto,
-        } =
-          await supabase
-            .from(
-              "caixa_turno"
-            )
-            .select("*")
-            .eq(
-              "status",
-              "aberto"
-            )
-            .single()
+      const {
+        data: caixaAberto,
+      } = await supabase
+        .from("caixa_turno")
+        .select("*")
+        .eq("status", "aberto")
+        .single()
 
-        if (
-          !caixaAberto
-        ) {
-          alert(
-            "Nenhum caixa aberto."
-          )
-          return
+      if (!caixaAberto) {
+        alert("Nenhum caixa aberto.")
+        return
+      }
+
+      const principal =
+        form.modalidades.find(
+          (m: any) =>
+            m.modalidade &&
+            m.turma
+        ) || {
+          modalidade: "",
+          turma: "",
         }
 
-        const principal =
-          form.modalidades.find(
-            (m: any) =>
-              m.modalidade &&
-              m.turma
-          ) || {
+      const {
+        data: aluno,
+        error,
+      } = await supabase
+        .from("alunos")
+        .insert([
+          {
+            nome: form.nome,
+            cpf: form.cpf,
+            rg: form.rg,
+            nascimento:
+              form.nascimento ||
+              null,
+            whatsapp:
+              form.whatsapp,
+            email: form.email,
+            endereco:
+              form.endereco,
+            convenio:
+              form.convenio,
+            status: "Ativo",
+            turma:
+              principal.turma,
             modalidade:
-              "",
-            turma: "",
-          }
+              principal.modalidade,
 
-        const {
-          data: aluno,
-          error,
-        } =
-          await supabase
-            .from(
-              "alunos"
-            )
-            .insert([
-              {
-                nome: form.nome,
-                cpf: form.cpf,
-                rg: form.rg,
-                nascimento:
-                  form.nascimento ||
-                  null,
-                whatsapp:
-                  form.whatsapp,
-                email:
-                  form.email,
-                endereco:
-                  form.endereco,
-                convenio:
-                  form.convenio,
+            menor,
 
-                status:
-                  "Ativo",
+            responsavel_nome:
+              menor
+                ? form.responsavelNome
+                : null,
 
-                turma:
-                  principal.turma,
+            responsavel_cpf:
+              menor
+                ? form.responsavelCpf
+                : null,
 
-                modalidade:
-                  principal.modalidade,
+            responsavel_whatsapp:
+              menor
+                ? form.responsavelWhatsapp
+                : null,
 
-                menor:
-                  menor,
+            responsavel_email:
+              menor
+                ? form.responsavelEmail
+                : null,
 
-                responsavel_nome:
-                  menor
-                    ? form.responsavelNome
-                    : null,
+            problema_saude:
+              saude,
 
-                responsavel_cpf:
-                  menor
-                    ? form.responsavelCpf
-                    : null,
+            saude_detalhes:
+              saude
+                ? form.problemaSaude
+                : null,
 
-                responsavel_whatsapp:
-                  menor
-                    ? form.responsavelWhatsapp
-                    : null,
+            usa_remedio:
+              remedio,
 
-                responsavel_email:
-                  menor
-                    ? form.responsavelEmail
-                    : null,
+            remedio_detalhes:
+              remedio
+                ? form.remedioUso
+                : null,
+          },
+        ])
+        .select()
+        .single()
 
-                problema_saude:
-                  saude,
+      if (
+        error ||
+        !aluno
+      ) {
+        alert(
+          error?.message ||
+            "Erro ao cadastrar aluno."
+        )
+        return
+      }
 
-                saude_detalhes:
-                  saude
-                    ? form.problemaSaude
-                    : null,
+      const validas =
+        form.modalidades.filter(
+          (m: any) =>
+            m.modalidade &&
+            m.turma
+        )
 
-                usa_remedio:
-                  remedio,
-
-                remedio_detalhes:
-                  remedio
-                    ? form.remedioUso
-                    : null,
-              },
-            ])
-            .select()
-            .single()
-
-        if (
-          error ||
-          !aluno
-        ) {
-          alert(
-            error?.message ||
-              "Erro ao cadastrar aluno."
-          )
-          return
-        }
-
-        const modalidadesValidas =
-          form.modalidades.filter(
-            (m: any) =>
-              m.modalidade &&
-              m.turma
+      for (const item of validas) {
+        const turmaInfo =
+          turmasDb.find(
+            (t: any) =>
+              t.nome ===
+              item.turma
           )
 
-        for (const m of modalidadesValidas) {
-          const turmaInfo =
-            turmasDb.find(
-              (t: any) =>
-                t.nome ===
-                m.turma
-            )
+        const modInfo =
+          modalidadesLista.find(
+            (x: any) =>
+              x.nome ===
+              item.modalidade
+          )
 
-          const modInfo =
-            modalidadesLista.find(
-              (x: any) =>
-                x.nome ===
-                m.modalidade
-            )
+        const professor =
+          turmaInfo?.professor ||
+          ""
 
-          const professor =
-            turmaInfo?.professor ||
-            ""
-
-          const valorBase =
-            Number(
-              modInfo?.valor_geral ||
-                0
-            )
-
-          await supabase
-            .from(
-              "matriculas"
-            )
-            .insert([
-              {
-                aluno_id:
-                  aluno.id,
-                nome:
-                  form.nome,
-                modalidade:
-                  m.modalidade,
-                turma:
-                  m.turma,
-                professor,
-                valor_base:
-                  valorBase,
-                status:
-                  "ativo",
-              },
-            ])
-
-          for (
-            let i = 0;
-            i < 24;
-            i++
-          ) {
-            const venc =
-              new Date()
-            venc.setMonth(
-              venc.getMonth() +
-                i
-            )
-
-            await supabase
-              .from(
-                "mensalidades"
-              )
-              .insert([
-                {
-                  aluno_id:
-                    aluno.id,
-                  nome:
-                    form.nome,
-                  modalidade:
-                    m.modalidade,
-                  turma:
-                    m.turma,
-                  professor,
-                  valor:
-                    valorBase,
-                  valor_base:
-                    valorBase,
-                  vencimento:
-                    venc,
-                  status:
-                    i === 0
-                      ? "pago"
-                      : "pendente",
-                },
-              ])
-          }
-        }
+        const valorBase =
+          Number(
+            modInfo?.valor_geral ||
+              0
+          )
 
         await supabase
-          .from("caixa")
+          .from("matriculas")
           .insert([
             {
-              tipo:
-                "matricula",
+              aluno_id:
+                aluno.id,
               nome:
                 form.nome,
-              valor:
-                form.valorFinal,
+              modalidade:
+                item.modalidade,
+              turma:
+                item.turma,
+              professor,
               valor_base:
-                form.valorBase,
-              forma_pagamento:
-                form.formaPagamento,
-              tipo_cartao:
-                form.tipoCartao ||
-                null,
-              parcelas:
-                form.parcelas ||
-                null,
-              data:
-                new Date(),
-              caixa_id:
-                caixaAberto.id,
+                valorBase,
+              status:
+                "ativo",
             },
           ])
 
-        gerarRecibo()
-
-        alert(
-          "Matrícula efetuada com sucesso!"
+        await gerarMensalidades(
+          aluno.id,
+          form.nome,
+          item,
+          professor,
+          valorBase
         )
-
-        window.location.reload()
-      } catch (err) {
-        alert(
-          "Erro geral ao salvar."
-        )
-      } finally {
-        setLoading(false)
       }
+
+      await supabase
+        .from("caixa")
+        .insert([
+          {
+            tipo:
+              "matricula",
+            nome:
+              form.nome,
+            valor:
+              form.valorFinal,
+            valor_base:
+              form.valorBase,
+            forma_pagamento:
+              form.formaPagamento,
+            tipo_cartao:
+              form.tipoCartao ||
+              null,
+            parcelas:
+              form.parcelas ||
+              null,
+            professor:
+              turmasDb.find(
+                (t: any) =>
+                  t.nome ===
+                  principal.turma
+              )?.professor ||
+              "",
+            turma:
+              principal.turma,
+            modalidade:
+              principal.modalidade,
+            data:
+              new Date(),
+            caixa_id:
+              caixaAberto.id,
+          },
+        ])
+
+      gerarRecibo()
+
+      alert(
+        "Matrícula efetuada com sucesso!"
+      )
+
+      window.location.reload()
+    } catch (e) {
+      alert(
+        "Erro geral ao salvar."
+      )
+    } finally {
+      setLoading(false)
     }
+  }
 
   return (
     <div>
@@ -601,173 +552,214 @@ setTimeout(()=>window.close(),500)
 
         <div className="grid grid-cols-2 gap-4">
 
-          <input className="input" placeholder="Nome"
-            onChange={(e)=>setCampo("nome",e.target.value)} />
+          <input
+            className="input"
+            placeholder="Nome"
+            onChange={(e) =>
+              setCampo(
+                "nome",
+                e.target.value
+              )
+            }
+          />
 
-          <input className="input" placeholder="CPF"
-            onChange={(e)=>setCampo("cpf",e.target.value)} />
+          <input
+            className="input"
+            placeholder="CPF"
+            onChange={(e) =>
+              setCampo(
+                "cpf",
+                e.target.value
+              )
+            }
+          />
 
-          <input className="input" placeholder="RG"
-            onChange={(e)=>setCampo("rg",e.target.value)} />
+          <input
+            className="input"
+            placeholder="RG"
+            onChange={(e) =>
+              setCampo(
+                "rg",
+                e.target.value
+              )
+            }
+          />
 
-          <input type="date" className="input"
-            onChange={(e)=>setCampo("nascimento",e.target.value)} />
+          <input
+            type="date"
+            className="input"
+            onChange={(e) =>
+              setCampo(
+                "nascimento",
+                e.target.value
+              )
+            }
+          />
 
-          <input className="input" placeholder="WhatsApp"
-            onChange={(e)=>setCampo("whatsapp",e.target.value)} />
+          <input
+            className="input"
+            placeholder="WhatsApp"
+            onChange={(e) =>
+              setCampo(
+                "whatsapp",
+                e.target.value
+              )
+            }
+          />
 
-          <input className="input" placeholder="Email"
-            onChange={(e)=>setCampo("email",e.target.value)} />
+          <input
+            className="input"
+            placeholder="Email"
+            onChange={(e) =>
+              setCampo(
+                "email",
+                e.target.value
+              )
+            }
+          />
 
-          <input className="input col-span-2" placeholder="Endereço"
-            onChange={(e)=>setCampo("endereco",e.target.value)} />
+          <input
+            className="input col-span-2"
+            placeholder="Endereço"
+            onChange={(e) =>
+              setCampo(
+                "endereco",
+                e.target.value
+              )
+            }
+          />
 
         </div>
 
         <div className="mt-6">
+
           <label>
-            <input type="checkbox"
+            <input
+              type="checkbox"
               checked={menor}
-              onChange={()=>setMenor(!menor)} />
-            {" "}Menor de idade
+              onChange={() =>
+                setMenor(!menor)
+              }
+            />{" "}
+            Menor de idade
           </label>
 
-          {menor && (
-            <div className="grid grid-cols-2 gap-4 mt-3">
-
-              <input className="input" placeholder="Responsável"
-                onChange={(e)=>setCampo("responsavelNome",e.target.value)} />
-
-              <input className="input" placeholder="CPF Responsável"
-                onChange={(e)=>setCampo("responsavelCpf",e.target.value)} />
-
-              <input className="input" placeholder="WhatsApp Responsável"
-                onChange={(e)=>setCampo("responsavelWhatsapp",e.target.value)} />
-
-              <input className="input" placeholder="Email Responsável"
-                onChange={(e)=>setCampo("responsavelEmail",e.target.value)} />
-
-            </div>
-          )}
         </div>
 
         <div className="mt-6">
 
-          <label>
-            <input type="checkbox"
-              checked={saude}
-              onChange={()=>setSaude(!saude)} />
-            {" "}Problema de saúde
-          </label>
-
-          {saude && (
-            <input className="input mt-2"
-              placeholder="Descreva"
-              onChange={(e)=>setCampo("problemaSaude",e.target.value)} />
-          )}
-
-          <div className="mt-3">
-
-            <label>
-              <input type="checkbox"
-                checked={remedio}
-                onChange={()=>setRemedio(!remedio)} />
-              {" "}Usa remédio contínuo
-            </label>
-
-            {remedio && (
-              <input className="input mt-2"
-                placeholder="Qual?"
-                onChange={(e)=>setCampo("remedioUso",e.target.value)} />
-            )}
-
-          </div>
-        </div>
-
-        <div className="mt-6">
           <h2 className="font-bold mb-2">
             Modalidades
           </h2>
 
-          {form.modalidades.map((m:any,i:number)=>{
-            const turmas =
-              turmasDb.filter(
-                (t:any)=>
-                  t.modalidade===m.modalidade
+          {form.modalidades.map(
+            (m: any, i: number) => {
+              const turmas =
+                turmasDb.filter(
+                  (t: any) =>
+                    t.modalidade ===
+                    m.modalidade
+                )
+
+              return (
+                <div
+                  key={i}
+                  className="grid grid-cols-3 gap-2 mb-3"
+                >
+
+                  <select
+                    className="input"
+                    value={
+                      m.modalidade
+                    }
+                    onChange={(e) =>
+                      atualizarModalidade(
+                        i,
+                        "modalidade",
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="">
+                      Modalidade
+                    </option>
+
+                    {modalidadesLista.map(
+                      (mod: any) => (
+                        <option
+                          key={mod.id}
+                          value={
+                            mod.nome
+                          }
+                        >
+                          {mod.nome}
+                        </option>
+                      )
+                    )}
+                  </select>
+
+                  <select
+                    className="input"
+                    value={m.turma}
+                    onChange={(e) =>
+                      atualizarModalidade(
+                        i,
+                        "turma",
+                        e.target.value
+                      )
+                    }
+                  >
+                    <option value="">
+                      Turma
+                    </option>
+
+                    {turmas.map(
+                      (t: any) => (
+                        <option
+                          key={t.id}
+                          value={
+                            t.nome
+                          }
+                        >
+                          {t.nome}
+                        </option>
+                      )
+                    )}
+                  </select>
+
+                  <button
+                    onClick={() =>
+                      removerModalidade(
+                        i
+                      )
+                    }
+                    className="bg-red-600 text-white rounded"
+                  >
+                    Remover
+                  </button>
+
+                </div>
               )
-
-            return(
-              <div key={i}
-                className="grid grid-cols-3 gap-2 mb-3">
-
-                <select
-                  className="input"
-                  value={m.modalidade}
-                  onChange={(e)=>
-                    atualizarModalidade(
-                      i,
-                      "modalidade",
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Modalidade
-                  </option>
-
-                  {modalidadesLista.map((mod:any)=>(
-                    <option key={mod.id} value={mod.nome}>
-                      {mod.nome}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className="input"
-                  value={m.turma}
-                  onChange={(e)=>
-                    atualizarModalidade(
-                      i,
-                      "turma",
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Turma
-                  </option>
-
-                  {turmas.map((t:any)=>(
-                    <option key={t.id} value={t.nome}>
-                      {t.nome}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={()=>removerModalidade(i)}
-                  className="bg-red-600 text-white rounded"
-                >
-                  Remover
-                </button>
-
-              </div>
-            )
-          })}
+            }
+          )}
 
           <button
-            onClick={adicionarModalidade}
+            onClick={
+              adicionarModalidade
+            }
             className="bg-zinc-800 text-white px-4 py-2 rounded"
           >
             + Adicionar Modalidade
           </button>
+
         </div>
 
         <div className="mt-6">
+
           <select
             className="input"
             value={form.convenio}
-            onChange={(e)=>
+            onChange={(e) =>
               setCampo(
                 "convenio",
                 e.target.value
@@ -778,20 +770,28 @@ setTimeout(()=>window.close(),500)
               Nenhum
             </option>
 
-            {conveniosDb.map((c:any)=>(
-              <option key={c.id} value={c.nome}>
-                {c.nome}
-              </option>
-            ))}
+            {conveniosDb.map(
+              (c: any) => (
+                <option
+                  key={c.id}
+                  value={c.nome}
+                >
+                  {c.nome}
+                </option>
+              )
+            )}
           </select>
+
         </div>
 
         <div className="mt-6">
 
           <select
             className="input mb-2"
-            value={form.formaPagamento}
-            onChange={(e)=>
+            value={
+              form.formaPagamento
+            }
+            onChange={(e) =>
               setCampo(
                 "formaPagamento",
                 e.target.value
@@ -803,62 +803,31 @@ setTimeout(()=>window.close(),500)
             <option>Cartão</option>
           </select>
 
-          {form.formaPagamento==="Cartão" && (
-            <>
-              <select
-                className="input mb-2"
-                value={form.tipoCartao}
-                onChange={(e)=>
-                  setCampo(
-                    "tipoCartao",
-                    e.target.value
-                  )
-                }
-              >
-                <option value="">
-                  Tipo cartão
-                </option>
-                <option value="Crédito">
-                  Crédito
-                </option>
-                <option value="Débito">
-                  Débito
-                </option>
-              </select>
-
-              {form.tipoCartao==="Crédito" && (
-                <select
-                  className="input"
-                  value={form.parcelas}
-                  onChange={(e)=>
-                    setCampo(
-                      "parcelas",
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="1x">1x</option>
-                  <option value="2x">2x</option>
-                  <option value="3x">3x</option>
-                </select>
-              )}
-            </>
-          )}
-
         </div>
 
         <div className="mt-6 bg-black text-white p-4 rounded">
+
           <p>
-            Base: R$ {Number(form.valorBase).toFixed(2)}
+            Base: R${" "}
+            {Number(
+              form.valorBase
+            ).toFixed(2)}
           </p>
 
           <p>
-            Desconto: R$ {Number(form.desconto).toFixed(2)}
+            Desconto: R${" "}
+            {Number(
+              form.desconto
+            ).toFixed(2)}
           </p>
 
           <p className="text-xl font-bold">
-            Total: R$ {Number(form.valorFinal).toFixed(2)}
+            Total: R${" "}
+            {Number(
+              form.valorFinal
+            ).toFixed(2)}
           </p>
+
         </div>
 
         <button
@@ -874,13 +843,14 @@ setTimeout(()=>window.close(),500)
       </div>
 
       <style jsx>{`
-        .input{
-          width:100%;
-          padding:12px;
-          border:1px solid #ccc;
-          border-radius:8px;
+        .input {
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #ccc;
+          border-radius: 8px;
         }
       `}</style>
+
     </div>
   )
 }
