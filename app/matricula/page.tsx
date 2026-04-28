@@ -36,7 +36,12 @@ export default function Matricula() {
     valorFinal: 0,
     desconto: 0,
 
-    modalidades: [{ modalidade: "", turma: "" }],
+    modalidades: [
+      {
+        modalidade: "",
+        turma: "",
+      },
+    ],
   })
 
   useEffect(() => {
@@ -101,18 +106,14 @@ export default function Matricula() {
               Number(conv.desconto || 0)) /
             100
         } else {
-          desconto += Number(
-            conv.desconto || 0
-          )
+          desconto += Number(conv.desconto || 0)
         }
       }
     }
 
-    let valorFinal =
-      baseTotal - desconto
+    let valorFinal = baseTotal - desconto
 
-    if (valorFinal < 0)
-      valorFinal = 0
+    if (valorFinal < 0) valorFinal = 0
 
     setForm((prev: any) => ({
       ...prev,
@@ -146,19 +147,15 @@ export default function Matricula() {
     campo: string,
     valor: string
   ) => {
-    const lista = [
-      ...form.modalidades,
-    ]
+    const lista = [...form.modalidades]
 
-    lista[index][campo] =
-      valor
+    lista[index] = {
+      ...lista[index],
+      [campo]: valor,
+    }
 
-    if (
-      campo ===
-      "modalidade"
-    ) {
-      lista[index].turma =
-        ""
+    if (campo === "modalidade") {
+      lista[index].turma = ""
     }
 
     setForm({
@@ -167,192 +164,125 @@ export default function Matricula() {
     })
   }
 
-  const salvarDados =
-    async () => {
-      try {
-        const {
-          data:
-            caixaAberto,
-        } =
-          await supabase
-            .from(
-              "caixa_turno"
-            )
-            .select("*")
-            .eq(
-              "status",
-              "aberto"
-            )
-            .limit(1)
-            .single()
+  const salvarDados = async () => {
+    try {
+      const { data: caixaAberto } = await supabase
+        .from("caixa_turno")
+        .select("*")
+        .eq("status", "aberto")
+        .limit(1)
+        .single()
 
-        if (
-          !caixaAberto
-        ) {
-          alert(
-            "Nenhum caixa aberto"
-          )
-          return
-        }
-
-        const {
-          data: aluno,
-        } =
-          await supabase
-            .from("alunos")
-            .insert([
-              {
-                nome: form.nome,
-                cpf: form.cpf,
-                whatsapp:
-                  form.whatsapp,
-                endereco:
-                  form.endereco,
-                convenio:
-                  form.convenio,
-              },
-            ])
-            .select()
-            .single()
-
-        const matriculas =
-          form.modalidades.map(
-            (m: any) => ({
-              aluno_id:
-                aluno.id,
-              modalidade:
-                m.modalidade,
-              turma:
-                m.turma,
-            })
-          )
-
-        await supabase
-          .from(
-            "matriculas"
-          )
-          .insert(
-            matriculas
-          )
-
-        await supabase
-          .from("caixa")
-          .insert([
-            {
-              tipo: "matricula",
-              nome: form.nome,
-              valor:
-                form.valorFinal,
-              valor_base:
-                form.valorBase,
-              desconto:
-                form.desconto,
-              convenio:
-                form.convenio,
-              forma_pagamento:
-                form.formaPagamento,
-              caixa_id:
-                caixaAberto.id,
-            },
-          ])
-
-        const hoje =
-          new Date()
-
-        const proximoVencimento =
-          new Date(
-            hoje
-          )
-
-        proximoVencimento.setMonth(
-          proximoVencimento.getMonth() +
-            1
-        )
-
-        await supabase
-          .from(
-            "mensalidades"
-          )
-          .insert([
-            {
-              aluno_id:
-                aluno.id,
-              nome: form.nome,
-              valor:
-                form.valorFinal,
-              valor_base:
-                form.valorBase,
-              desconto:
-                form.desconto,
-              convenio:
-                form.convenio,
-              vencimento:
-                hoje,
-              status:
-                "pago",
-              tipo: "matricula",
-              forma_pagamento:
-                form.formaPagamento,
-            },
-
-            {
-              aluno_id:
-                aluno.id,
-              nome: form.nome,
-              valor:
-                form.valorFinal,
-              valor_base:
-                form.valorBase,
-              desconto:
-                form.desconto,
-              convenio:
-                form.convenio,
-              vencimento:
-                proximoVencimento,
-              status:
-                "pendente",
-              tipo: "mensalidade",
-            },
-          ])
-
-        alert(
-          "Matrícula salva + financeiro ok + mensalidades criadas"
-        )
-      } catch (err) {
-        console.error(
-          err
-        )
-        alert(
-          "Erro ao salvar"
-        )
+      if (!caixaAberto) {
+        alert("Nenhum caixa aberto")
+        return false
       }
+
+      const { data: aluno } = await supabase
+        .from("alunos")
+        .insert([
+          {
+            nome: form.nome,
+            cpf: form.cpf,
+            rg: form.rg,
+            nascimento: form.nascimento,
+            whatsapp: form.whatsapp,
+            email: form.email,
+            endereco: form.endereco,
+            convenio: form.convenio,
+            status: "Ativo",
+          },
+        ])
+        .select()
+        .single()
+
+      const matriculas = form.modalidades.map((m: any) => ({
+        aluno_id: aluno.id,
+        modalidade: m.modalidade,
+        turma: m.turma,
+      }))
+
+      await supabase.from("matriculas").insert(matriculas)
+
+      await supabase.from("caixa").insert([
+        {
+          tipo: "matricula",
+          nome: form.nome,
+          valor: form.valorFinal,
+          valor_base: form.valorBase,
+          desconto: form.desconto,
+          convenio: form.convenio,
+          forma_pagamento: form.formaPagamento,
+          caixa_id: caixaAberto.id,
+        },
+      ])
+
+      const hoje = new Date()
+
+      const proximoVencimento = new Date()
+      proximoVencimento.setMonth(
+        proximoVencimento.getMonth() + 1
+      )
+
+      await supabase.from("mensalidades").insert([
+        {
+          aluno_id: aluno.id,
+          aluno_nome: form.nome,
+          cpf: form.cpf,
+          nome: form.nome,
+          valor: form.valorFinal,
+          valor_base: form.valorBase,
+          desconto: form.desconto,
+          convenio: form.convenio,
+          vencimento: hoje,
+          status: "pago",
+          tipo: "matricula",
+          forma_pagamento: form.formaPagamento,
+        },
+        {
+          aluno_id: aluno.id,
+          aluno_nome: form.nome,
+          cpf: form.cpf,
+          nome: form.nome,
+          valor: form.valorFinal,
+          valor_base: form.valorBase,
+          desconto: form.desconto,
+          convenio: form.convenio,
+          vencimento: proximoVencimento,
+          status: "pendente",
+          tipo: "mensalidade",
+        },
+      ])
+
+      alert(
+        "Matrícula salva + financeiro ok + mensalidades criadas"
+      )
+
+      return true
+    } catch (error) {
+      console.error(error)
+      alert("Erro ao salvar")
+      return false
     }
+  }
 
-  const gerarRecibo =
-    () => {
-      const agora =
-        new Date()
+  const gerarRecibo = () => {
+    const agora = new Date()
 
-      const modalidadesTexto =
-        form.modalidades
-          .map(
-            (
-              m: any
-            ) =>
-              `${m.modalidade} - ${m.turma}`
-          )
-          .join(
-            "<br/>"
-          )
+    const modalidadesTexto = form.modalidades
+      .map(
+        (m: any) =>
+          `${m.modalidade} - ${m.turma}`
+      )
+      .join("<br/>")
 
-      const w =
-        window.open(
-          "",
-          "",
-          "width=300,height=600"
-        )
+    const w = window.open(
+      "",
+      "",
+      "width=300,height=600"
+    )
 
-      w?.document.write(`
+    w?.document.write(`
 <html>
 <body style="font-family:monospace;width:58mm">
 
@@ -361,7 +291,6 @@ export default function Matricula() {
 </div>
 
 <div style="text-align:center"><b>CT OKINAWA</b></div>
-
 <div style="text-align:center">
 Disciplina - Respeito - Evolução
 </div>
@@ -392,8 +321,7 @@ Disciplina - Respeito - Evolução
 <div>FORMA: ${form.formaPagamento}</div>
 
 ${
-  form.formaPagamento ===
-  "Cartão"
+  form.formaPagamento === "Cartão"
     ? `
 <div>${form.tipoCartao} - ${form.parcelas}</div>
 `
@@ -430,8 +358,8 @@ window.close()
 </html>
 `)
 
-      w?.document.close()
-    }
+    w?.document.close()
+  }
 
   return (
     <div>
@@ -449,8 +377,7 @@ window.close()
             onChange={(e) =>
               setForm({
                 ...form,
-                nome:
-                  e.target.value,
+                nome: e.target.value,
               })
             }
           />
@@ -461,8 +388,7 @@ window.close()
             onChange={(e) =>
               setForm({
                 ...form,
-                cpf:
-                  e.target.value,
+                cpf: e.target.value,
               })
             }
           />
@@ -470,6 +396,12 @@ window.close()
           <input
             className="input"
             placeholder="RG"
+            onChange={(e) =>
+              setForm({
+                ...form,
+                rg: e.target.value,
+              })
+            }
           />
 
           <input
@@ -478,8 +410,7 @@ window.close()
             onChange={(e) =>
               setForm({
                 ...form,
-                nascimento:
-                  e.target.value,
+                nascimento: e.target.value,
               })
             }
           />
@@ -490,8 +421,7 @@ window.close()
             onChange={(e) =>
               setForm({
                 ...form,
-                whatsapp:
-                  e.target.value,
+                whatsapp: e.target.value,
               })
             }
           />
@@ -499,52 +429,38 @@ window.close()
           <input
             className="input"
             placeholder="Email"
+            onChange={(e) =>
+              setForm({
+                ...form,
+                email: e.target.value,
+              })
+            }
           />
 
           <input
             className="input col-span-2"
             placeholder="Endereço*"
+            onChange={(e) =>
+              setForm({
+                ...form,
+                endereco: e.target.value,
+              })
+            }
           />
-
         </div>
 
         <div className="mt-4">
           <label>
             <input
               type="checkbox"
+              checked={menor}
               onChange={() =>
-                setMenor(
-                  !menor
-                )
+                setMenor(!menor)
               }
             />{" "}
             Menor de idade
           </label>
         </div>
-
-        {menor && (
-          <div className="grid grid-cols-2 gap-4 mt-4">
-            <input
-              className="input"
-              placeholder="Nome responsável*"
-            />
-
-            <input
-              className="input"
-              placeholder="CPF*"
-            />
-
-            <input
-              className="input"
-              placeholder="WhatsApp*"
-            />
-
-            <input
-              className="input"
-              placeholder="Email*"
-            />
-          </div>
-        )}
 
         <div className="mt-6">
           <h2 className="font-semibold mb-2">
@@ -554,10 +470,9 @@ window.close()
           <label>
             <input
               type="checkbox"
+              checked={saude}
               onChange={() =>
-                setSaude(
-                  !saude
-                )
+                setSaude(!saude)
               }
             />{" "}
             Problemas de saúde
@@ -573,10 +488,9 @@ window.close()
           <label className="block mt-2">
             <input
               type="checkbox"
+              checked={remedio}
               onChange={() =>
-                setRemedio(
-                  !remedio
-                )
+                setRemedio(!remedio)
               }
             />{" "}
             Uso de remédio contínuo
@@ -596,15 +510,10 @@ window.close()
           </h2>
 
           {form.modalidades.map(
-            (
-              m: any,
-              i: number
-            ) => {
+            (m: any, i: number) => {
               const turmasFiltradas =
                 turmasDb.filter(
-                  (
-                    t: any
-                  ) =>
+                  (t: any) =>
                     t.modalidade ===
                     m.modalidade
                 )
@@ -616,34 +525,26 @@ window.close()
                 >
                   <select
                     className="input"
-                    value={
-                      m.modalidade
-                    }
+                    value={m.modalidade}
                     onChange={(e) =>
                       atualizarModalidade(
                         i,
                         "modalidade",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   >
-                    <option>
-                      Modalidade
+                    <option value="">
+                      Selecione Modalidade
                     </option>
 
                     {modalidadesLista.map(
-                      (
-                        mod: any
-                      ) => (
+                      (mod: any) => (
                         <option
-                          key={
-                            mod.nome
-                          }
+                          key={mod.id}
+                          value={mod.nome}
                         >
-                          {
-                            mod.nome
-                          }
+                          {mod.nome}
                         </option>
                       )
                     )}
@@ -651,34 +552,26 @@ window.close()
 
                   <select
                     className="input"
-                    value={
-                      m.turma
-                    }
+                    value={m.turma}
                     onChange={(e) =>
                       atualizarModalidade(
                         i,
                         "turma",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   >
-                    <option>
-                      Turma
+                    <option value="">
+                      Selecione Turma
                     </option>
 
                     {turmasFiltradas.map(
-                      (
-                        t: any
-                      ) => (
+                      (t: any) => (
                         <option
-                          key={
-                            t.id
-                          }
+                          key={t.id}
+                          value={t.nome}
                         >
-                          {
-                            t.nome
-                          }
+                          {t.nome}
                         </option>
                       )
                     )}
@@ -689,9 +582,7 @@ window.close()
           )}
 
           <button
-            onClick={
-              adicionarModalidade
-            }
+            onClick={adicionarModalidade}
             className="mt-2 bg-zinc-800 text-white px-4 py-2 rounded"
           >
             + Adicionar modalidade
@@ -701,36 +592,33 @@ window.close()
         <div className="mt-6">
           <select
             className="input"
-            value={
-              form.convenio
-            }
+            value={form.convenio}
             onChange={(e) =>
               setForm({
                 ...form,
-                convenio:
-                  e.target.value,
+                convenio: e.target.value,
               })
             }
           >
-            <option>
+            <option value="Nenhum">
               Nenhum
             </option>
 
-            {conveniosDb.map(
-              (c: any) => (
-                <option
-                  key={c.id}
-                >
-                  {c.nome}
-                </option>
-              )
-            )}
+            {conveniosDb.map((c: any) => (
+              <option
+                key={c.id}
+                value={c.nome}
+              >
+                {c.nome}
+              </option>
+            ))}
           </select>
         </div>
 
         <div className="mt-6">
           <select
             className="input mb-2"
+            value={form.formaPagamento}
             onChange={(e) =>
               setForm({
                 ...form,
@@ -739,15 +627,11 @@ window.close()
               })
             }
           >
-            <option>
-              Pix
-            </option>
-
-            <option>
+            <option value="Pix">Pix</option>
+            <option value="Dinheiro">
               Dinheiro
             </option>
-
-            <option>
+            <option value="Cartão">
               Cartão
             </option>
           </select>
@@ -757,22 +641,22 @@ window.close()
             <>
               <select
                 className="input mb-2"
-                onChange={(
-                  e
-                ) =>
+                value={form.tipoCartao}
+                onChange={(e) =>
                   setForm({
                     ...form,
                     tipoCartao:
-                      e.target
-                        .value,
+                      e.target.value,
                   })
                 }
               >
-                <option>
+                <option value="">
+                  Tipo cartão
+                </option>
+                <option value="Crédito">
                   Crédito
                 </option>
-
-                <option>
+                <option value="Débito">
                   Débito
                 </option>
               </select>
@@ -781,25 +665,22 @@ window.close()
                 "Crédito" && (
                 <select
                   className="input"
-                  onChange={(
-                    e
-                  ) =>
+                  value={form.parcelas}
+                  onChange={(e) =>
                     setForm({
                       ...form,
                       parcelas:
-                        e
-                          .target
-                          .value,
+                        e.target.value,
                     })
                   }
                 >
-                  <option>
+                  <option value="1x">
                     1x
                   </option>
-                  <option>
+                  <option value="2x">
                     2x
                   </option>
-                  <option>
+                  <option value="3x">
                     3x
                   </option>
                 </select>
@@ -827,8 +708,10 @@ window.close()
 
         <button
           onClick={async () => {
-            await salvarDados()
-            gerarRecibo()
+            const ok =
+              await salvarDados()
+
+            if (ok) gerarRecibo()
           }}
           className="mt-6 w-full bg-red-600 text-white p-3 rounded-lg"
         >
