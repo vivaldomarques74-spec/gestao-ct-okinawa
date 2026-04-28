@@ -26,327 +26,325 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     carregar()
-  }, [
-    aba,
-    professor,
-    turma,
-    parceiro,
-    inicio,
-    fim,
-  ])
+  }, [aba, professor, turma, parceiro, inicio, fim])
 
-  const carregarBases =
-    async () => {
-      const { data: p } =
-        await supabase
-          .from("professores")
-          .select("*")
-          .order("nome")
+  async function carregarBases() {
+    const { data: p } = await supabase
+      .from("professores")
+      .select("*")
+      .order("nome")
 
-      const { data: t } =
-        await supabase
-          .from("turmas")
-          .select("*")
-          .order("nome")
+    const { data: t } = await supabase
+      .from("turmas")
+      .select("*")
+      .order("nome")
 
-      const { data: pr } =
-        await supabase
-          .from("parceiros")
-          .select("*")
-          .order("nome")
+    const { data: pr } = await supabase
+      .from("parceiros")
+      .select("*")
+      .order("nome")
 
-      setProfessores(p || [])
-      setTurmas(t || [])
-      setParceiros(pr || [])
+    setProfessores(p || [])
+    setTurmas(t || [])
+    setParceiros(pr || [])
+  }
+
+  function dentroPeriodo(base: any) {
+    if (!base) return true
+
+    const data = new Date(base)
+
+    let inicioOk = true
+    let fimOk = true
+
+    if (inicio) {
+      inicioOk = data >= new Date(inicio)
     }
 
-  const dentroPeriodo =
-    (base: any) => {
-      if (!base) return true
+    if (fim) {
+      const final = new Date(fim)
+      final.setHours(23, 59, 59)
+      fimOk = data <= final
+    }
 
-      const data =
-        new Date(base)
+    return inicioOk && fimOk
+  }
 
-      let inicioOk =
-        true
+  async function carregar() {
+    setLoading(true)
+    setDados([])
 
-      let fimOk =
-        true
+    // ==========================
+    // PROFESSORES
+    // ==========================
+    if (aba === "professores") {
+      let query = supabase
+        .from("mensalidades")
+        .select("*")
+        .eq("status", "pago")
 
-      if (inicio) {
-        inicioOk =
-          data >=
-          new Date(
-            inicio
-          )
+      if (professor) {
+        query = query.eq("professor", professor)
       }
 
-      if (fim) {
-        const final =
-          new Date(fim)
+      const { data } = await query
 
-        final.setHours(
-          23,
-          59,
-          59
+      const filtrado = (data || []).filter((item) =>
+        dentroPeriodo(
+          item.created_at ||
+            item.data_pagamento ||
+            item.data
         )
+      )
 
-        fimOk =
-          data <= final
+      setDados(filtrado)
+    }
+
+    // ==========================
+    // PRESENÇA
+    // ==========================
+    if (aba === "presenca") {
+      let query = supabase
+        .from("presencas")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        })
+
+      if (turma) {
+        query = query.eq("turma", turma)
       }
 
+      const { data } = await query
+
+      const filtrado = (data || []).filter((item) =>
+        dentroPeriodo(
+          item.created_at || item.data
+        )
+      )
+
+      setDados(filtrado)
+    }
+
+    // ==========================
+    // PARCEIROS
+    // ==========================
+    if (aba === "parceiros") {
+      let query = supabase
+        .from("caixa")
+        .select("*")
+        .eq("tipo", "venda")
+
+      const { data } = await query
+
+      let filtrado = (data || []).filter((item) =>
+        dentroPeriodo(
+          item.created_at || item.data
+        )
+      )
+
+      if (parceiro) {
+        filtrado = filtrado.filter(
+          (item) =>
+            item.parceiro === parceiro ||
+            item.parceiro_nome === parceiro
+        )
+      }
+
+      setDados(filtrado)
+    }
+
+    setLoading(false)
+  }
+
+  const total = useMemo(() => {
+    return dados.reduce(
+      (acc, item) =>
+        acc + Number(item.valor || 0),
+      0
+    )
+  }, [dados])
+
+  const quantidade = dados.length
+
+  function imprimir() {
+    window.print()
+  }
+
+  // ==========================
+  // CABEÇALHO TABELA
+  // ==========================
+  function cabecalho() {
+    if (aba === "presenca") {
       return (
-        inicioOk &&
-        fimOk
+        <tr>
+          <th className="p-4 text-left">Data</th>
+          <th className="p-4 text-left">Aluno</th>
+          <th className="p-4 text-left">Turma</th>
+          <th className="p-4 text-left">Professor</th>
+        </tr>
       )
     }
 
-  const carregar =
-    async () => {
-      setLoading(true)
+    return (
+      <tr>
+        <th className="p-4 text-left">Data</th>
+        <th className="p-4 text-left">Nome</th>
+        <th className="p-4 text-left">Tipo</th>
+        <th className="p-4 text-left">Valor</th>
+      </tr>
+    )
+  }
 
-      /* PROFESSORES */
-      if (
-        aba ===
-        "professores"
-      ) {
-        let query =
-          supabase
-            .from(
-              "mensalidades"
-            )
-            .select("*")
-            .eq(
-              "status",
-              "pago"
-            )
-
-        if (
-          professor
-        ) {
-          query =
-            query.eq(
-              "professor",
-              professor
-            )
-        }
-
-        const {
-          data,
-        } =
-          await query
-
-        const filtrado =
-          (
-            data || []
-          ).filter(
-            (
-              item
-            ) =>
-              dentroPeriodo(
-                item.created_at ||
-                  item.data_pagamento ||
-                  item.data
-              )
-          )
-
-        setDados(
-          filtrado
-        )
-      }
-
-      /* PRESENÇA */
-      if (
-        aba ===
-        "presenca"
-      ) {
-        let query =
-          supabase
-            .from(
-              "presencas"
-            )
-            .select("*")
-
-        if (turma) {
-          query =
-            query.eq(
-              "turma",
-              turma
-            )
-        }
-
-        const {
-          data,
-        } =
-          await query
-
-        const filtrado =
-          (
-            data || []
-          ).filter(
-            (
-              item
-            ) =>
-              dentroPeriodo(
-                item.created_at ||
-                  item.data
-              )
-          )
-
-        setDados(
-          filtrado
-        )
-      }
-
-      /* VENDAS */
-      if (
-        aba ===
-        "vendas"
-      ) {
-        let query =
-          supabase
-            .from(
-              "caixa"
-            )
-            .select("*")
-            .eq(
-              "tipo",
-              "venda"
-            )
-
-        const {
-          data,
-        } =
-          await query
-
-        let filtrado =
-          (
-            data || []
-          ).filter(
-            (
-              item
-            ) =>
-              dentroPeriodo(
-                item.created_at ||
-                  item.data
-              )
-          )
-
-        if (
-          parceiro
-        ) {
-          filtrado =
-            filtrado.filter(
-              (
-                item
-              ) =>
-                item.parceiro ===
-                  parceiro ||
-                item.parceiro_nome ===
-                  parceiro
-            )
-        }
-
-        setDados(
-          filtrado
-        )
-      }
-
-      setLoading(false)
-    }
-
-  const total =
-    useMemo(() => {
-      return dados.reduce(
-        (
-          acc,
-          item
-        ) =>
-          acc +
-          Number(
-            item.valor ||
-              0
-          ),
-        0
+  // ==========================
+  // LINHAS TABELA
+  // ==========================
+  function linhas() {
+    if (loading) {
+      return (
+        <tr>
+          <td
+            colSpan={4}
+            className="p-4"
+          >
+            Carregando...
+          </td>
+        </tr>
       )
-    }, [dados])
-
-  const imprimir =
-    () => {
-      window.print()
     }
+
+    if (dados.length === 0) {
+      return (
+        <tr>
+          <td
+            colSpan={4}
+            className="p-4"
+          >
+            Nenhum dado encontrado
+          </td>
+        </tr>
+      )
+    }
+
+    if (aba === "presenca") {
+      return dados.map((item, i) => (
+        <tr
+          key={i}
+          className="border-t"
+        >
+          <td className="p-4">
+            {new Date(
+              item.created_at ||
+                item.data
+            ).toLocaleDateString()}
+          </td>
+
+          <td className="p-4">
+            {item.nome}
+          </td>
+
+          <td className="p-4">
+            {item.turma}
+          </td>
+
+          <td className="p-4">
+            {item.professor}
+          </td>
+        </tr>
+      ))
+    }
+
+    return dados.map((item, i) => (
+      <tr
+        key={i}
+        className="border-t"
+      >
+        <td className="p-4">
+          {new Date(
+            item.created_at ||
+              item.data_pagamento ||
+              item.data
+          ).toLocaleDateString()}
+        </td>
+
+        <td className="p-4">
+          {item.nome ||
+            item.aluno ||
+            item.parceiro ||
+            "-"}
+        </td>
+
+        <td className="p-4 capitalize">
+          {item.tipo || aba}
+        </td>
+
+        <td className="p-4 font-bold">
+          R$ {Number(
+            item.valor || 0
+          ).toFixed(2)}
+        </td>
+      </tr>
+    ))
+  }
 
   return (
     <AdminGuard>
       <div className="p-4 max-w-7xl mx-auto">
 
+        {/* TOPO */}
         <div className="flex justify-between gap-3 flex-wrap mb-6">
-
           <h1 className="text-2xl font-bold">
-            Central de
-            Relatórios
+            Central de Relatórios
           </h1>
 
           <button
-            onClick={
-              imprimir
-            }
+            onClick={imprimir}
             className="btn"
           >
             🖨️ Imprimir
           </button>
-
         </div>
 
         {/* ABAS */}
         <div className="flex gap-2 flex-wrap mb-6">
 
           <button
+            onClick={() =>
+              setAba("professores")
+            }
             className={`tab ${
-              aba ===
-              "professores"
+              aba === "professores"
                 ? "ativo"
                 : ""
             }`}
-            onClick={() =>
-              setAba(
-                "professores"
-              )
-            }
           >
             Professores
           </button>
 
           <button
+            onClick={() =>
+              setAba("presenca")
+            }
             className={`tab ${
-              aba ===
-              "presenca"
+              aba === "presenca"
                 ? "ativo"
                 : ""
             }`}
-            onClick={() =>
-              setAba(
-                "presenca"
-              )
-            }
           >
             Presença
           </button>
 
           <button
+            onClick={() =>
+              setAba("parceiros")
+            }
             className={`tab ${
-              aba ===
-              "vendas"
+              aba === "parceiros"
                 ? "ativo"
                 : ""
             }`}
-            onClick={() =>
-              setAba(
-                "vendas"
-              )
-            }
           >
-            Vendas
+            Parceiros
           </button>
 
         </div>
@@ -354,19 +352,13 @@ export default function RelatoriosPage() {
         {/* FILTROS */}
         <div className="grid md:grid-cols-4 gap-4 mb-6">
 
-          {aba ===
-            "professores" && (
+          {aba === "professores" && (
             <select
               className="input"
-              value={
-                professor
-              }
-              onChange={(
-                e
-              ) =>
+              value={professor}
+              onChange={(e) =>
                 setProfessor(
-                  e.target
-                    .value
+                  e.target.value
                 )
               }
             >
@@ -375,35 +367,24 @@ export default function RelatoriosPage() {
               </option>
 
               {professores.map(
-                (
-                  item,
-                  i
-                ) => (
+                (item, i) => (
                   <option
                     key={i}
                   >
-                    {
-                      item.nome
-                    }
+                    {item.nome}
                   </option>
                 )
               )}
             </select>
           )}
 
-          {aba ===
-            "presenca" && (
+          {aba === "presenca" && (
             <select
               className="input"
-              value={
-                turma
-              }
-              onChange={(
-                e
-              ) =>
+              value={turma}
+              onChange={(e) =>
                 setTurma(
-                  e.target
-                    .value
+                  e.target.value
                 )
               }
             >
@@ -412,35 +393,24 @@ export default function RelatoriosPage() {
               </option>
 
               {turmas.map(
-                (
-                  item,
-                  i
-                ) => (
+                (item, i) => (
                   <option
                     key={i}
                   >
-                    {
-                      item.nome
-                    }
+                    {item.nome}
                   </option>
                 )
               )}
             </select>
           )}
 
-          {aba ===
-            "vendas" && (
+          {aba === "parceiros" && (
             <select
               className="input"
-              value={
-                parceiro
-              }
-              onChange={(
-                e
-              ) =>
+              value={parceiro}
+              onChange={(e) =>
                 setParceiro(
-                  e.target
-                    .value
+                  e.target.value
                 )
               }
             >
@@ -449,16 +419,11 @@ export default function RelatoriosPage() {
               </option>
 
               {parceiros.map(
-                (
-                  item,
-                  i
-                ) => (
+                (item, i) => (
                   <option
                     key={i}
                   >
-                    {
-                      item.nome
-                    }
+                    {item.nome}
                   </option>
                 )
               )}
@@ -469,12 +434,9 @@ export default function RelatoriosPage() {
             type="date"
             className="input"
             value={inicio}
-            onChange={(
-              e
-            ) =>
+            onChange={(e) =>
               setInicio(
-                e.target
-                  .value
+                e.target.value
               )
             }
           />
@@ -483,31 +445,35 @@ export default function RelatoriosPage() {
             type="date"
             className="input"
             value={fim}
-            onChange={(
-              e
-            ) =>
+            onChange={(e) =>
               setFim(
-                e.target
-                  .value
+                e.target.value
               )
             }
           />
 
         </div>
 
-        {/* CARD */}
-        <div className="card mb-6">
+        {/* CARDS */}
+        <div className="grid md:grid-cols-2 gap-4 mb-6">
 
-          <small>
-            Total Geral
-          </small>
+          <div className="card">
+            <small>
+              Quantidade
+            </small>
+            <h2>
+              {quantidade}
+            </h2>
+          </div>
 
-          <h2>
-            R${" "}
-            {total.toFixed(
-              2
-            )}
-          </h2>
+          <div className="card">
+            <small>
+              Total Geral
+            </small>
+            <h2>
+              R$ {total.toFixed(2)}
+            </h2>
+          </div>
 
         </div>
 
@@ -517,94 +483,11 @@ export default function RelatoriosPage() {
           <table className="w-full text-black">
 
             <thead className="bg-gray-100">
-
-              <tr>
-                <th className="p-4 text-left">
-                  Data
-                </th>
-
-                <th className="p-4 text-left">
-                  Nome
-                </th>
-
-                <th className="p-4 text-left">
-                  Tipo
-                </th>
-
-                <th className="p-4 text-left">
-                  Valor
-                </th>
-              </tr>
-
+              {cabecalho()}
             </thead>
 
             <tbody>
-
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="p-4"
-                  >
-                    Carregando...
-                  </td>
-                </tr>
-              ) : dados.length ===
-                0 ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="p-4"
-                  >
-                    Nenhum dado encontrado
-                  </td>
-                </tr>
-              ) : (
-                dados.map(
-                  (
-                    item,
-                    i
-                  ) => (
-                    <tr
-                      key={i}
-                      className="border-t"
-                    >
-
-                      <td className="p-4">
-                        {new Date(
-                          item.created_at ||
-                            item.data_pagamento ||
-                            item.data
-                        ).toLocaleDateString()}
-                      </td>
-
-                      <td className="p-4">
-                        {item.nome ||
-                          item.aluno ||
-                          item.parceiro ||
-                          "-"}
-                      </td>
-
-                      <td className="p-4 capitalize">
-                        {item.tipo ||
-                          aba}
-                      </td>
-
-                      <td className="p-4 font-bold">
-                        R${" "}
-                        {Number(
-                          item.valor ||
-                            0
-                        ).toFixed(
-                          2
-                        )}
-                      </td>
-
-                    </tr>
-                  )
-                )
-              )}
-
+              {linhas()}
             </tbody>
 
           </table>
