@@ -279,6 +279,23 @@ setTimeout(()=>window.close(),500)
           turma: "",
         }
 
+      let professorNome = ""
+
+      if (principal.turma) {
+        const { data: turmaInfo } =
+          await supabase
+            .from("turmas")
+            .select("professor")
+            .eq(
+              "nome",
+              principal.turma
+            )
+            .single()
+
+        professorNome =
+          turmaInfo?.professor || ""
+      }
+
       const { data: aluno, error } =
         await supabase
           .from("alunos")
@@ -294,7 +311,7 @@ setTimeout(()=>window.close(),500)
               endereco: form.endereco,
               convenio: form.convenio,
 
-              status: "ativo",
+              status: "Ativo",
               turma: principal.turma,
               modalidade:
                 principal.modalidade,
@@ -359,6 +376,7 @@ setTimeout(()=>window.close(),500)
           )
           .map((m: any) => ({
             aluno_id: aluno.id,
+            nome: form.nome,
             modalidade:
               m.modalidade,
             turma: m.turma,
@@ -396,6 +414,23 @@ setTimeout(()=>window.close(),500)
 
       const hoje = new Date()
 
+      await supabase
+        .from("mensalidades")
+        .insert([
+          {
+            aluno_id:
+              aluno.id,
+            nome: form.nome,
+            valor:
+              form.valorFinal,
+            vencimento:
+              hoje,
+            status: "pago",
+            professor:
+              professorNome,
+          },
+        ])
+
       const prox = new Date()
       prox.setMonth(
         prox.getMonth() + 1
@@ -411,19 +446,11 @@ setTimeout(()=>window.close(),500)
             valor:
               form.valorFinal,
             vencimento:
-              hoje,
-            status: "pago",
-          },
-          {
-            aluno_id:
-              aluno.id,
-            nome: form.nome,
-            valor:
-              form.valorFinal,
-            vencimento:
               prox,
             status:
               "pendente",
+            professor:
+              professorNome,
           },
         ])
 

@@ -327,20 +327,46 @@ export default function RegistrosPage() {
 
     setSelecionado(null)
     carregarAlunos()
+    carregarMensalidades()
   }
 
   const pagarMensalidade =
     async (item: any) => {
+
+      const { data: caixaAberto } =
+        await supabase
+          .from("caixa_turno")
+          .select("*")
+          .eq("status", "aberto")
+          .single()
+
+      if (!caixaAberto) {
+        alert("Nenhum caixa aberto.")
+        return
+      }
+
       await supabase
-        .from(
-          "mensalidades"
-        )
+        .from("mensalidades")
         .update({
           status: "pago",
         })
         .eq("id", item.id)
 
+      await supabase
+        .from("caixa")
+        .insert([
+          {
+            tipo: "mensalidade",
+            nome: item.nome,
+            valor: item.valor,
+            forma_pagamento: "Recebido",
+            data: new Date(),
+            caixa_id: caixaAberto.id,
+          },
+        ])
+
       carregarMensalidades()
+      carregarVendas()
     }
 
   const apagarMensalidade =
@@ -352,14 +378,54 @@ export default function RegistrosPage() {
       )
         return
 
+      const { data: mensalidade } =
+        await supabase
+          .from("mensalidades")
+          .select("*")
+          .eq("id", id)
+          .single()
+
+      if (
+        mensalidade &&
+        mensalidade.status === "pago"
+      ) {
+        const { data: caixaItem } =
+          await supabase
+            .from("caixa")
+            .select("*")
+            .eq(
+              "tipo",
+              "mensalidade"
+            )
+            .eq(
+              "nome",
+              mensalidade.nome
+            )
+            .eq(
+              "valor",
+              mensalidade.valor
+            )
+            .order("data", {
+              ascending: false,
+            })
+            .limit(1)
+            .single()
+
+        if (caixaItem) {
+          await supabase
+            .from("caixa")
+            .delete()
+            .eq("id", caixaItem.id)
+        }
+      }
+
       await supabase
-        .from(
-          "mensalidades"
-        )
+        .from("mensalidades")
         .delete()
         .eq("id", id)
 
       carregarMensalidades()
+      carregarVendas()
     }
 
   const apagarVenda = async (
