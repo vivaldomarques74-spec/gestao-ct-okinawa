@@ -111,9 +111,7 @@ export default function Matricula() {
               Number(conv.desconto || 0)) /
             100
         } else {
-          desconto += Number(
-            conv.desconto || 0
-          )
+          desconto += Number(conv.desconto || 0)
         }
       }
     }
@@ -221,20 +219,19 @@ ${mods}
 <hr/>
 
 <p>Convênio: ${form.convenio}</p>
-<p>Base: R$ ${Number(
-      form.valorBase
-    ).toFixed(2)}</p>
-<p>Desconto: R$ ${Number(
-      form.desconto
-    ).toFixed(2)}</p>
-
-<p><b>Total: R$ ${Number(
-      form.valorFinal
-    ).toFixed(2)}</b></p>
+<p>Base: R$ ${Number(form.valorBase).toFixed(2)}</p>
+<p>Desconto: R$ ${Number(form.desconto).toFixed(2)}</p>
+<p><b>Total: R$ ${Number(form.valorFinal).toFixed(2)}</b></p>
 
 <hr/>
 
 <p>Pagamento: ${form.formaPagamento}</p>
+
+${
+  form.formaPagamento === "Cartão"
+    ? `<p>${form.tipoCartao} - ${form.parcelas}</p>`
+    : ""
+}
 
 <hr/>
 
@@ -242,9 +239,7 @@ ${mods}
 
 <hr/>
 
-<p style="text-align:center">
-Provérbios 16:3
-</p>
+<p style="text-align:center">Provérbios 16:3</p>
 
 <script>
 window.onload = () => {
@@ -285,46 +280,45 @@ setTimeout(()=>window.close(),500)
               nome: form.nome,
               cpf: form.cpf,
               rg: form.rg,
-              data_nascimento:
-                form.nascimento,
-              whatsapp:
-                form.whatsapp,
+              nascimento: form.nascimento,
+              whatsapp: form.whatsapp,
               email: form.email,
-              endereco:
-                form.endereco,
+              endereco: form.endereco,
+              convenio: form.convenio,
 
-              responsavel_nome:
-                menor
-                  ? form.responsavelNome
-                  : null,
+              menor: menor,
 
-              responsavel_cpf:
-                menor
-                  ? form.responsavelCpf
-                  : null,
+              responsavel_nome: menor
+                ? form.responsavelNome
+                : null,
 
-              whatsapp_responsavel:
+              responsavel_cpf: menor
+                ? form.responsavelCpf
+                : null,
+
+              responsavel_whatsapp:
                 menor
                   ? form.responsavelWhatsapp
                   : null,
 
-              email_responsavel:
+              responsavel_email:
                 menor
                   ? form.responsavelEmail
                   : null,
 
-              problema_saude:
+              problema_saude: saude,
+
+              saude_detalhes:
                 saude
                   ? form.problemaSaude
                   : null,
 
-              remedio_continuo:
+              usa_remedio: remedio,
+
+              remedio_detalhes:
                 remedio
                   ? form.remedioUso
                   : null,
-
-              convenio:
-                form.convenio,
 
               status: "ativo",
             },
@@ -333,8 +327,10 @@ setTimeout(()=>window.close(),500)
           .single()
 
       if (error || !aluno) {
+        console.log(error)
         alert(
-          "Erro ao cadastrar aluno."
+          error?.message ||
+            "Erro ao cadastrar aluno."
         )
         return
       }
@@ -342,12 +338,10 @@ setTimeout(()=>window.close(),500)
       const matriculas =
         form.modalidades.map(
           (m: any) => ({
-            aluno_id:
-              aluno.id,
+            aluno_id: aluno.id,
             modalidade:
               m.modalidade,
-            turma:
-              m.turma,
+            turma: m.turma,
           })
         )
 
@@ -355,26 +349,30 @@ setTimeout(()=>window.close(),500)
         .from("matriculas")
         .insert(matriculas)
 
-      await supabase.from("caixa").insert([
-        {
-          tipo: "matricula",
-          nome: form.nome,
-          valor: form.valorFinal,
-          valor_base:
-            form.valorBase,
-          desconto:
-            form.desconto,
-          convenio:
-            form.convenio,
-          forma_pagamento:
-            form.formaPagamento,
-          caixa_id:
-            caixaAberto.id,
-        },
-      ])
+      await supabase
+        .from("caixa")
+        .insert([
+          {
+            tipo: "matricula",
+            nome: form.nome,
+            valor:
+              form.valorFinal,
+            valor_base:
+              form.valorBase,
+            desconto:
+              form.desconto,
+            convenio:
+              form.convenio,
+            forma_pagamento:
+              form.formaPagamento,
+            caixa_id:
+              caixaAberto.id,
+          },
+        ])
 
       const hoje = new Date()
       const prox = new Date()
+
       prox.setMonth(
         prox.getMonth() + 1
       )
@@ -398,7 +396,8 @@ setTimeout(()=>window.close(),500)
             vencimento:
               hoje,
             status: "pago",
-            tipo: "matricula",
+            tipo:
+              "matricula",
             forma_pagamento:
               form.formaPagamento,
           },
@@ -449,82 +448,26 @@ setTimeout(()=>window.close(),500)
 
         <div className="grid grid-cols-2 gap-4">
 
-          <input
-            className="input"
-            placeholder="Nome"
-            onChange={(e) =>
-              setCampo(
-                "nome",
-                e.target.value
-              )
-            }
-          />
+          <input className="input" placeholder="Nome"
+            onChange={(e)=>setCampo("nome",e.target.value)} />
 
-          <input
-            className="input"
-            placeholder="CPF"
-            onChange={(e) =>
-              setCampo(
-                "cpf",
-                e.target.value
-              )
-            }
-          />
+          <input className="input" placeholder="CPF"
+            onChange={(e)=>setCampo("cpf",e.target.value)} />
 
-          <input
-            className="input"
-            placeholder="RG"
-            onChange={(e) =>
-              setCampo(
-                "rg",
-                e.target.value
-              )
-            }
-          />
+          <input className="input" placeholder="RG"
+            onChange={(e)=>setCampo("rg",e.target.value)} />
 
-          <input
-            type="date"
-            className="input"
-            onChange={(e) =>
-              setCampo(
-                "nascimento",
-                e.target.value
-              )
-            }
-          />
+          <input type="date" className="input"
+            onChange={(e)=>setCampo("nascimento",e.target.value)} />
 
-          <input
-            className="input"
-            placeholder="WhatsApp"
-            onChange={(e) =>
-              setCampo(
-                "whatsapp",
-                e.target.value
-              )
-            }
-          />
+          <input className="input" placeholder="WhatsApp"
+            onChange={(e)=>setCampo("whatsapp",e.target.value)} />
 
-          <input
-            className="input"
-            placeholder="Email"
-            onChange={(e) =>
-              setCampo(
-                "email",
-                e.target.value
-              )
-            }
-          />
+          <input className="input" placeholder="Email"
+            onChange={(e)=>setCampo("email",e.target.value)} />
 
-          <input
-            className="input col-span-2"
-            placeholder="Endereço"
-            onChange={(e) =>
-              setCampo(
-                "endereco",
-                e.target.value
-              )
-            }
-          />
+          <input className="input col-span-2" placeholder="Endereço"
+            onChange={(e)=>setCampo("endereco",e.target.value)} />
 
         </div>
 
@@ -536,56 +479,23 @@ setTimeout(()=>window.close(),500)
               onChange={() =>
                 setMenor(!menor)
               }
-            />{" "}
-            Menor de idade
+            /> Menor de idade
           </label>
 
           {menor && (
             <div className="grid grid-cols-2 gap-4 mt-3">
 
-              <input
-                className="input"
-                placeholder="Responsável"
-                onChange={(e) =>
-                  setCampo(
-                    "responsavelNome",
-                    e.target.value
-                  )
-                }
-              />
+              <input className="input" placeholder="Responsável"
+                onChange={(e)=>setCampo("responsavelNome",e.target.value)} />
 
-              <input
-                className="input"
-                placeholder="CPF Responsável"
-                onChange={(e) =>
-                  setCampo(
-                    "responsavelCpf",
-                    e.target.value
-                  )
-                }
-              />
+              <input className="input" placeholder="CPF Responsável"
+                onChange={(e)=>setCampo("responsavelCpf",e.target.value)} />
 
-              <input
-                className="input"
-                placeholder="WhatsApp Responsável"
-                onChange={(e) =>
-                  setCampo(
-                    "responsavelWhatsapp",
-                    e.target.value
-                  )
-                }
-              />
+              <input className="input" placeholder="WhatsApp Responsável"
+                onChange={(e)=>setCampo("responsavelWhatsapp",e.target.value)} />
 
-              <input
-                className="input"
-                placeholder="Email Responsável"
-                onChange={(e) =>
-                  setCampo(
-                    "responsavelEmail",
-                    e.target.value
-                  )
-                }
-              />
+              <input className="input" placeholder="Email Responsável"
+                onChange={(e)=>setCampo("responsavelEmail",e.target.value)} />
 
             </div>
           )}
@@ -600,21 +510,12 @@ setTimeout(()=>window.close(),500)
               onChange={() =>
                 setSaude(!saude)
               }
-            />{" "}
-            Problema de saúde
+            /> Problema de saúde
           </label>
 
           {saude && (
-            <input
-              className="input mt-2"
-              placeholder="Descreva"
-              onChange={(e) =>
-                setCampo(
-                  "problemaSaude",
-                  e.target.value
-                )
-              }
-            />
+            <input className="input mt-2" placeholder="Descreva"
+              onChange={(e)=>setCampo("problemaSaude",e.target.value)} />
           )}
 
           <div className="mt-3">
@@ -624,29 +525,17 @@ setTimeout(()=>window.close(),500)
                 type="checkbox"
                 checked={remedio}
                 onChange={() =>
-                  setRemedio(
-                    !remedio
-                  )
+                  setRemedio(!remedio)
                 }
-              />{" "}
-              Usa remédio contínuo
+              /> Usa remédio contínuo
             </label>
 
             {remedio && (
-              <input
-                className="input mt-2"
-                placeholder="Qual?"
-                onChange={(e) =>
-                  setCampo(
-                    "remedioUso",
-                    e.target.value
-                  )
-                }
-              />
+              <input className="input mt-2" placeholder="Qual?"
+                onChange={(e)=>setCampo("remedioUso",e.target.value)} />
             )}
 
           </div>
-
         </div>
 
         <div className="mt-6">
@@ -655,35 +544,25 @@ setTimeout(()=>window.close(),500)
           </h2>
 
           {form.modalidades.map(
-            (
-              m: any,
-              i: number
-            ) => {
+            (m:any,i:number)=>{
               const turmas =
                 turmasDb.filter(
-                  (
-                    t: any
-                  ) =>
-                    t.modalidade ===
-                    m.modalidade
+                  (t:any)=>
+                    t.modalidade===m.modalidade
                 )
 
-              return (
-                <div
-                  key={i}
-                  className="grid grid-cols-2 gap-2 mb-3"
-                >
+              return(
+                <div key={i}
+                  className="grid grid-cols-2 gap-2 mb-3">
+
                   <select
                     className="input"
-                    value={
-                      m.modalidade
-                    }
-                    onChange={(e) =>
+                    value={m.modalidade}
+                    onChange={(e)=>
                       atualizarModalidade(
                         i,
                         "modalidade",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   >
@@ -692,20 +571,12 @@ setTimeout(()=>window.close(),500)
                     </option>
 
                     {modalidadesLista.map(
-                      (
-                        mod: any
-                      ) => (
+                      (mod:any)=>(
                         <option
-                          key={
-                            mod.id
-                          }
-                          value={
-                            mod.nome
-                          }
+                          key={mod.id}
+                          value={mod.nome}
                         >
-                          {
-                            mod.nome
-                          }
+                          {mod.nome}
                         </option>
                       )
                     )}
@@ -713,15 +584,12 @@ setTimeout(()=>window.close(),500)
 
                   <select
                     className="input"
-                    value={
-                      m.turma
-                    }
-                    onChange={(e) =>
+                    value={m.turma}
+                    onChange={(e)=>
                       atualizarModalidade(
                         i,
                         "turma",
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                   >
@@ -730,24 +598,17 @@ setTimeout(()=>window.close(),500)
                     </option>
 
                     {turmas.map(
-                      (
-                        t: any
-                      ) => (
+                      (t:any)=>(
                         <option
-                          key={
-                            t.id
-                          }
-                          value={
-                            t.nome
-                          }
+                          key={t.id}
+                          value={t.nome}
                         >
-                          {
-                            t.nome
-                          }
+                          {t.nome}
                         </option>
                       )
                     )}
                   </select>
+
                 </div>
               )
             }
@@ -766,10 +627,8 @@ setTimeout(()=>window.close(),500)
         <div className="mt-6">
           <select
             className="input"
-            value={
-              form.convenio
-            }
-            onChange={(e) =>
+            value={form.convenio}
+            onChange={(e)=>
               setCampo(
                 "convenio",
                 e.target.value
@@ -781,7 +640,7 @@ setTimeout(()=>window.close(),500)
             </option>
 
             {conveniosDb.map(
-              (c: any) => (
+              (c:any)=>(
                 <option
                   key={c.id}
                   value={c.nome}
@@ -794,12 +653,11 @@ setTimeout(()=>window.close(),500)
         </div>
 
         <div className="mt-6">
+
           <select
-            className="input"
-            value={
-              form.formaPagamento
-            }
-            onChange={(e) =>
+            className="input mb-2"
+            value={form.formaPagamento}
+            onChange={(e)=>
               setCampo(
                 "formaPagamento",
                 e.target.value
@@ -807,42 +665,68 @@ setTimeout(()=>window.close(),500)
             }
           >
             <option>Pix</option>
-            <option>
-              Dinheiro
-            </option>
-            <option>
-              Cartão
-            </option>
+            <option>Dinheiro</option>
+            <option>Cartão</option>
           </select>
+
+          {form.formaPagamento==="Cartão" && (
+            <>
+              <select
+                className="input mb-2"
+                value={form.tipoCartao}
+                onChange={(e)=>
+                  setCampo(
+                    "tipoCartao",
+                    e.target.value
+                  )
+                }
+              >
+                <option value="">
+                  Tipo cartão
+                </option>
+                <option value="Crédito">
+                  Crédito
+                </option>
+                <option value="Débito">
+                  Débito
+                </option>
+              </select>
+
+              {form.tipoCartao==="Crédito" && (
+                <select
+                  className="input"
+                  value={form.parcelas}
+                  onChange={(e)=>
+                    setCampo(
+                      "parcelas",
+                      e.target.value
+                    )
+                  }
+                >
+                  <option value="1x">1x</option>
+                  <option value="2x">2x</option>
+                  <option value="3x">3x</option>
+                </select>
+              )}
+            </>
+          )}
+
         </div>
 
         <div className="mt-6 bg-black text-white p-4 rounded">
           <p>
-            Base: R${" "}
-            {Number(
-              form.valorBase
-            ).toFixed(2)}
+            Base: R$ {Number(form.valorBase).toFixed(2)}
           </p>
-
           <p>
-            Desconto: R${" "}
-            {Number(
-              form.desconto
-            ).toFixed(2)}
+            Desconto: R$ {Number(form.desconto).toFixed(2)}
           </p>
-
           <p className="text-xl font-bold">
-            Total: R${" "}
-            {Number(
-              form.valorFinal
-            ).toFixed(2)}
+            Total: R$ {Number(form.valorFinal).toFixed(2)}
           </p>
         </div>
 
         <button
-          onClick={
-            salvarDados
-          }
+          onClick={salvarDados}
           disabled={loading}
           className="mt-6 w-full bg-red-600 text-white p-3 rounded-lg"
         >
@@ -854,11 +738,11 @@ setTimeout(()=>window.close(),500)
       </div>
 
       <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ccc;
-          border-radius: 8px;
+        .input{
+          width:100%;
+          padding:12px;
+          border:1px solid #ccc;
+          border-radius:8px;
         }
       `}</style>
     </div>
