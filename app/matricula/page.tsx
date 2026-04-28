@@ -320,7 +320,6 @@ setTimeout(()=>window.close(),500)
                   ? form.remedioUso
                   : null,
 
-              status: "ativo",
             },
           ])
           .select()
