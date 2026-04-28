@@ -78,54 +78,7 @@ export default function Matricula() {
   }
 
   useEffect(() => {
-    let baseTotal = 0
-
-    form.modalidades.forEach((m: any) => {
-      const mod = modalidadesLista.find(
-        (x: any) => x.nome === m.modalidade
-      )
-
-      if (mod) {
-        baseTotal += Number(mod.valor_geral || 0)
-      }
-    })
-
-    let desconto = 0
-
-    if (
-      form.formaPagamento === "Pix" ||
-      form.formaPagamento === "Dinheiro"
-    ) {
-      desconto += 10
-    }
-
-    if (form.convenio !== "Nenhum") {
-      const conv = conveniosDb.find(
-        (c: any) => c.nome === form.convenio
-      )
-
-      if (conv) {
-        if (conv.tipo === "percentual") {
-          desconto +=
-            (baseTotal *
-              Number(conv.desconto || 0)) /
-            100
-        } else {
-          desconto += Number(conv.desconto || 0)
-        }
-      }
-    }
-
-    let valorFinal = baseTotal - desconto
-
-    if (valorFinal < 0) valorFinal = 0
-
-    setForm((prev: any) => ({
-      ...prev,
-      valorBase: baseTotal,
-      valorFinal,
-      desconto,
-    }))
+    recalcularValores()
   }, [
     form.modalidades,
     form.formaPagamento,
@@ -133,6 +86,78 @@ export default function Matricula() {
     modalidadesLista,
     conveniosDb,
   ])
+
+  const recalcularValores = () => {
+    let baseTotal = 0
+
+    form.modalidades.forEach((m: any) => {
+      const mod = modalidadesLista.find(
+        (x: any) =>
+          x.nome === m.modalidade
+      )
+
+      if (mod) {
+        baseTotal += Number(
+          mod.valor_geral || 0
+        )
+      }
+    })
+
+    let desconto = 0
+
+    if (
+      form.formaPagamento ===
+        "Pix" ||
+      form.formaPagamento ===
+        "Dinheiro"
+    ) {
+      desconto += 10
+    }
+
+    if (
+      form.convenio !==
+      "Nenhum"
+    ) {
+      const conv =
+        conveniosDb.find(
+          (c: any) =>
+            c.nome ===
+            form.convenio
+        )
+
+      if (conv) {
+        if (
+          conv.tipo ===
+          "percentual"
+        ) {
+          desconto +=
+            (baseTotal *
+              Number(
+                conv.desconto ||
+                  0
+              )) /
+            100
+        } else {
+          desconto += Number(
+            conv.desconto || 0
+          )
+        }
+      }
+    }
+
+    let valorFinal =
+      baseTotal - desconto
+
+    if (valorFinal < 0)
+      valorFinal = 0
+
+    setForm((prev: any) => ({
+      ...prev,
+      valorBase: baseTotal,
+      valorFinal,
+      desconto,
+    }))
+  }
 
   const setCampo = (
     campo: string,
@@ -144,56 +169,95 @@ export default function Matricula() {
     })
   }
 
-  const adicionarModalidade = () => {
-    setForm({
-      ...form,
-      modalidades: [
+  const adicionarModalidade =
+    () => {
+      setForm({
+        ...form,
+        modalidades: [
+          ...form.modalidades,
+          {
+            modalidade: "",
+            turma: "",
+          },
+        ],
+      })
+    }
+
+  const removerModalidade =
+    (index: number) => {
+      const lista = [
         ...form.modalidades,
-        {
-          modalidade: "",
-          turma: "",
-        },
-      ],
-    })
-  }
+      ]
 
-  const atualizarModalidade = (
-    index: number,
-    campo: string,
-    valor: string
-  ) => {
-    const lista = [...form.modalidades]
+      lista.splice(index, 1)
 
-    lista[index] = {
-      ...lista[index],
-      [campo]: valor,
+      setForm({
+        ...form,
+        modalidades:
+          lista.length > 0
+            ? lista
+            : [
+                {
+                  modalidade:
+                    "",
+                  turma: "",
+                },
+              ],
+      })
     }
 
-    if (campo === "modalidade") {
-      lista[index].turma = ""
-    }
+  const atualizarModalidade =
+    (
+      index: number,
+      campo: string,
+      valor: string
+    ) => {
+      const lista = [
+        ...form.modalidades,
+      ]
 
-    setForm({
-      ...form,
-      modalidades: lista,
-    })
-  }
+      lista[index] = {
+        ...lista[index],
+        [campo]: valor,
+      }
+
+      if (
+        campo ===
+        "modalidade"
+      ) {
+        lista[index].turma =
+          ""
+      }
+
+      setForm({
+        ...form,
+        modalidades: lista,
+      })
+    }
 
   const gerarRecibo = () => {
-    const agora = new Date()
+    const agora =
+      new Date()
 
-    const mods = form.modalidades
-      .map(
-        (m: any) =>
-          `${m.modalidade} - ${m.turma}`
+    const mods =
+      form.modalidades
+        .filter(
+          (m: any) =>
+            m.modalidade &&
+            m.turma
+        )
+        .map(
+          (m: any) =>
+            `${m.modalidade} - ${m.turma}`
+        )
+        .join("<br/>")
+
+    const w =
+      window.open(
+        "",
+        "",
+        "width=320,height=700"
       )
-      .join("<br/>")
-
-    const w = window.open(
-      "",
-      "",
-      "width=320,height=700"
-    )
 
     w?.document.write(`
 <html>
@@ -218,16 +282,23 @@ ${mods}
 <hr/>
 
 <p>Convênio: ${form.convenio}</p>
-<p>Base: R$ ${Number(form.valorBase).toFixed(2)}</p>
-<p>Desconto: R$ ${Number(form.desconto).toFixed(2)}</p>
-<p><b>Total: R$ ${Number(form.valorFinal).toFixed(2)}</b></p>
+<p>Base: R$ ${Number(
+      form.valorBase
+    ).toFixed(2)}</p>
+<p>Desconto: R$ ${Number(
+      form.desconto
+    ).toFixed(2)}</p>
+<p><b>Total: R$ ${Number(
+      form.valorFinal
+    ).toFixed(2)}</b></p>
 
 <hr/>
 
 <p>Pagamento: ${form.formaPagamento}</p>
 
 ${
-  form.formaPagamento === "Cartão"
+  form.formaPagamento ===
+  "Cartão"
     ? `<p>${form.tipoCartao} - ${form.parcelas}</p>`
     : ""
 }
@@ -253,221 +324,272 @@ setTimeout(()=>window.close(),500)
     w?.document.close()
   }
 
-  const salvarDados = async () => {
-    try {
-      setLoading(true)
+  const salvarDados =
+    async () => {
+      try {
+        setLoading(true)
 
-      const { data: caixaAberto } =
-        await supabase
-          .from("caixa_turno")
-          .select("*")
-          .eq("status", "aberto")
-          .single()
-
-      if (!caixaAberto) {
-        alert("Nenhum caixa aberto.")
-        return
-      }
-
-      const principal =
-        form.modalidades.find(
-          (m: any) =>
-            m.modalidade &&
-            m.turma
-        ) || {
-          modalidade: "",
-          turma: "",
-        }
-
-      let professorNome = ""
-
-      if (principal.turma) {
-        const { data: turmaInfo } =
+        const {
+          data:
+            caixaAberto,
+        } =
           await supabase
-            .from("turmas")
-            .select("professor")
+            .from(
+              "caixa_turno"
+            )
+            .select("*")
             .eq(
-              "nome",
-              principal.turma
+              "status",
+              "aberto"
             )
             .single()
 
-        professorNome =
-          turmaInfo?.professor || ""
-      }
+        if (
+          !caixaAberto
+        ) {
+          alert(
+            "Nenhum caixa aberto."
+          )
+          return
+        }
 
-      const { data: aluno, error } =
-        await supabase
-          .from("alunos")
-          .insert([
-            {
-              nome: form.nome,
-              cpf: form.cpf,
-              rg: form.rg,
-              nascimento:
-                form.nascimento || null,
-              whatsapp: form.whatsapp,
-              email: form.email,
-              endereco: form.endereco,
-              convenio: form.convenio,
+        const principal =
+          form.modalidades.find(
+            (m: any) =>
+              m.modalidade &&
+              m.turma
+          ) || {
+            modalidade:
+              "",
+            turma: "",
+          }
 
-              status: "Ativo",
-              turma: principal.turma,
-              modalidade:
-                principal.modalidade,
+        const {
+          data: aluno,
+          error,
+        } =
+          await supabase
+            .from(
+              "alunos"
+            )
+            .insert([
+              {
+                nome: form.nome,
+                cpf: form.cpf,
+                rg: form.rg,
+                nascimento:
+                  form.nascimento ||
+                  null,
+                whatsapp:
+                  form.whatsapp,
+                email:
+                  form.email,
+                endereco:
+                  form.endereco,
+                convenio:
+                  form.convenio,
 
-              menor: menor,
+                status:
+                  "Ativo",
 
-              responsavel_nome:
-                menor
-                  ? form.responsavelNome
-                  : null,
+                turma:
+                  principal.turma,
 
-              responsavel_cpf:
-                menor
-                  ? form.responsavelCpf
-                  : null,
+                modalidade:
+                  principal.modalidade,
 
-              responsavel_whatsapp:
-                menor
-                  ? form.responsavelWhatsapp
-                  : null,
+                menor:
+                  menor,
 
-              responsavel_email:
-                menor
-                  ? form.responsavelEmail
-                  : null,
+                responsavel_nome:
+                  menor
+                    ? form.responsavelNome
+                    : null,
 
-              problema_saude:
-                saude,
+                responsavel_cpf:
+                  menor
+                    ? form.responsavelCpf
+                    : null,
 
-              saude_detalhes:
-                saude
-                  ? form.problemaSaude
-                  : null,
+                responsavel_whatsapp:
+                  menor
+                    ? form.responsavelWhatsapp
+                    : null,
 
-              usa_remedio:
-                remedio,
+                responsavel_email:
+                  menor
+                    ? form.responsavelEmail
+                    : null,
 
-              remedio_detalhes:
-                remedio
-                  ? form.remedioUso
-                  : null,
-            },
-          ])
-          .select()
-          .single()
+                problema_saude:
+                  saude,
 
-      if (error || !aluno) {
-        console.log(error)
-        alert(
-          error?.message ||
-            "Erro ao cadastrar aluno."
-        )
-        return
-      }
+                saude_detalhes:
+                  saude
+                    ? form.problemaSaude
+                    : null,
 
-      const matriculas =
-        form.modalidades
-          .filter(
+                usa_remedio:
+                  remedio,
+
+                remedio_detalhes:
+                  remedio
+                    ? form.remedioUso
+                    : null,
+              },
+            ])
+            .select()
+            .single()
+
+        if (
+          error ||
+          !aluno
+        ) {
+          alert(
+            error?.message ||
+              "Erro ao cadastrar aluno."
+          )
+          return
+        }
+
+        const modalidadesValidas =
+          form.modalidades.filter(
             (m: any) =>
               m.modalidade &&
               m.turma
           )
-          .map((m: any) => ({
-            aluno_id: aluno.id,
-            nome: form.nome,
-            modalidade:
-              m.modalidade,
-            turma: m.turma,
-          }))
 
-      if (matriculas.length > 0) {
+        for (const m of modalidadesValidas) {
+          const turmaInfo =
+            turmasDb.find(
+              (t: any) =>
+                t.nome ===
+                m.turma
+            )
+
+          const modInfo =
+            modalidadesLista.find(
+              (x: any) =>
+                x.nome ===
+                m.modalidade
+            )
+
+          const professor =
+            turmaInfo?.professor ||
+            ""
+
+          const valorBase =
+            Number(
+              modInfo?.valor_geral ||
+                0
+            )
+
+          await supabase
+            .from(
+              "matriculas"
+            )
+            .insert([
+              {
+                aluno_id:
+                  aluno.id,
+                nome:
+                  form.nome,
+                modalidade:
+                  m.modalidade,
+                turma:
+                  m.turma,
+                professor,
+                valor_base:
+                  valorBase,
+                status:
+                  "ativo",
+              },
+            ])
+
+          for (
+            let i = 0;
+            i < 24;
+            i++
+          ) {
+            const venc =
+              new Date()
+            venc.setMonth(
+              venc.getMonth() +
+                i
+            )
+
+            await supabase
+              .from(
+                "mensalidades"
+              )
+              .insert([
+                {
+                  aluno_id:
+                    aluno.id,
+                  nome:
+                    form.nome,
+                  modalidade:
+                    m.modalidade,
+                  turma:
+                    m.turma,
+                  professor,
+                  valor:
+                    valorBase,
+                  valor_base:
+                    valorBase,
+                  vencimento:
+                    venc,
+                  status:
+                    i === 0
+                      ? "pago"
+                      : "pendente",
+                },
+              ])
+          }
+        }
+
         await supabase
-          .from("matriculas")
-          .insert(matriculas)
+          .from("caixa")
+          .insert([
+            {
+              tipo:
+                "matricula",
+              nome:
+                form.nome,
+              valor:
+                form.valorFinal,
+              valor_base:
+                form.valorBase,
+              forma_pagamento:
+                form.formaPagamento,
+              tipo_cartao:
+                form.tipoCartao ||
+                null,
+              parcelas:
+                form.parcelas ||
+                null,
+              data:
+                new Date(),
+              caixa_id:
+                caixaAberto.id,
+            },
+          ])
+
+        gerarRecibo()
+
+        alert(
+          "Matrícula efetuada com sucesso!"
+        )
+
+        window.location.reload()
+      } catch (err) {
+        alert(
+          "Erro geral ao salvar."
+        )
+      } finally {
+        setLoading(false)
       }
-
-      await supabase
-        .from("caixa")
-        .insert([
-          {
-            tipo: "matricula",
-            nome: form.nome,
-            valor:
-              form.valorFinal,
-            forma_pagamento:
-              form.formaPagamento,
-            data: new Date(),
-            caixa_id:
-              caixaAberto.id,
-            valor_base:
-              form.valorBase,
-            tipo_cartao:
-              form.tipoCartao ||
-              null,
-            parcelas:
-              form.parcelas ||
-              null,
-          },
-        ])
-
-      const hoje = new Date()
-
-      await supabase
-        .from("mensalidades")
-        .insert([
-          {
-            aluno_id:
-              aluno.id,
-            nome: form.nome,
-            valor:
-              form.valorFinal,
-            vencimento:
-              hoje,
-            status: "pago",
-            professor:
-              professorNome,
-          },
-        ])
-
-      const prox = new Date()
-      prox.setMonth(
-        prox.getMonth() + 1
-      )
-
-      await supabase
-        .from("mensalidades")
-        .insert([
-          {
-            aluno_id:
-              aluno.id,
-            nome: form.nome,
-            valor:
-              form.valorFinal,
-            vencimento:
-              prox,
-            status:
-              "pendente",
-            professor:
-              professorNome,
-          },
-        ])
-
-      gerarRecibo()
-
-      alert(
-        "Matrícula efetuada com sucesso!"
-      )
-
-      window.location.reload()
-    } catch (err) {
-      console.log(err)
-      alert("Erro geral ao salvar.")
-    } finally {
-      setLoading(false)
     }
-  }
 
   return (
     <div>
@@ -504,13 +626,10 @@ setTimeout(()=>window.close(),500)
 
         <div className="mt-6">
           <label>
-            <input
-              type="checkbox"
+            <input type="checkbox"
               checked={menor}
-              onChange={() =>
-                setMenor(!menor)
-              }
-            /> Menor de idade
+              onChange={()=>setMenor(!menor)} />
+            {" "}Menor de idade
           </label>
 
           {menor && (
@@ -535,34 +654,30 @@ setTimeout(()=>window.close(),500)
         <div className="mt-6">
 
           <label>
-            <input
-              type="checkbox"
+            <input type="checkbox"
               checked={saude}
-              onChange={() =>
-                setSaude(!saude)
-              }
-            /> Problema de saúde
+              onChange={()=>setSaude(!saude)} />
+            {" "}Problema de saúde
           </label>
 
           {saude && (
-            <input className="input mt-2" placeholder="Descreva"
+            <input className="input mt-2"
+              placeholder="Descreva"
               onChange={(e)=>setCampo("problemaSaude",e.target.value)} />
           )}
 
           <div className="mt-3">
 
             <label>
-              <input
-                type="checkbox"
+              <input type="checkbox"
                 checked={remedio}
-                onChange={() =>
-                  setRemedio(!remedio)
-                }
-              /> Usa remédio contínuo
+                onChange={()=>setRemedio(!remedio)} />
+              {" "}Usa remédio contínuo
             </label>
 
             {remedio && (
-              <input className="input mt-2" placeholder="Qual?"
+              <input className="input mt-2"
+                placeholder="Qual?"
                 onChange={(e)=>setCampo("remedioUso",e.target.value)} />
             )}
 
@@ -574,81 +689,74 @@ setTimeout(()=>window.close(),500)
             Modalidades
           </h2>
 
-          {form.modalidades.map(
-            (m:any,i:number)=>{
-              const turmas =
-                turmasDb.filter(
-                  (t:any)=>
-                    t.modalidade===m.modalidade
-                )
-
-              return(
-                <div key={i}
-                  className="grid grid-cols-2 gap-2 mb-3">
-
-                  <select
-                    className="input"
-                    value={m.modalidade}
-                    onChange={(e)=>
-                      atualizarModalidade(
-                        i,
-                        "modalidade",
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="">
-                      Modalidade
-                    </option>
-
-                    {modalidadesLista.map(
-                      (mod:any)=>(
-                        <option
-                          key={mod.id}
-                          value={mod.nome}
-                        >
-                          {mod.nome}
-                        </option>
-                      )
-                    )}
-                  </select>
-
-                  <select
-                    className="input"
-                    value={m.turma}
-                    onChange={(e)=>
-                      atualizarModalidade(
-                        i,
-                        "turma",
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="">
-                      Turma
-                    </option>
-
-                    {turmas.map(
-                      (t:any)=>(
-                        <option
-                          key={t.id}
-                          value={t.nome}
-                        >
-                          {t.nome}
-                        </option>
-                      )
-                    )}
-                  </select>
-
-                </div>
+          {form.modalidades.map((m:any,i:number)=>{
+            const turmas =
+              turmasDb.filter(
+                (t:any)=>
+                  t.modalidade===m.modalidade
               )
-            }
-          )}
+
+            return(
+              <div key={i}
+                className="grid grid-cols-3 gap-2 mb-3">
+
+                <select
+                  className="input"
+                  value={m.modalidade}
+                  onChange={(e)=>
+                    atualizarModalidade(
+                      i,
+                      "modalidade",
+                      e.target.value
+                    )
+                  }
+                >
+                  <option value="">
+                    Modalidade
+                  </option>
+
+                  {modalidadesLista.map((mod:any)=>(
+                    <option key={mod.id} value={mod.nome}>
+                      {mod.nome}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="input"
+                  value={m.turma}
+                  onChange={(e)=>
+                    atualizarModalidade(
+                      i,
+                      "turma",
+                      e.target.value
+                    )
+                  }
+                >
+                  <option value="">
+                    Turma
+                  </option>
+
+                  {turmas.map((t:any)=>(
+                    <option key={t.id} value={t.nome}>
+                      {t.nome}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={()=>removerModalidade(i)}
+                  className="bg-red-600 text-white rounded"
+                >
+                  Remover
+                </button>
+
+              </div>
+            )
+          })}
 
           <button
-            onClick={
-              adicionarModalidade
-            }
+            onClick={adicionarModalidade}
             className="bg-zinc-800 text-white px-4 py-2 rounded"
           >
             + Adicionar Modalidade
@@ -670,16 +778,11 @@ setTimeout(()=>window.close(),500)
               Nenhum
             </option>
 
-            {conveniosDb.map(
-              (c:any)=>(
-                <option
-                  key={c.id}
-                  value={c.nome}
-                >
-                  {c.nome}
-                </option>
-              )
-            )}
+            {conveniosDb.map((c:any)=>(
+              <option key={c.id} value={c.nome}>
+                {c.nome}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -748,9 +851,11 @@ setTimeout(()=>window.close(),500)
           <p>
             Base: R$ {Number(form.valorBase).toFixed(2)}
           </p>
+
           <p>
             Desconto: R$ {Number(form.desconto).toFixed(2)}
           </p>
+
           <p className="text-xl font-bold">
             Total: R$ {Number(form.valorFinal).toFixed(2)}
           </p>

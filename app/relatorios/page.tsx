@@ -57,9 +57,7 @@ export default function RelatoriosPage() {
     let inicioOk = true
     let fimOk = true
 
-    if (inicio) {
-      inicioOk = data >= new Date(inicio)
-    }
+    if (inicio) inicioOk = data >= new Date(inicio)
 
     if (fim) {
       const final = new Date(fim)
@@ -70,18 +68,46 @@ export default function RelatoriosPage() {
     return inicioOk && fimOk
   }
 
+  function periodoProfessor(dataBase: any) {
+    const data = new Date(dataBase)
+
+    if (inicio || fim) return dentroPeriodo(data)
+
+    const hoje = new Date()
+
+    const fimCiclo = new Date(
+      hoje.getFullYear(),
+      hoje.getMonth(),
+      9,
+      23,
+      59,
+      59
+    )
+
+    const inicioCiclo = new Date(
+      hoje.getFullYear(),
+      hoje.getMonth() - 1,
+      10,
+      0,
+      0,
+      0
+    )
+
+    return data >= inicioCiclo && data <= fimCiclo
+  }
+
   async function carregar() {
     setLoading(true)
     setDados([])
 
-    // ==========================
+    // =====================================
     // PROFESSORES
-    // ==========================
+    // =====================================
     if (aba === "professores") {
       let query = supabase
-        .from("mensalidades")
+        .from("caixa")
         .select("*")
-        .eq("status", "pago")
+        .in("tipo", ["matricula", "mensalidade"])
 
       if (professor) {
         query = query.eq("professor", professor)
@@ -90,19 +116,25 @@ export default function RelatoriosPage() {
       const { data } = await query
 
       const filtrado = (data || []).filter((item) =>
-        dentroPeriodo(
+        periodoProfessor(
           item.created_at ||
             item.data_pagamento ||
             item.data
         )
       )
 
-      setDados(filtrado)
+      const final = filtrado.map((item) => ({
+        ...item,
+        valor_comissao:
+          Number(item.valor_base || item.valor || 0) * 0.5,
+      }))
+
+      setDados(final)
     }
 
-    // ==========================
+    // =====================================
     // PRESENÇA
-    // ==========================
+    // =====================================
     if (aba === "presenca") {
       let query = supabase
         .from("presencas")
@@ -111,9 +143,7 @@ export default function RelatoriosPage() {
           ascending: false,
         })
 
-      if (turma) {
-        query = query.eq("turma", turma)
-      }
+      if (turma) query = query.eq("turma", turma)
 
       const { data } = await query
 
@@ -126,9 +156,9 @@ export default function RelatoriosPage() {
       setDados(filtrado)
     }
 
-    // ==========================
+    // =====================================
     // PARCEIROS
-    // ==========================
+    // =====================================
     if (aba === "parceiros") {
       let query = supabase
         .from("caixa")
@@ -158,12 +188,23 @@ export default function RelatoriosPage() {
   }
 
   const total = useMemo(() => {
+    if (aba === "professores") {
+      return dados.reduce(
+        (acc, item) =>
+          acc +
+          Number(
+            item.valor_comissao || 0
+          ),
+        0
+      )
+    }
+
     return dados.reduce(
       (acc, item) =>
         acc + Number(item.valor || 0),
       0
     )
-  }, [dados])
+  }, [dados, aba])
 
   const quantidade = dados.length
 
@@ -171,9 +212,6 @@ export default function RelatoriosPage() {
     window.print()
   }
 
-  // ==========================
-  // CABEÇALHO TABELA
-  // ==========================
   function cabecalho() {
     if (aba === "presenca") {
       return (
@@ -182,6 +220,18 @@ export default function RelatoriosPage() {
           <th className="p-4 text-left">Aluno</th>
           <th className="p-4 text-left">Turma</th>
           <th className="p-4 text-left">Professor</th>
+        </tr>
+      )
+    }
+
+    if (aba === "professores") {
+      return (
+        <tr>
+          <th className="p-4 text-left">Data</th>
+          <th className="p-4 text-left">Aluno</th>
+          <th className="p-4 text-left">Tipo</th>
+          <th className="p-4 text-left">Base</th>
+          <th className="p-4 text-left">50%</th>
         </tr>
       )
     }
@@ -196,17 +246,11 @@ export default function RelatoriosPage() {
     )
   }
 
-  // ==========================
-  // LINHAS TABELA
-  // ==========================
   function linhas() {
     if (loading) {
       return (
         <tr>
-          <td
-            colSpan={4}
-            className="p-4"
-          >
+          <td colSpan={5} className="p-4">
             Carregando...
           </td>
         </tr>
@@ -216,10 +260,7 @@ export default function RelatoriosPage() {
     if (dados.length === 0) {
       return (
         <tr>
-          <td
-            colSpan={4}
-            className="p-4"
-          >
+          <td colSpan={5} className="p-4">
             Nenhum dado encontrado
           </td>
         </tr>
@@ -228,10 +269,7 @@ export default function RelatoriosPage() {
 
     if (aba === "presenca") {
       return dados.map((item, i) => (
-        <tr
-          key={i}
-          className="border-t"
-        >
+        <tr key={i} className="border-t">
           <td className="p-4">
             {new Date(
               item.created_at ||
@@ -254,28 +292,58 @@ export default function RelatoriosPage() {
       ))
     }
 
+    if (aba === "professores") {
+      return dados.map((item, i) => (
+        <tr key={i} className="border-t">
+          <td className="p-4">
+            {new Date(
+              item.created_at ||
+                item.data
+            ).toLocaleDateString()}
+          </td>
+
+          <td className="p-4">
+            {item.nome}
+          </td>
+
+          <td className="p-4 capitalize">
+            {item.tipo}
+          </td>
+
+          <td className="p-4">
+            R$ {Number(
+              item.valor_base ||
+                item.valor ||
+                0
+            ).toFixed(2)}
+          </td>
+
+          <td className="p-4 font-bold text-green-600">
+            R$ {Number(
+              item.valor_comissao || 0
+            ).toFixed(2)}
+          </td>
+        </tr>
+      ))
+    }
+
     return dados.map((item, i) => (
-      <tr
-        key={i}
-        className="border-t"
-      >
+      <tr key={i} className="border-t">
         <td className="p-4">
           {new Date(
             item.created_at ||
-              item.data_pagamento ||
               item.data
           ).toLocaleDateString()}
         </td>
 
         <td className="p-4">
           {item.nome ||
-            item.aluno ||
             item.parceiro ||
             "-"}
         </td>
 
-        <td className="p-4 capitalize">
-          {item.tipo || aba}
+        <td className="p-4">
+          {item.tipo}
         </td>
 
         <td className="p-4 font-bold">
@@ -291,7 +359,6 @@ export default function RelatoriosPage() {
     <AdminGuard>
       <div className="p-4 max-w-7xl mx-auto">
 
-        {/* TOPO */}
         <div className="flex justify-between gap-3 flex-wrap mb-6">
           <h1 className="text-2xl font-bold">
             Central de Relatórios
@@ -305,7 +372,6 @@ export default function RelatoriosPage() {
           </button>
         </div>
 
-        {/* ABAS */}
         <div className="flex gap-2 flex-wrap mb-6">
 
           <button
@@ -349,7 +415,6 @@ export default function RelatoriosPage() {
 
         </div>
 
-        {/* FILTROS */}
         <div className="grid md:grid-cols-4 gap-4 mb-6">
 
           {aba === "professores" && (
@@ -368,9 +433,7 @@ export default function RelatoriosPage() {
 
               {professores.map(
                 (item, i) => (
-                  <option
-                    key={i}
-                  >
+                  <option key={i}>
                     {item.nome}
                   </option>
                 )
@@ -394,9 +457,7 @@ export default function RelatoriosPage() {
 
               {turmas.map(
                 (item, i) => (
-                  <option
-                    key={i}
-                  >
+                  <option key={i}>
                     {item.nome}
                   </option>
                 )
@@ -420,9 +481,7 @@ export default function RelatoriosPage() {
 
               {parceiros.map(
                 (item, i) => (
-                  <option
-                    key={i}
-                  >
+                  <option key={i}>
                     {item.nome}
                   </option>
                 )
@@ -454,16 +513,11 @@ export default function RelatoriosPage() {
 
         </div>
 
-        {/* CARDS */}
         <div className="grid md:grid-cols-2 gap-4 mb-6">
 
           <div className="card">
-            <small>
-              Quantidade
-            </small>
-            <h2>
-              {quantidade}
-            </h2>
+            <small>Quantidade</small>
+            <h2>{quantidade}</h2>
           </div>
 
           <div className="card">
@@ -477,19 +531,14 @@ export default function RelatoriosPage() {
 
         </div>
 
-        {/* TABELA */}
         <div className="bg-white rounded-2xl shadow overflow-auto">
 
           <table className="w-full text-black">
-
             <thead className="bg-gray-100">
               {cabecalho()}
             </thead>
 
-            <tbody>
-              {linhas()}
-            </tbody>
-
+            <tbody>{linhas()}</tbody>
           </table>
 
         </div>

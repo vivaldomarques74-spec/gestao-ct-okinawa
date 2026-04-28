@@ -17,6 +17,9 @@ export default function RegistrosPage() {
   const [modalidades, setModalidades] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
 
+  const [matriculasAluno, setMatriculasAluno] =
+    useState<any[]>([])
+
   const [form, setForm] = useState<any>({
     nome: "",
     cpf: "",
@@ -113,14 +116,19 @@ export default function RegistrosPage() {
   }, [alunos, busca])
 
   const abrirAluno = async (aluno: any) => {
-    const { data: mat } = await supabase
+    const { data: mats } = await supabase
       .from("matriculas")
       .select("*")
       .eq("aluno_id", aluno.id)
-      .limit(1)
-      .single()
+      .order("id")
 
     setSelecionado(aluno)
+    setMatriculasAluno(mats || [])
+
+    const principal =
+      mats && mats.length > 0
+        ? mats[0]
+        : null
 
     setForm({
       nome: aluno.nome || "",
@@ -133,52 +141,42 @@ export default function RegistrosPage() {
       email: aluno.email || "",
       endereco:
         aluno.endereco || "",
-
       status:
         aluno.status || "Ativo",
-
       convenio:
         aluno.convenio ||
         "Nenhum",
-
       menor:
         aluno.menor || false,
-
       responsavel_nome:
         aluno.responsavel_nome ||
         "",
-
       responsavel_cpf:
         aluno.responsavel_cpf ||
         "",
-
       responsavel_whatsapp:
         aluno.responsavel_whatsapp ||
         "",
-
       responsavel_email:
         aluno.responsavel_email ||
         "",
-
       problema_saude:
         aluno.problema_saude ||
         false,
-
       saude_detalhes:
         aluno.saude_detalhes ||
         "",
-
       usa_remedio:
         aluno.usa_remedio ||
         false,
-
       remedio_detalhes:
         aluno.remedio_detalhes ||
         "",
-
       modalidade:
-        mat?.modalidade || "",
-      turma: mat?.turma || "",
+        principal?.modalidade ||
+        "",
+      turma:
+        principal?.turma || "",
     })
   }
 
@@ -199,96 +197,136 @@ export default function RegistrosPage() {
         email: form.email,
         endereco:
           form.endereco,
-
         status: form.status,
         convenio:
           form.convenio,
-
         menor: form.menor,
-
         responsavel_nome:
           form.menor
             ? form.responsavel_nome
             : null,
-
         responsavel_cpf:
           form.menor
             ? form.responsavel_cpf
             : null,
-
         responsavel_whatsapp:
           form.menor
             ? form.responsavel_whatsapp
             : null,
-
         responsavel_email:
           form.menor
             ? form.responsavel_email
             : null,
-
         problema_saude:
           form.problema_saude,
-
         saude_detalhes:
           form.problema_saude
             ? form.saude_detalhes
             : null,
-
         usa_remedio:
           form.usa_remedio,
-
         remedio_detalhes:
           form.usa_remedio
             ? form.remedio_detalhes
             : null,
-
-        modalidade:
-          form.modalidade,
-        turma: form.turma,
       })
       .eq("id", selecionado.id)
 
-    const { data: mat } =
-      await supabase
-        .from("matriculas")
-        .select("id")
-        .eq(
-          "aluno_id",
-          selecionado.id
-        )
-        .limit(1)
-        .single()
+    alert("Aluno atualizado!")
+    abrirAluno(selecionado)
+    carregarAlunos()
+  }
 
-    if (mat) {
-      await supabase
-        .from("matriculas")
-        .update({
-          modalidade:
-            form.modalidade,
-          turma: form.turma,
-        })
-        .eq("id", mat.id)
-    } else {
+  const salvarTurma = async (
+    item: any
+  ) => {
+    const turmaInfo =
+      turmas.find(
+        (t: any) =>
+          t.nome === item.turma
+      )
+
+    const modInfo =
+      modalidades.find(
+        (m: any) =>
+          m.nome ===
+          item.modalidade
+      )
+
+    await supabase
+      .from("matriculas")
+      .update({
+        modalidade:
+          item.modalidade,
+        turma: item.turma,
+        professor:
+          turmaInfo?.professor ||
+          "",
+        valor_base: Number(
+          modInfo?.valor_geral ||
+            0
+        ),
+      })
+      .eq("id", item.id)
+
+    abrirAluno(selecionado)
+  }
+
+  const adicionarTurma =
+    async () => {
       await supabase
         .from("matriculas")
         .insert([
           {
             aluno_id:
               selecionado.id,
-            modalidade:
-              form.modalidade,
-            turma: form.turma,
+            nome:
+              selecionado.nome,
+            modalidade: "",
+            turma: "",
+            professor: "",
+            valor_base: 0,
+            status: "ativo",
           },
         ])
+
+      abrirAluno(selecionado)
     }
 
-    alert("Aluno atualizado!")
-    carregarAlunos()
-  }
+  const removerTurma =
+    async (item: any) => {
+      if (
+        !confirm(
+          "Remover somente esta turma?"
+        )
+      )
+        return
+
+      await supabase
+        .from("matriculas")
+        .delete()
+        .eq("id", item.id)
+
+      await supabase
+        .from("mensalidades")
+        .delete()
+        .eq(
+          "aluno_id",
+          selecionado.id
+        )
+        .eq(
+          "modalidade",
+          item.modalidade
+        )
+        .eq(
+          "turma",
+          item.turma
+        )
+
+      abrirAluno(selecionado)
+    }
 
   const inativarAluno = async () => {
-    if (!selecionado) return
-
     await supabase
       .from("alunos")
       .update({
@@ -296,8 +334,8 @@ export default function RegistrosPage() {
       })
       .eq("id", selecionado.id)
 
-    alert("Aluno inativado!")
     carregarAlunos()
+    abrirAluno(selecionado)
   }
 
   const excluirAluno = async (
@@ -305,7 +343,7 @@ export default function RegistrosPage() {
   ) => {
     if (
       !confirm(
-        "Excluir aluno definitivamente?"
+        "Excluir aluno?"
       )
     )
       return
@@ -326,22 +364,23 @@ export default function RegistrosPage() {
       .eq("id", id)
 
     setSelecionado(null)
-    carregarAlunos()
-    carregarMensalidades()
+    iniciar()
   }
 
   const pagarMensalidade =
     async (item: any) => {
+      const {
+        data: caixa,
+      } = await supabase
+        .from("caixa_turno")
+        .select("*")
+        .eq("status", "aberto")
+        .single()
 
-      const { data: caixaAberto } =
-        await supabase
-          .from("caixa_turno")
-          .select("*")
-          .eq("status", "aberto")
-          .single()
-
-      if (!caixaAberto) {
-        alert("Nenhum caixa aberto.")
+      if (!caixa) {
+        alert(
+          "Abra o caixa."
+        )
         return
       }
 
@@ -356,12 +395,18 @@ export default function RegistrosPage() {
         .from("caixa")
         .insert([
           {
-            tipo: "mensalidade",
-            nome: item.nome,
-            valor: item.valor,
-            forma_pagamento: "Recebido",
-            data: new Date(),
-            caixa_id: caixaAberto.id,
+            tipo:
+              "mensalidade",
+            nome:
+              item.nome,
+            valor:
+              item.valor,
+            forma_pagamento:
+              "Recebido",
+            data:
+              new Date(),
+            caixa_id:
+              caixa.id,
           },
         ])
 
@@ -371,73 +416,17 @@ export default function RegistrosPage() {
 
   const apagarMensalidade =
     async (id: any) => {
-      if (
-        !confirm(
-          "Apagar mensalidade?"
-        )
-      )
-        return
-
-      const { data: mensalidade } =
-        await supabase
-          .from("mensalidades")
-          .select("*")
-          .eq("id", id)
-          .single()
-
-      if (
-        mensalidade &&
-        mensalidade.status === "pago"
-      ) {
-        const { data: caixaItem } =
-          await supabase
-            .from("caixa")
-            .select("*")
-            .eq(
-              "tipo",
-              "mensalidade"
-            )
-            .eq(
-              "nome",
-              mensalidade.nome
-            )
-            .eq(
-              "valor",
-              mensalidade.valor
-            )
-            .order("data", {
-              ascending: false,
-            })
-            .limit(1)
-            .single()
-
-        if (caixaItem) {
-          await supabase
-            .from("caixa")
-            .delete()
-            .eq("id", caixaItem.id)
-        }
-      }
-
       await supabase
         .from("mensalidades")
         .delete()
         .eq("id", id)
 
       carregarMensalidades()
-      carregarVendas()
     }
 
   const apagarVenda = async (
     id: any
   ) => {
-    if (
-      !confirm(
-        "Apagar venda?"
-      )
-    )
-      return
-
     await supabase
       .from("caixa")
       .delete()
@@ -455,6 +444,7 @@ export default function RegistrosPage() {
         </h1>
 
         <div className="grid grid-cols-3 gap-3 mb-6">
+
           <button
             onClick={() =>
               setAba("alunos")
@@ -483,6 +473,7 @@ export default function RegistrosPage() {
           >
             Vendas
           </button>
+
         </div>
 
         {aba === "alunos" && (
@@ -490,7 +481,7 @@ export default function RegistrosPage() {
 
             <input
               className="input mb-4"
-              placeholder="Buscar aluno por nome ou CPF"
+              placeholder="Buscar aluno"
               value={busca}
               onChange={(e) =>
                 setBusca(
@@ -501,21 +492,20 @@ export default function RegistrosPage() {
 
             <div className="grid md:grid-cols-2 gap-6">
 
-              <div className="max-h-[700px] overflow-auto border rounded-xl">
+              <div className="border rounded-xl max-h-[700px] overflow-auto">
                 {buscarAlunos.map(
                   (a: any) => (
                     <div
                       key={a.id}
+                      className="linha"
                       onClick={() =>
                         abrirAluno(a)
                       }
-                      className="linha"
                     >
                       <b>{a.nome}</b>
                       <br />
                       <small>
-                        {a.status ||
-                          "Ativo"}
+                        {a.status}
                       </small>
                     </div>
                   )
@@ -525,134 +515,19 @@ export default function RegistrosPage() {
               {selecionado && (
                 <div className="space-y-3">
 
-                  <input className="input" placeholder="Nome"
+                  <input className="input"
                     value={form.nome}
                     onChange={(e)=>setForm({...form,nome:e.target.value})} />
 
-                  <input className="input" placeholder="CPF"
+                  <input className="input"
                     value={form.cpf}
                     onChange={(e)=>setForm({...form,cpf:e.target.value})} />
-
-                  <input className="input" placeholder="RG"
-                    value={form.rg}
-                    onChange={(e)=>setForm({...form,rg:e.target.value})} />
-
-                  <input type="date" className="input"
-                    value={form.nascimento}
-                    onChange={(e)=>setForm({...form,nascimento:e.target.value})} />
-
-                  <input className="input" placeholder="WhatsApp"
-                    value={form.whatsapp}
-                    onChange={(e)=>setForm({...form,whatsapp:e.target.value})} />
-
-                  <input className="input" placeholder="Email"
-                    value={form.email}
-                    onChange={(e)=>setForm({...form,email:e.target.value})} />
-
-                  <input className="input" placeholder="Endereço"
-                    value={form.endereco}
-                    onChange={(e)=>setForm({...form,endereco:e.target.value})} />
-
-                  <select className="input"
-                    value={form.status}
-                    onChange={(e)=>setForm({...form,status:e.target.value})}>
-                    <option>Ativo</option>
-                    <option>Bloqueado</option>
-                    <option>Inativo</option>
-                  </select>
-
-                  <select className="input"
-                    value={form.convenio}
-                    onChange={(e)=>setForm({...form,convenio:e.target.value})}>
-                    <option>Nenhum</option>
-                  </select>
-
-                  <label>
-                    <input type="checkbox"
-                      checked={form.menor}
-                      onChange={(e)=>setForm({...form,menor:e.target.checked})} />
-                    {" "}Menor de idade
-                  </label>
-
-                  {form.menor && (
-                    <>
-                      <input className="input" placeholder="Responsável"
-                        value={form.responsavel_nome}
-                        onChange={(e)=>setForm({...form,responsavel_nome:e.target.value})} />
-
-                      <input className="input" placeholder="CPF Responsável"
-                        value={form.responsavel_cpf}
-                        onChange={(e)=>setForm({...form,responsavel_cpf:e.target.value})} />
-
-                      <input className="input" placeholder="WhatsApp Responsável"
-                        value={form.responsavel_whatsapp}
-                        onChange={(e)=>setForm({...form,responsavel_whatsapp:e.target.value})} />
-
-                      <input className="input" placeholder="Email Responsável"
-                        value={form.responsavel_email}
-                        onChange={(e)=>setForm({...form,responsavel_email:e.target.value})} />
-                    </>
-                  )}
-
-                  <label>
-                    <input type="checkbox"
-                      checked={form.problema_saude}
-                      onChange={(e)=>setForm({...form,problema_saude:e.target.checked})} />
-                    {" "}Problema de saúde
-                  </label>
-
-                  {form.problema_saude && (
-                    <input className="input"
-                      placeholder="Detalhes saúde"
-                      value={form.saude_detalhes}
-                      onChange={(e)=>setForm({...form,saude_detalhes:e.target.value})} />
-                  )}
-
-                  <label>
-                    <input type="checkbox"
-                      checked={form.usa_remedio}
-                      onChange={(e)=>setForm({...form,usa_remedio:e.target.checked})} />
-                    {" "}Usa remédio
-                  </label>
-
-                  {form.usa_remedio && (
-                    <input className="input"
-                      placeholder="Detalhes remédio"
-                      value={form.remedio_detalhes}
-                      onChange={(e)=>setForm({...form,remedio_detalhes:e.target.value})} />
-                  )}
-
-                  <select className="input"
-                    value={form.modalidade}
-                    onChange={(e)=>setForm({...form,modalidade:e.target.value,turma:""})}>
-                    <option value="">Modalidade</option>
-
-                    {modalidades.map((m:any)=>(
-                      <option key={m.id} value={m.nome}>
-                        {m.nome}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select className="input"
-                    value={form.turma}
-                    onChange={(e)=>setForm({...form,turma:e.target.value})}>
-                    <option value="">Turma</option>
-
-                    {turmas
-                      .filter((t:any)=>t.modalidade===form.modalidade)
-                      .map((t:any)=>(
-                        <option key={t.id} value={t.nome}>
-                          {t.nome}
-                        </option>
-                      ))}
-                  </select>
 
                   <button
                     onClick={salvarAluno}
                     className="btn red"
                   >
-                    Salvar Alterações
+                    Salvar Dados
                   </button>
 
                   <button
@@ -669,46 +544,143 @@ export default function RegistrosPage() {
                     Excluir
                   </button>
 
+                  <hr />
+
+                  <h2 className="font-bold text-lg">
+                    Turmas do aluno
+                  </h2>
+
+                  {matriculasAluno.map(
+                    (
+                      mt: any,
+                      i: number
+                    ) => (
+                      <div
+                        key={mt.id}
+                        className="border rounded-xl p-3 space-y-2"
+                      >
+
+                        <select
+                          className="input"
+                          value={mt.modalidade}
+                          onChange={(e)=>{
+                            const lista=[...matriculasAluno]
+                            lista[i].modalidade=e.target.value
+                            lista[i].turma=""
+                            setMatriculasAluno(lista)
+                          }}
+                        >
+                          <option value="">
+                            Modalidade
+                          </option>
+
+                          {modalidades.map((m:any)=>(
+                            <option key={m.id} value={m.nome}>
+                              {m.nome}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          className="input"
+                          value={mt.turma}
+                          onChange={(e)=>{
+                            const lista=[...matriculasAluno]
+                            lista[i].turma=e.target.value
+                            setMatriculasAluno(lista)
+                          }}
+                        >
+                          <option value="">
+                            Turma
+                          </option>
+
+                          {turmas
+                            .filter((t:any)=>t.modalidade===mt.modalidade)
+                            .map((t:any)=>(
+                              <option key={t.id} value={t.nome}>
+                                {t.nome}
+                              </option>
+                            ))}
+                        </select>
+
+                        <div className="grid grid-cols-2 gap-2">
+
+                          <button
+                            className="mini green"
+                            onClick={()=>salvarTurma(mt)}
+                          >
+                            Salvar
+                          </button>
+
+                          <button
+                            className="mini red"
+                            onClick={()=>removerTurma(mt)}
+                          >
+                            Remover
+                          </button>
+
+                        </div>
+
+                      </div>
+                    )
+                  )}
+
+                  <button
+                    className="btn black"
+                    onClick={adicionarTurma}
+                  >
+                    + Adicionar Turma
+                  </button>
+
                 </div>
               )}
 
             </div>
+
           </div>
         )}
 
-        {aba === "mensalidades" && (
+        {aba ===
+          "mensalidades" && (
           <div className="card">
 
-            {mensalidades.map((m:any)=>(
-              <div key={m.id}
-                className="linha between">
+            {mensalidades.map(
+              (m: any) => (
+                <div
+                  key={m.id}
+                  className="linha between"
+                >
 
-                <div>
-                  {m.nome} - R$ {m.valor}
-                  <br/>
-                  <small>{m.status}</small>
-                </div>
+                  <div>
+                    {m.nome}
+                    <br />
+                    {m.modalidade} - {m.turma}
+                  </div>
 
-                <div className="flex gap-2">
+                  <div className="flex gap-2">
 
-                  {m.status !== "pago" && (
+                    {m.status !==
+                      "pago" && (
+                      <button
+                        className="mini green"
+                        onClick={()=>pagarMensalidade(m)}
+                      >
+                        Pagar
+                      </button>
+                    )}
+
                     <button
-                      onClick={()=>pagarMensalidade(m)}
-                      className="mini green">
-                      Pagar
+                      className="mini red"
+                      onClick={()=>apagarMensalidade(m.id)}
+                    >
+                      Apagar
                     </button>
-                  )}
 
-                  <button
-                    onClick={()=>apagarMensalidade(m.id)}
-                    className="mini red">
-                    Apagar
-                  </button>
+                  </div>
 
                 </div>
-
-              </div>
-            ))}
+              )
+            )}
 
           </div>
         )}
@@ -716,28 +688,35 @@ export default function RegistrosPage() {
         {aba === "vendas" && (
           <div className="card">
 
-            {vendas.map((v:any)=>(
-              <div key={v.id}
-                className="linha between">
+            {vendas.map(
+              (v: any) => (
+                <div
+                  key={v.id}
+                  className="linha between"
+                >
 
-                <div>
-                  {v.nome}
-                  <br/>
-                  <small>{v.forma_pagamento}</small>
+                  <div>
+                    {v.nome}
+                  </div>
+
+                  <div className="flex gap-2">
+
+                    <span>
+                      R$ {Number(v.valor).toFixed(2)}
+                    </span>
+
+                    <button
+                      className="mini red"
+                      onClick={()=>apagarVenda(v.id)}
+                    >
+                      Apagar
+                    </button>
+
+                  </div>
+
                 </div>
-
-                <div className="flex gap-2 items-center">
-                  R$ {Number(v.valor).toFixed(2)}
-
-                  <button
-                    onClick={()=>apagarVenda(v.id)}
-                    className="mini red">
-                    Apagar
-                  </button>
-                </div>
-
-              </div>
-            ))}
+              )
+            )}
 
           </div>
         )}
@@ -748,7 +727,6 @@ export default function RegistrosPage() {
             padding:14px;
             border-radius:14px;
             font-weight:bold;
-            box-shadow:0 2px 8px rgba(0,0,0,.08);
           }
 
           .card{
@@ -779,23 +757,22 @@ export default function RegistrosPage() {
 
           .btn{
             width:100%;
-            color:white;
             padding:14px;
+            color:white;
             border-radius:12px;
             font-weight:bold;
           }
-
-          .red{background:#dc2626;}
-          .black{background:#111;}
-          .green{background:#16a34a;}
-          .gold{background:#ca8a04;}
 
           .mini{
             color:white;
             padding:8px 12px;
             border-radius:10px;
-            font-size:13px;
           }
+
+          .red{background:#dc2626;}
+          .black{background:#111;}
+          .gold{background:#ca8a04;}
+          .green{background:#16a34a;}
         `}</style>
 
       </div>
