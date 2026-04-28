@@ -134,7 +134,10 @@ export default function Matricula() {
     conveniosDb,
   ])
 
-  const setCampo = (campo: string, valor: any) => {
+  const setCampo = (
+    campo: string,
+    valor: any
+  ) => {
     setForm({
       ...form,
       [campo]: valor,
@@ -195,6 +198,7 @@ export default function Matricula() {
     w?.document.write(`
 <html>
 <body style="font-family:monospace;width:58mm">
+
 <div style="text-align:center">
 <img src="${window.location.origin}/logo.png" style="width:90px"/>
 <h3>CT OKINAWA</h3>
@@ -242,6 +246,7 @@ window.print()
 setTimeout(()=>window.close(),500)
 }
 </script>
+
 </body>
 </html>
 `)
@@ -264,6 +269,16 @@ setTimeout(()=>window.close(),500)
         return
       }
 
+      const principal =
+        form.modalidades.find(
+          (m: any) =>
+            m.modalidade &&
+            m.turma
+        ) || {
+          modalidade: "",
+          turma: "",
+        }
+
       const { data: aluno, error } =
         await supabase
           .from("alunos")
@@ -279,15 +294,22 @@ setTimeout(()=>window.close(),500)
               endereco: form.endereco,
               convenio: form.convenio,
 
+              status: "ativo",
+              turma: principal.turma,
+              modalidade:
+                principal.modalidade,
+
               menor: menor,
 
-              responsavel_nome: menor
-                ? form.responsavelNome
-                : null,
+              responsavel_nome:
+                menor
+                  ? form.responsavelNome
+                  : null,
 
-              responsavel_cpf: menor
-                ? form.responsavelCpf
-                : null,
+              responsavel_cpf:
+                menor
+                  ? form.responsavelCpf
+                  : null,
 
               responsavel_whatsapp:
                 menor
@@ -299,13 +321,16 @@ setTimeout(()=>window.close(),500)
                   ? form.responsavelEmail
                   : null,
 
-              problema_saude: saude,
+              problema_saude:
+                saude,
 
-              saude_detalhes: saude
-                ? form.problemaSaude
-                : null,
+              saude_detalhes:
+                saude
+                  ? form.problemaSaude
+                  : null,
 
-              usa_remedio: remedio,
+              usa_remedio:
+                remedio,
 
               remedio_detalhes:
                 remedio
@@ -370,6 +395,7 @@ setTimeout(()=>window.close(),500)
         ])
 
       const hoje = new Date()
+
       const prox = new Date()
       prox.setMonth(
         prox.getMonth() + 1
@@ -384,7 +410,8 @@ setTimeout(()=>window.close(),500)
             nome: form.nome,
             valor:
               form.valorFinal,
-            vencimento: hoje,
+            vencimento:
+              hoje,
             status: "pago",
           },
           {
@@ -393,7 +420,8 @@ setTimeout(()=>window.close(),500)
             nome: form.nome,
             valor:
               form.valorFinal,
-            vencimento: prox,
+            vencimento:
+              prox,
             status:
               "pendente",
           },
@@ -690,8 +718,12 @@ setTimeout(()=>window.close(),500)
         </div>
 
         <div className="mt-6 bg-black text-white p-4 rounded">
-          <p>Base: R$ {Number(form.valorBase).toFixed(2)}</p>
-          <p>Desconto: R$ {Number(form.desconto).toFixed(2)}</p>
+          <p>
+            Base: R$ {Number(form.valorBase).toFixed(2)}
+          </p>
+          <p>
+            Desconto: R$ {Number(form.desconto).toFixed(2)}
+          </p>
           <p className="text-xl font-bold">
             Total: R$ {Number(form.valorFinal).toFixed(2)}
           </p>
