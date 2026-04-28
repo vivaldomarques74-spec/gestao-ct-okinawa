@@ -134,10 +134,7 @@ export default function Matricula() {
     conveniosDb,
   ])
 
-  const setCampo = (
-    campo: string,
-    valor: any
-  ) => {
+  const setCampo = (campo: string, valor: any) => {
     setForm({
       ...form,
       [campo]: valor,
@@ -198,7 +195,6 @@ export default function Matricula() {
     w?.document.write(`
 <html>
 <body style="font-family:monospace;width:58mm">
-
 <div style="text-align:center">
 <img src="${window.location.origin}/logo.png" style="width:90px"/>
 <h3>CT OKINAWA</h3>
@@ -207,7 +203,6 @@ export default function Matricula() {
 <hr/>
 
 <p><b>RECIBO MATRÍCULA</b></p>
-
 <p>Nome: ${form.nome}</p>
 <p>CPF: ${form.cpf}</p>
 
@@ -247,11 +242,9 @@ window.print()
 setTimeout(()=>window.close(),500)
 }
 </script>
-
 </body>
 </html>
 `)
-
     w?.document.close()
   }
 
@@ -264,7 +257,6 @@ setTimeout(()=>window.close(),500)
           .from("caixa_turno")
           .select("*")
           .eq("status", "aberto")
-          .limit(1)
           .single()
 
       if (!caixaAberto) {
@@ -280,7 +272,8 @@ setTimeout(()=>window.close(),500)
               nome: form.nome,
               cpf: form.cpf,
               rg: form.rg,
-              nascimento: form.nascimento,
+              nascimento:
+                form.nascimento || null,
               whatsapp: form.whatsapp,
               email: form.email,
               endereco: form.endereco,
@@ -308,10 +301,9 @@ setTimeout(()=>window.close(),500)
 
               problema_saude: saude,
 
-              saude_detalhes:
-                saude
-                  ? form.problemaSaude
-                  : null,
+              saude_detalhes: saude
+                ? form.problemaSaude
+                : null,
 
               usa_remedio: remedio,
 
@@ -319,7 +311,6 @@ setTimeout(()=>window.close(),500)
                 remedio
                   ? form.remedioUso
                   : null,
-
             },
           ])
           .select()
@@ -335,18 +326,24 @@ setTimeout(()=>window.close(),500)
       }
 
       const matriculas =
-        form.modalidades.map(
-          (m: any) => ({
+        form.modalidades
+          .filter(
+            (m: any) =>
+              m.modalidade &&
+              m.turma
+          )
+          .map((m: any) => ({
             aluno_id: aluno.id,
             modalidade:
               m.modalidade,
             turma: m.turma,
-          })
-        )
+          }))
 
-      await supabase
-        .from("matriculas")
-        .insert(matriculas)
+      if (matriculas.length > 0) {
+        await supabase
+          .from("matriculas")
+          .insert(matriculas)
+      }
 
       await supabase
         .from("caixa")
@@ -356,22 +353,24 @@ setTimeout(()=>window.close(),500)
             nome: form.nome,
             valor:
               form.valorFinal,
-            valor_base:
-              form.valorBase,
-            desconto:
-              form.desconto,
-            convenio:
-              form.convenio,
             forma_pagamento:
               form.formaPagamento,
+            data: new Date(),
             caixa_id:
               caixaAberto.id,
+            valor_base:
+              form.valorBase,
+            tipo_cartao:
+              form.tipoCartao ||
+              null,
+            parcelas:
+              form.parcelas ||
+              null,
           },
         ])
 
       const hoje = new Date()
       const prox = new Date()
-
       prox.setMonth(
         prox.getMonth() + 1
       )
@@ -383,42 +382,20 @@ setTimeout(()=>window.close(),500)
             aluno_id:
               aluno.id,
             nome: form.nome,
-            cpf: form.cpf,
             valor:
               form.valorFinal,
-            valor_base:
-              form.valorBase,
-            desconto:
-              form.desconto,
-            convenio:
-              form.convenio,
-            vencimento:
-              hoje,
+            vencimento: hoje,
             status: "pago",
-            tipo:
-              "matricula",
-            forma_pagamento:
-              form.formaPagamento,
           },
           {
             aluno_id:
               aluno.id,
             nome: form.nome,
-            cpf: form.cpf,
             valor:
               form.valorFinal,
-            valor_base:
-              form.valorBase,
-            desconto:
-              form.desconto,
-            convenio:
-              form.convenio,
-            vencimento:
-              prox,
+            vencimento: prox,
             status:
               "pendente",
-            tipo:
-              "mensalidade",
           },
         ])
 
@@ -713,12 +690,8 @@ setTimeout(()=>window.close(),500)
         </div>
 
         <div className="mt-6 bg-black text-white p-4 rounded">
-          <p>
-            Base: R$ {Number(form.valorBase).toFixed(2)}
-          </p>
-          <p>
-            Desconto: R$ {Number(form.desconto).toFixed(2)}
-          </p>
+          <p>Base: R$ {Number(form.valorBase).toFixed(2)}</p>
+          <p>Desconto: R$ {Number(form.desconto).toFixed(2)}</p>
           <p className="text-xl font-bold">
             Total: R$ {Number(form.valorFinal).toFixed(2)}
           </p>
