@@ -6,6 +6,10 @@ import { supabase } from "../../lib/supabase"
 export default function Matricula() {
   const [loading, setLoading] = useState(false)
 
+  const [menor, setMenor] = useState(false)
+  const [saude, setSaude] = useState(false)
+  const [remedio, setRemedio] = useState(false)
+
   const [modalidadesLista, setModalidadesLista] = useState<any[]>([])
   const [turmasDb, setTurmasDb] = useState<any[]>([])
   const [conveniosDb, setConveniosDb] = useState<any[]>([])
@@ -18,6 +22,14 @@ export default function Matricula() {
     whatsapp: "",
     email: "",
     endereco: "",
+
+    responsavelNome: "",
+    responsavelCpf: "",
+    responsavelWhatsapp: "",
+    responsavelEmail: "",
+
+    problemaSaude: "",
+    remedioUso: "",
 
     formaPagamento: "Pix",
     tipoCartao: "",
@@ -70,14 +82,11 @@ export default function Matricula() {
 
     form.modalidades.forEach((m: any) => {
       const mod = modalidadesLista.find(
-        (x: any) =>
-          x.nome === m.modalidade
+        (x: any) => x.nome === m.modalidade
       )
 
       if (mod) {
-        baseTotal += Number(
-          mod.valor_geral || 0
-        )
+        baseTotal += Number(mod.valor_geral || 0)
       }
     })
 
@@ -91,22 +100,15 @@ export default function Matricula() {
     }
 
     if (form.convenio !== "Nenhum") {
-      const conv =
-        conveniosDb.find(
-          (c: any) =>
-            c.nome === form.convenio
-        )
+      const conv = conveniosDb.find(
+        (c: any) => c.nome === form.convenio
+      )
 
       if (conv) {
-        if (
-          conv.tipo ===
-          "percentual"
-        ) {
+        if (conv.tipo === "percentual") {
           desconto +=
             (baseTotal *
-              Number(
-                conv.desconto || 0
-              )) /
+              Number(conv.desconto || 0)) /
             100
         } else {
           desconto += Number(
@@ -116,11 +118,9 @@ export default function Matricula() {
       }
     }
 
-    let valorFinal =
-      baseTotal - desconto
+    let valorFinal = baseTotal - desconto
 
-    if (valorFinal < 0)
-      valorFinal = 0
+    if (valorFinal < 0) valorFinal = 0
 
     setForm((prev: any) => ({
       ...prev,
@@ -135,6 +135,16 @@ export default function Matricula() {
     modalidadesLista,
     conveniosDb,
   ])
+
+  const setCampo = (
+    campo: string,
+    valor: any
+  ) => {
+    setForm({
+      ...form,
+      [campo]: valor,
+    })
+  }
 
   const adicionarModalidade = () => {
     setForm({
@@ -154,21 +164,15 @@ export default function Matricula() {
     campo: string,
     valor: string
   ) => {
-    const lista = [
-      ...form.modalidades,
-    ]
+    const lista = [...form.modalidades]
 
     lista[index] = {
       ...lista[index],
       [campo]: valor,
     }
 
-    if (
-      campo ===
-      "modalidade"
-    ) {
-      lista[index].turma =
-        ""
+    if (campo === "modalidade") {
+      lista[index].turma = ""
     }
 
     setForm({
@@ -178,100 +182,74 @@ export default function Matricula() {
   }
 
   const gerarRecibo = () => {
-    const agora =
-      new Date()
+    const agora = new Date()
 
-    const modalidadesTexto =
-      form.modalidades
-        .map(
-          (m: any) =>
-            `${m.modalidade} - ${m.turma}`
-        )
-        .join("<br/>")
-
-    const w =
-      window.open(
-        "",
-        "",
-        "width=320,height=700"
+    const mods = form.modalidades
+      .map(
+        (m: any) =>
+          `${m.modalidade} - ${m.turma}`
       )
+      .join("<br/>")
+
+    const w = window.open(
+      "",
+      "",
+      "width=320,height=700"
+    )
 
     w?.document.write(`
 <html>
 <body style="font-family:monospace;width:58mm">
 
 <div style="text-align:center">
-<img src="${window.location.origin}/logo.png" style="width:95px"/>
-</div>
-
-<div style="text-align:center">
-<b>CT OKINAWA</b>
-</div>
-
-<div style="text-align:center">
-Disciplina - Respeito - Evolução
+<img src="${window.location.origin}/logo.png" style="width:90px"/>
+<h3>CT OKINAWA</h3>
 </div>
 
 <hr/>
 
-<div><b>RECIBO MATRÍCULA</b></div>
+<p><b>RECIBO MATRÍCULA</b></p>
+
+<p>Nome: ${form.nome}</p>
+<p>CPF: ${form.cpf}</p>
 
 <hr/>
 
-<div>NOME: ${form.nome}</div>
-<div>CPF: ${form.cpf}</div>
+<p>Modalidades:</p>
+${mods}
 
 <hr/>
 
-<div>MODALIDADES:</div>
-<div>${modalidadesTexto}</div>
-
-<hr/>
-
-<div>CONVÊNIO: ${form.convenio}</div>
-<div>VALOR BASE: R$ ${Number(
+<p>Convênio: ${form.convenio}</p>
+<p>Base: R$ ${Number(
       form.valorBase
-    ).toFixed(2)}</div>
-<div>DESCONTO: R$ ${Number(
+    ).toFixed(2)}</p>
+<p>Desconto: R$ ${Number(
       form.desconto
-    ).toFixed(2)}</div>
+    ).toFixed(2)}</p>
 
-<div>
-<b>VALOR FINAL: R$ ${Number(
+<p><b>Total: R$ ${Number(
       form.valorFinal
-    ).toFixed(2)}</b>
-</div>
+    ).toFixed(2)}</b></p>
 
 <hr/>
 
-<div>PAGAMENTO: ${form.formaPagamento}</div>
-
-${
-  form.formaPagamento ===
-  "Cartão"
-    ? `<div>${form.tipoCartao} - ${form.parcelas}</div>`
-    : ""
-}
+<p>Pagamento: ${form.formaPagamento}</p>
 
 <hr/>
 
-<div>DATA: ${agora.toLocaleDateString()}</div>
-<div>HORA: ${agora.toLocaleTimeString()}</div>
+<p>${agora.toLocaleDateString()} ${agora.toLocaleTimeString()}</p>
 
 <hr/>
 
-<div style="text-align:center">
+<p style="text-align:center">
 Provérbios 16:3
-</div>
-
-<div style="text-align:center">
-Deus abençoe!
-</div>
+</p>
 
 <script>
 window.onload = () => {
 window.print()
-setTimeout(() => window.close(), 500)
+setTimeout(()=>window.close(),500)
 }
 </script>
 
@@ -286,67 +264,78 @@ setTimeout(() => window.close(), 500)
     try {
       setLoading(true)
 
-      const {
-        data: caixaAberto,
-        error: erroCaixa,
-      } = await supabase
-        .from("caixa_turno")
-        .select("*")
-        .eq(
-          "status",
-          "aberto"
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false,
-          }
-        )
-        .limit(1)
-        .single()
+      const { data: caixaAberto } =
+        await supabase
+          .from("caixa_turno")
+          .select("*")
+          .eq("status", "aberto")
+          .limit(1)
+          .single()
 
-      if (
-        erroCaixa ||
-        !caixaAberto
-      ) {
-        alert(
-          "Nenhum caixa aberto."
-        )
-        setLoading(false)
+      if (!caixaAberto) {
+        alert("Nenhum caixa aberto.")
         return
       }
 
-      const {
-        data: aluno,
-        error: erroAluno,
-      } = await supabase
-        .from("alunos")
-        .insert([
-          {
-            nome: form.nome,
-            cpf: form.cpf,
-            rg: form.rg,
-            nascimento:
-              form.nascimento,
-            whatsapp:
-              form.whatsapp,
-            email: form.email,
-            endereco:
-              form.endereco,
-            convenio:
-              form.convenio,
-            status:
-              "Ativo",
-          },
-        ])
-        .select()
-        .single()
+      const { data: aluno, error } =
+        await supabase
+          .from("alunos")
+          .insert([
+            {
+              nome: form.nome,
+              cpf: form.cpf,
+              rg: form.rg,
+              data_nascimento:
+                form.nascimento,
+              whatsapp:
+                form.whatsapp,
+              email: form.email,
+              endereco:
+                form.endereco,
 
-      if (erroAluno) {
+              responsavel_nome:
+                menor
+                  ? form.responsavelNome
+                  : null,
+
+              responsavel_cpf:
+                menor
+                  ? form.responsavelCpf
+                  : null,
+
+              whatsapp_responsavel:
+                menor
+                  ? form.responsavelWhatsapp
+                  : null,
+
+              email_responsavel:
+                menor
+                  ? form.responsavelEmail
+                  : null,
+
+              problema_saude:
+                saude
+                  ? form.problemaSaude
+                  : null,
+
+              remedio_continuo:
+                remedio
+                  ? form.remedioUso
+                  : null,
+
+              convenio:
+                form.convenio,
+
+              status: "ativo",
+            },
+          ])
+          .select()
+          .single()
+
+      if (error || !aluno) {
         alert(
           "Erro ao cadastrar aluno."
         )
-        setLoading(false)
         return
       }
 
@@ -362,86 +351,41 @@ setTimeout(() => window.close(), 500)
           })
         )
 
-      const {
-        error:
-          erroMatriculas,
-      } = await supabase
-        .from(
-          "matriculas"
-        )
-        .insert(
-          matriculas
-        )
+      await supabase
+        .from("matriculas")
+        .insert(matriculas)
 
-      if (
-        erroMatriculas
-      ) {
-        alert(
-          "Erro ao salvar modalidades."
-        )
-        setLoading(false)
-        return
-      }
+      await supabase.from("caixa").insert([
+        {
+          tipo: "matricula",
+          nome: form.nome,
+          valor: form.valorFinal,
+          valor_base:
+            form.valorBase,
+          desconto:
+            form.desconto,
+          convenio:
+            form.convenio,
+          forma_pagamento:
+            form.formaPagamento,
+          caixa_id:
+            caixaAberto.id,
+        },
+      ])
 
-      const {
-        error:
-          erroFinanceiro,
-      } = await supabase
-        .from("caixa")
-        .insert([
-          {
-            tipo:
-              "matricula",
-            nome: form.nome,
-            valor:
-              form.valorFinal,
-            valor_base:
-              form.valorBase,
-            desconto:
-              form.desconto,
-            convenio:
-              form.convenio,
-            forma_pagamento:
-              form.formaPagamento,
-            caixa_id:
-              caixaAberto.id,
-          },
-        ])
-
-      if (
-        erroFinanceiro
-      ) {
-        alert(
-          "Erro ao lançar no caixa."
-        )
-        setLoading(false)
-        return
-      }
-
-      const hoje =
-        new Date()
-
-      const prox =
-        new Date()
-
+      const hoje = new Date()
+      const prox = new Date()
       prox.setMonth(
-        prox.getMonth() +
-          1
+        prox.getMonth() + 1
       )
 
-      const {
-        error:
-          erroMens,
-      } = await supabase
-        .from(
-          "mensalidades"
-        )
+      await supabase
+        .from("mensalidades")
         .insert([
           {
             aluno_id:
               aluno.id,
-            nome:
-              form.nome,
+            nome: form.nome,
             cpf: form.cpf,
             valor:
               form.valorFinal,
@@ -453,18 +397,15 @@ setTimeout(() => window.close(), 500)
               form.convenio,
             vencimento:
               hoje,
-            status:
-              "pago",
-            tipo:
-              "matricula",
+            status: "pago",
+            tipo: "matricula",
             forma_pagamento:
               form.formaPagamento,
           },
           {
             aluno_id:
               aluno.id,
-            nome:
-              form.nome,
+            nome: form.nome,
             cpf: form.cpf,
             valor:
               form.valorFinal,
@@ -483,14 +424,6 @@ setTimeout(() => window.close(), 500)
           },
         ])
 
-      if (erroMens) {
-        alert(
-          "Erro ao gerar mensalidades."
-        )
-        setLoading(false)
-        return
-      }
-
       gerarRecibo()
 
       alert(
@@ -498,11 +431,9 @@ setTimeout(() => window.close(), 500)
       )
 
       window.location.reload()
-    } catch (error) {
-      console.log(error)
-      alert(
-        "Erro geral ao salvar."
-      )
+    } catch (err) {
+      console.log(err)
+      alert("Erro geral ao salvar.")
     } finally {
       setLoading(false)
     }
@@ -520,25 +451,23 @@ setTimeout(() => window.close(), 500)
 
           <input
             className="input"
-            placeholder="Nome*"
+            placeholder="Nome"
             onChange={(e) =>
-              setForm({
-                ...form,
-                nome:
-                  e.target.value,
-              })
+              setCampo(
+                "nome",
+                e.target.value
+              )
             }
           />
 
           <input
             className="input"
-            placeholder="CPF*"
+            placeholder="CPF"
             onChange={(e) =>
-              setForm({
-                ...form,
-                cpf:
-                  e.target.value,
-              })
+              setCampo(
+                "cpf",
+                e.target.value
+              )
             }
           />
 
@@ -546,23 +475,21 @@ setTimeout(() => window.close(), 500)
             className="input"
             placeholder="RG"
             onChange={(e) =>
-              setForm({
-                ...form,
-                rg:
-                  e.target.value,
-              })
+              setCampo(
+                "rg",
+                e.target.value
+              )
             }
           />
 
           <input
-            className="input"
             type="date"
+            className="input"
             onChange={(e) =>
-              setForm({
-                ...form,
-                nascimento:
-                  e.target.value,
-              })
+              setCampo(
+                "nascimento",
+                e.target.value
+              )
             }
           />
 
@@ -570,11 +497,10 @@ setTimeout(() => window.close(), 500)
             className="input"
             placeholder="WhatsApp"
             onChange={(e) =>
-              setForm({
-                ...form,
-                whatsapp:
-                  e.target.value,
-              })
+              setCampo(
+                "whatsapp",
+                e.target.value
+              )
             }
           />
 
@@ -582,11 +508,10 @@ setTimeout(() => window.close(), 500)
             className="input"
             placeholder="Email"
             onChange={(e) =>
-              setForm({
-                ...form,
-                email:
-                  e.target.value,
-              })
+              setCampo(
+                "email",
+                e.target.value
+              )
             }
           />
 
@@ -594,13 +519,133 @@ setTimeout(() => window.close(), 500)
             className="input col-span-2"
             placeholder="Endereço"
             onChange={(e) =>
-              setForm({
-                ...form,
-                endereco:
-                  e.target.value,
-              })
+              setCampo(
+                "endereco",
+                e.target.value
+              )
             }
           />
+
+        </div>
+
+        <div className="mt-6">
+          <label>
+            <input
+              type="checkbox"
+              checked={menor}
+              onChange={() =>
+                setMenor(!menor)
+              }
+            />{" "}
+            Menor de idade
+          </label>
+
+          {menor && (
+            <div className="grid grid-cols-2 gap-4 mt-3">
+
+              <input
+                className="input"
+                placeholder="Responsável"
+                onChange={(e) =>
+                  setCampo(
+                    "responsavelNome",
+                    e.target.value
+                  )
+                }
+              />
+
+              <input
+                className="input"
+                placeholder="CPF Responsável"
+                onChange={(e) =>
+                  setCampo(
+                    "responsavelCpf",
+                    e.target.value
+                  )
+                }
+              />
+
+              <input
+                className="input"
+                placeholder="WhatsApp Responsável"
+                onChange={(e) =>
+                  setCampo(
+                    "responsavelWhatsapp",
+                    e.target.value
+                  )
+                }
+              />
+
+              <input
+                className="input"
+                placeholder="Email Responsável"
+                onChange={(e) =>
+                  setCampo(
+                    "responsavelEmail",
+                    e.target.value
+                  )
+                }
+              />
+
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6">
+
+          <label>
+            <input
+              type="checkbox"
+              checked={saude}
+              onChange={() =>
+                setSaude(!saude)
+              }
+            />{" "}
+            Problema de saúde
+          </label>
+
+          {saude && (
+            <input
+              className="input mt-2"
+              placeholder="Descreva"
+              onChange={(e) =>
+                setCampo(
+                  "problemaSaude",
+                  e.target.value
+                )
+              }
+            />
+          )}
+
+          <div className="mt-3">
+
+            <label>
+              <input
+                type="checkbox"
+                checked={remedio}
+                onChange={() =>
+                  setRemedio(
+                    !remedio
+                  )
+                }
+              />{" "}
+              Usa remédio contínuo
+            </label>
+
+            {remedio && (
+              <input
+                className="input mt-2"
+                placeholder="Qual?"
+                onChange={(e) =>
+                  setCampo(
+                    "remedioUso",
+                    e.target.value
+                  )
+                }
+              />
+            )}
+
+          </div>
 
         </div>
 
@@ -614,7 +659,7 @@ setTimeout(() => window.close(), 500)
               m: any,
               i: number
             ) => {
-              const turmasFiltradas =
+              const turmas =
                 turmasDb.filter(
                   (
                     t: any
@@ -643,7 +688,7 @@ setTimeout(() => window.close(), 500)
                     }
                   >
                     <option value="">
-                      Selecione Modalidade
+                      Modalidade
                     </option>
 
                     {modalidadesLista.map(
@@ -681,10 +726,10 @@ setTimeout(() => window.close(), 500)
                     }
                   >
                     <option value="">
-                      Selecione Turma
+                      Turma
                     </option>
 
-                    {turmasFiltradas.map(
+                    {turmas.map(
                       (
                         t: any
                       ) => (
@@ -712,9 +757,9 @@ setTimeout(() => window.close(), 500)
             onClick={
               adicionarModalidade
             }
-            className="mt-2 bg-zinc-800 text-white px-4 py-2 rounded"
+            className="bg-zinc-800 text-white px-4 py-2 rounded"
           >
-            + Adicionar modalidade
+            + Adicionar Modalidade
           </button>
         </div>
 
@@ -725,11 +770,10 @@ setTimeout(() => window.close(), 500)
               form.convenio
             }
             onChange={(e) =>
-              setForm({
-                ...form,
-                convenio:
-                  e.target.value,
-              })
+              setCampo(
+                "convenio",
+                e.target.value
+              )
             }
           >
             <option value="Nenhum">
@@ -751,92 +795,30 @@ setTimeout(() => window.close(), 500)
 
         <div className="mt-6">
           <select
-            className="input mb-2"
+            className="input"
             value={
               form.formaPagamento
             }
             onChange={(e) =>
-              setForm({
-                ...form,
-                formaPagamento:
-                  e.target.value,
-              })
+              setCampo(
+                "formaPagamento",
+                e.target.value
+              )
             }
           >
-            <option value="Pix">
-              Pix
-            </option>
-            <option value="Dinheiro">
+            <option>Pix</option>
+            <option>
               Dinheiro
             </option>
-            <option value="Cartão">
+            <option>
               Cartão
             </option>
           </select>
-
-          {form.formaPagamento ===
-            "Cartão" && (
-            <>
-              <select
-                className="input mb-2"
-                value={
-                  form.tipoCartao
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    tipoCartao:
-                      e.target
-                        .value,
-                  })
-                }
-              >
-                <option value="">
-                  Tipo cartão
-                </option>
-                <option value="Crédito">
-                  Crédito
-                </option>
-                <option value="Débito">
-                  Débito
-                </option>
-              </select>
-
-              {form.tipoCartao ===
-                "Crédito" && (
-                <select
-                  className="input"
-                  value={
-                    form.parcelas
-                  }
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      parcelas:
-                        e.target
-                          .value,
-                    })
-                  }
-                >
-                  <option value="1x">
-                    1x
-                  </option>
-                  <option value="2x">
-                    2x
-                  </option>
-                  <option value="3x">
-                    3x
-                  </option>
-                </select>
-              )}
-            </>
-          )}
         </div>
 
         <div className="mt-6 bg-black text-white p-4 rounded">
-
           <p>
-            Valor Base: R${" "}
+            Base: R${" "}
             {Number(
               form.valorBase
             ).toFixed(2)}
@@ -855,7 +837,6 @@ setTimeout(() => window.close(), 500)
               form.valorFinal
             ).toFixed(2)}
           </p>
-
         </div>
 
         <button
