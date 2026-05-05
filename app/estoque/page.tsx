@@ -4,500 +4,221 @@ import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
 
-export default function EntradaEstoquePage() {
-  const [loading, setLoading] =
-    useState(false)
+type Produto = {
+  id: string
+  nome: string
+  estoque: number
+  custo: number
+}
 
-  const [salvando, setSalvando] =
-    useState(false)
+type Movimentacao = {
+  id: string
+  produto_id: string
+  produto_nome: string
+  tipo: "entrada" | "saida"
+  quantidade: number
+  custo_unitario: number
+  observacao: string
+  created_at: string
+}
 
-  const [produtos, setProdutos] =
-    useState<any[]>([])
-
-  const [movs, setMovs] =
-    useState<any[]>([])
-
-  const [produtoId, setProdutoId] =
-    useState("")
-
-  const [quantidade, setQuantidade] =
-    useState("")
-
-  const [custo, setCusto] =
-    useState("")
-
-  const [fornecedor, setFornecedor] =
-    useState("")
-
-  const [observacao, setObservacao] =
-    useState("")
+export default function EstoquePage() {
+  const [produtos, setProdutos] = useState<Produto[]>([])
+  const [produtoSelecionado, setProdutoSelecionado] = useState("")
+  const [quantidade, setQuantidade] = useState("")
+  const [custoUnitario, setCustoUnitario] = useState("")
+  const [observacao, setObservacao] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>([])
+  const [carregandoMov, setCarregandoMov] = useState(false)
 
   useEffect(() => {
-    carregar()
+    carregarProdutos()
+    carregarMovimentacoes()
   }, [])
 
-  const carregar =
-    async () => {
-      setLoading(true)
+  async function carregarProdutos() {
+    const { data } = await supabase
+      .from("produtos")
+      .select("id, nome, estoque, custo")
+      .eq("status", "ativo")
+      .order("nome")
+    setProdutos(data || [])
+  }
 
-      const { data: prods } =
-        await supabase
-          .from("produtos")
-          .select("*")
-          .eq(
-            "status",
-            "ativo"
-          )
-          .order("nome")
+  async function carregarMovimentacoes() {
+    setCarregandoMov(true)
+    const { data } = await supabase
+      .from("estoque_movimentacoes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50)
+    setMovimentacoes(data || [])
+    setCarregandoMov(false)
+  }
 
-      const { data: hist } =
-        await supabase
-          .from(
-            "estoque_movimentacoes"
-          )
-          .select("*")
-          .eq(
-            "tipo",
-            "entrada"
-          )
-          .order(
-            "created_at",
-            {
-              ascending:
-                false,
-            }
-          )
-          .limit(50)
+  async function registrarEntrada() {
+    if (!produtoSelecionado) {
+      alert("Selecione um produto")
+      return
+    }
+    const qtd = Number(quantidade)
+    if (isNaN(qtd) || qtd <= 0) {
+      alert("Quantidade inválida")
+      return
+    }
+    const custo = Number(custoUnitario)
+    if (isNaN(custo) || custo < 0) {
+      alert("Custo unitário inválido (use 0 se não quiser alterar)")
+      return
+    }
 
-      setProdutos(
-        prods || []
-      )
+    setLoading(true)
 
-      setMovs(
-        hist || []
-      )
-
+    // 1. Buscar produto atual
+    const produto = produtos.find(p => p.id === produtoSelecionado)
+    if (!produto) {
+      alert("Produto não encontrado")
       setLoading(false)
+      return
     }
 
-  const salvar =
-    async () => {
-      if (!produtoId) {
-        alert(
-          "Selecione o produto"
-        )
-        return
-      }
+    // 2. Atualizar estoque e (opcional) custo
+    const novoEstoque = produto.estoque + qtd
+    const updateData: any = { estoque: novoEstoque }
+    if (custo > 0) {
+      updateData.custo = custo
+    }
 
-      if (
-        !quantidade ||
-        Number(
-          quantidade
-        ) <= 0
-      ) {
-        alert(
-          "Informe quantidade válida"
-        )
-        return
-      }
+    const { error: updateError } = await supabase
+      .from("produtos")
+      .update(updateData)
+      .eq("id", produtoSelecionado)
 
-      setSalvando(true)
+    if (updateError) {
+      alert("Erro ao atualizar estoque: " + updateError.message)
+      setLoading(false)
+      return
+    }
 
-      const produto =
-        produtos.find(
-          (p) =>
-            p.id ==
-            produtoId
-        )
+    // 3. Registrar movimentação
+    const { error: movError } = await supabase
+      .from("estoque_movimentacoes")
+      .insert([{
+        produto_id: produtoSelecionado,
+        produto_nome: produto.nome,
+        tipo: "entrada",
+        quantidade: qtd,
+        custo_unitario: custo > 0 ? custo : produto.custo,
+        observacao: observacao || "Entrada de estoque"
+      }])
 
-      if (!produto) {
-        alert(
-          "Produto não encontrado"
-        )
-        setSalvando(
-          false
-        )
-        return
-      }
-
-      const qtd =
-        Number(
-          quantidade
-        )
-
-      const custoUnit =
-        Number(
-          custo || 0
-        )
-
-      const novoEstoque =
-        Number(
-          produto.estoque ||
-            0
-        ) + qtd
-
-      /* atualiza produto */
-      const {
-        error:
-          erroProduto,
-      } =
-        await supabase
-          .from(
-            "produtos"
-          )
-          .update({
-            estoque:
-              novoEstoque,
-          })
-          .eq(
-            "id",
-            produtoId
-          )
-
-      if (erroProduto) {
-        alert(
-          erroProduto.message
-        )
-        setSalvando(
-          false
-        )
-        return
-      }
-
-      /* histórico */
-      const {
-        error:
-          erroMov,
-      } =
-        await supabase
-          .from(
-            "estoque_movimentacoes"
-          )
-          .insert([
-            {
-              produto_id:
-                produtoId,
-              produto:
-                produto.nome,
-              tipo: "entrada",
-              quantidade:
-                qtd,
-              custo:
-                custoUnit,
-              fornecedor:
-                fornecedor,
-              observacao:
-                observacao,
-            },
-          ])
-
-      if (erroMov) {
-        alert(
-          erroMov.message
-        )
-        setSalvando(
-          false
-        )
-        return
-      }
-
-      alert(
-        "Entrada registrada!"
-      )
-
-      setProdutoId("")
+    if (movError) {
+      alert("Erro ao registrar movimentação: " + movError.message)
+    } else {
+      alert("Entrada de estoque registrada com sucesso!")
       setQuantidade("")
-      setCusto("")
-      setFornecedor("")
+      setCustoUnitario("")
       setObservacao("")
-
-      await carregar()
-
-      setSalvando(
-        false
-      )
+      setProdutoSelecionado("")
+      await carregarProdutos()
+      await carregarMovimentacoes()
     }
-
-  const produtoSelecionado =
-    produtos.find(
-      (p) =>
-        p.id ==
-        produtoId
-    )
+    setLoading(false)
+  }
 
   return (
     <AdminGuard>
-      <div className="p-4 max-w-7xl mx-auto">
+      <div className="max-w-5xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">Entrada de Estoque</h1>
 
-        <h1 className="text-2xl font-bold mb-6">
-          Entrada de
-          Estoque
-        </h1>
-
-        {/* FORM */}
-        <div className="bg-white rounded-2xl shadow p-6 text-black mb-6">
-
-          <h2 className="text-xl font-bold mb-4">
-            Nova Entrada
-          </h2>
-
+        {/* Formulário de entrada */}
+        <div className="bg-white p-6 rounded-xl shadow mb-8">
+          <h2 className="text-xl font-semibold mb-4">Registrar Entrada</h2>
           <div className="grid md:grid-cols-2 gap-4">
-
             <select
-              className="input"
-              value={
-                produtoId
-              }
-              onChange={(
-                e
-              ) =>
-                setProdutoId(
-                  e.target
-                    .value
-                )
-              }
+              className="p-2 border rounded"
+              value={produtoSelecionado}
+              onChange={e => setProdutoSelecionado(e.target.value)}
             >
-              <option value="">
-                Selecione produto
-              </option>
-
-              {produtos.map(
-                (
-                  item,
-                  i
-                ) => (
-                  <option
-                    key={i}
-                    value={
-                      item.id
-                    }
-                  >
-                    {
-                      item.nome
-                    }
-                  </option>
-                )
-              )}
+              <option value="">Selecione o produto</option>
+              {produtos.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} (estoque atual: {p.estoque})
+                </option>
+              ))}
             </select>
-
             <input
-              className="input"
               type="number"
               placeholder="Quantidade"
-              value={
-                quantidade
-              }
-              onChange={(
-                e
-              ) =>
-                setQuantidade(
-                  e.target
-                    .value
-                )
-              }
+              className="p-2 border rounded"
+              value={quantidade}
+              onChange={e => setQuantidade(e.target.value)}
             />
-
             <input
-              className="input"
               type="number"
-              placeholder="Custo unitário"
-              value={
-                custo
-              }
-              onChange={(
-                e
-              ) =>
-                setCusto(
-                  e.target
-                    .value
-                )
-              }
+              step="0.01"
+              placeholder="Custo unitário (opcional)"
+              className="p-2 border rounded"
+              value={custoUnitario}
+              onChange={e => setCustoUnitario(e.target.value)}
             />
-
             <input
-              className="input"
-              placeholder="Fornecedor"
-              value={
-                fornecedor
-              }
-              onChange={(
-                e
-              ) =>
-                setFornecedor(
-                  e.target
-                    .value
-                )
-              }
+              type="text"
+              placeholder="Observação (motivo)"
+              className="p-2 border rounded"
+              value={observacao}
+              onChange={e => setObservacao(e.target.value)}
             />
-
-            <textarea
-              className="input md:col-span-2"
-              rows={4}
-              placeholder="Observação"
-              value={
-                observacao
-              }
-              onChange={(
-                e
-              ) =>
-                setObservacao(
-                  e.target
-                    .value
-                )
-              }
-            />
-
           </div>
+          <button
+            onClick={registrarEntrada}
+            disabled={loading}
+            className="mt-4 bg-red-600 text-white px-6 py-2 rounded disabled:opacity-50"
+          >
+            {loading ? "Processando..." : "Registrar Entrada"}
+          </button>
+          <p className="text-xs text-gray-500 mt-2">
+            * O campo custo, se preenchido, atualizará o custo do produto para futuras vendas.
+          </p>
+        </div>
 
-          {produtoSelecionado && (
-            <div className="mt-4 text-sm text-zinc-700">
-              Estoque atual:
-              {" "}
-              <b>
-                {
-                  produtoSelecionado.estoque
-                }
-              </b>
+        {/* Histórico de movimentações */}
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          <h2 className="text-xl font-semibold p-4 border-b">Últimas Movimentações</h2>
+          {carregandoMov ? (
+            <div className="p-6 text-center">Carregando...</div>
+          ) : movimentacoes.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">Nenhuma movimentação registrada.</div>
+          ) : (
+            <div className="overflow-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-3 text-left">Data</th>
+                    <th className="p-3 text-left">Produto</th>
+                    <th className="p-3 text-left">Tipo</th>
+                    <th className="p-3 text-left">Quantidade</th>
+                    <th className="p-3 text-left">Custo Unit.</th>
+                    <th className="p-3 text-left">Observação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimentacoes.map(mov => (
+                    <tr key={mov.id} className="border-t">
+                      <td className="p-3">{new Date(mov.created_at).toLocaleString()}</td>
+                      <td className="p-3">{mov.produto_nome}</td>
+                      <td className="p-3 capitalize">{mov.tipo}</td>
+                      <td className="p-3">{mov.quantidade}</td>
+                      <td className="p-3">R$ {mov.custo_unitario.toFixed(2)}</td>
+                      <td className="p-3">{mov.observacao || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-
-          <button
-            onClick={
-              salvar
-            }
-            disabled={
-              salvando
-            }
-            className="btn mt-6"
-          >
-            {salvando
-              ? "Salvando..."
-              : "Registrar Entrada"}
-          </button>
-
         </div>
-
-        {/* HISTÓRICO */}
-        <div className="bg-white rounded-2xl shadow overflow-auto">
-
-          <table className="w-full text-black">
-
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="p-3 text-left">
-                  Data
-                </th>
-
-                <th className="p-3 text-left">
-                  Produto
-                </th>
-
-                <th className="p-3 text-left">
-                  Qtd
-                </th>
-
-                <th className="p-3 text-left">
-                  Custo
-                </th>
-
-                <th className="p-3 text-left">
-                  Fornecedor
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="p-4"
-                  >
-                    Carregando...
-                  </td>
-                </tr>
-              ) : movs.length ===
-                0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="p-4"
-                  >
-                    Nenhuma
-                    movimentação
-                  </td>
-                </tr>
-              ) : (
-                movs.map(
-                  (
-                    item,
-                    i
-                  ) => (
-                    <tr
-                      key={i}
-                      className="border-t"
-                    >
-                      <td className="p-3">
-                        {new Date(
-                          item.created_at
-                        ).toLocaleDateString()}
-                      </td>
-
-                      <td className="p-3">
-                        {
-                          item.produto
-                        }
-                      </td>
-
-                      <td className="p-3 font-bold">
-                        {
-                          item.quantidade
-                        }
-                      </td>
-
-                      <td className="p-3">
-                        R${" "}
-                        {Number(
-                          item.custo ||
-                            0
-                        ).toFixed(
-                          2
-                        )}
-                      </td>
-
-                      <td className="p-3">
-                        {item.fornecedor ||
-                          "-"}
-                      </td>
-
-                    </tr>
-                  )
-                )
-              )}
-
-            </tbody>
-
-          </table>
-
-        </div>
-
-        <style jsx>{`
-          .input {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-          }
-
-          .btn {
-            background: red;
-            color: white;
-            padding: 12px 18px;
-            border-radius: 10px;
-          }
-        `}</style>
-
       </div>
     </AdminGuard>
   )

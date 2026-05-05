@@ -3,101 +3,124 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
+// Definição do tipo de um item de alerta
+type AlertaItem = {
+  id: string
+  nome: string
+  telefone: string
+  vencimento: string
+}
+
+// Definição dos grupos de alerta
+type GruposAlertas = {
+  "🔵 5 dias antes": AlertaItem[]
+  "🟢 2 dias antes": AlertaItem[]
+  "🟡 Vence hoje": AlertaItem[]
+  "🟠 Vencido há 2 dias": AlertaItem[]
+  "🔴 Vencido há 5 dias (BLOQUEIO)": AlertaItem[]
+}
+
 export default function Alertas() {
-  const [dados, setDados] = useState<any[]>([])
+  const [alertas, setAlertas] = useState<GruposAlertas>({
+    "🔵 5 dias antes": [],
+    "🟢 2 dias antes": [],
+    "🟡 Vence hoje": [],
+    "🟠 Vencido há 2 dias": [],
+    "🔴 Vencido há 5 dias (BLOQUEIO)": []
+  })
 
-  const carregar = async () => {
-    const { data, error } = await supabase
-      .from("mensalidades")
-      .select("*")
-      .eq("status", "pendente")
+  useEffect(() => {
+    carregarAlertas()
+  }, [])
 
-    if (error) {
-      console.log(error)
-      return
-    }
-
-    if (!data) return
-
+  async function carregarAlertas() {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
 
-    const lista = await Promise.all(
-      data.map(async (m: any) => {
-        const venc = new Date(m.vencimento + "T00:00:00")
-        venc.setHours(0, 0, 0, 0)
-
-        const diff = Math.floor(
-          (venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)
+    // Buscar mensalidades pendentes com dados do aluno
+    const { data: mensalidades, error } = await supabase
+      .from("mensalidades")
+      .select(`
+        id,
+        vencimento,
+        alunos (
+          id,
+          nome,
+          whatsapp,
+          whatsapp_responsavel
         )
+      `)
+      .eq("status", "pendente")
 
-        let alerta = ""
+    if (error) {
+      console.error("Erro ao buscar mensalidades:", error)
+      return
+    }
 
-        if (diff === 5) alerta = "🟡 5 dias"
-        else if (diff === 2) alerta = "🟠 2 dias"
-        else if (diff === 0) alerta = "🟠 vence hoje"
-        else if (diff < 0 && diff >= -5) alerta = "🔴 atrasado"
+    // Reiniciar grupos
+    const novosGrupos: GruposAlertas = {
+      "🔵 5 dias antes": [],
+      "🟢 2 dias antes": [],
+      "🟡 Vence hoje": [],
+      "🟠 Vencido há 2 dias": [],
+      "🔴 Vencido há 5 dias (BLOQUEIO)": []
+    }
 
-        // 🔥 BUSCA O ALUNO AQUI (GARANTE QUE FUNCIONA)
-        const { data: aluno } = await supabase
-          .from("alunos")
-          .select("whatsapp, whatsapp_responsavel")
-          .eq("id", m.aluno_id)
-          .single()
+    mensalidades?.forEach((mensalidade) => {
+      const aluno = mensalidade.alunos as any
+      if (!aluno) return
 
-        return {
-          ...m,
-          alerta,
-          telefone:
-            aluno?.whatsapp_responsavel ||
-            aluno?.whatsapp ||
-            "Sem número",
-        }
-      })
-    )
+      const vencimento = new Date(mensalidade.vencimento)
+      vencimento.setHours(0, 0, 0, 0)
 
-    const filtrado = lista.filter((a) => a.alerta !== "")
+      const diffEmDias = Math.floor((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
 
-    setDados(filtrado)
+      let grupo: keyof GruposAlertas | null = null
+      if (diffEmDias === 5) grupo = "🔵 5 dias antes"
+      else if (diffEmDias === 2) grupo = "🟢 2 dias antes"
+      else if (diffEmDias === 0) grupo = "🟡 Vence hoje"
+      else if (diffEmDias === -2) grupo = "🟠 Vencido há 2 dias"
+      else if (diffEmDias === -5) grupo = "🔴 Vencido há 5 dias (BLOQUEIO)"
+
+      if (grupo) {
+        novosGrupos[grupo].push({
+          id: aluno.id,
+          nome: aluno.nome,
+          telefone: aluno.whatsapp_responsavel || aluno.whatsapp || "Não informado",
+          vencimento: mensalidade.vencimento
+        })
+      }
+    })
+
+    setAlertas(novosGrupos)
   }
 
-  useEffect(() => {
-    carregar()
-  }, [])
-
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Central de Alertas</h1>
-
-      {dados.length === 0 && (
-        <p className="text-gray-500">
-          Nenhum aluno com pendência no momento
-        </p>
-      )}
-
-      <div className="space-y-3">
-        {dados.map((a, i) => (
-          <div
-            key={i}
-            className="bg-white p-4 rounded shadow text-black border-l-4"
-            style={{
-              borderColor:
-                a.alerta.includes("atrasado") ? "red" :
-                a.alerta.includes("vence") ? "orange" :
-                a.alerta.includes("2 dias") ? "orange" :
-                "yellow",
-            }}
-          >
-            <p className="font-bold">{a.nome}</p>
-
-            <p>📅 {new Date(a.vencimento).toLocaleDateString()}</p>
-
-            <p>📱 {a.telefone}</p>
-
-            <p className="mt-2 font-semibold">{a.alerta}</p>
-          </div>
-        ))}
-      </div>
+    <div className="max-w-5xl mx-auto p-6 bg-white rounded-xl shadow">
+      <h1 className="text-2xl font-bold mb-6">Central de Alertas - Inadimplência</h1>
+      
+      {Object.entries(alertas).map(([titulo, itens]) => (
+        <div key={titulo} className="mb-8">
+          <h2 className="text-xl font-semibold border-b pb-2 mb-3">{titulo}</h2>
+          {itens.length === 0 ? (
+            <p className="text-gray-400 text-sm italic">Nenhum aluno neste período.</p>
+          ) : (
+            <div className="space-y-2">
+              {itens.map((item) => (
+                <div key={item.id} className="bg-gray-50 p-3 rounded flex justify-between items-center">
+                  <div>
+                    <p className="font-bold">{item.nome}</p>
+                    <p className="text-sm text-gray-600">Vencimento: {new Date(item.vencimento).toLocaleDateString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm">📱 {item.telefone}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

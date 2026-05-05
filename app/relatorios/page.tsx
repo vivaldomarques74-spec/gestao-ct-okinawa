@@ -1,769 +1,420 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
 
+type Professor = {
+  id: string
+  nome: string
+  comissao: number
+}
+
+type Movimentacao = {
+  id: string
+  aluno_nome: string
+  turma_nome: string
+  data: string
+  tipo: string
+  valor_base: number
+  valor_comissao: number
+}
+
+type Presenca = {
+  id: string
+  aluno_nome: string
+  turma_nome: string
+  data: string
+  status: string
+}
+
+type ParceiroVenda = {
+  id: string
+  produto: string
+  valor: number
+  data: string
+}
+
 export default function RelatoriosPage() {
-  const [aba, setAba] =
-    useState("professores")
+  const [aba, setAba] = useState("professores")
+  
+  // Estado para relatório de professores
+  const [professores, setProfessores] = useState<Professor[]>([])
+  const [professorSelecionado, setProfessorSelecionado] = useState("")
+  const [dataInicioProf, setDataInicioProf] = useState("")
+  const [dataFimProf, setDataFimProf] = useState("")
+  const [movimentacoesProf, setMovimentacoesProf] = useState<Movimentacao[]>([])
+  const [totalComissaoProf, setTotalComissaoProf] = useState(0)
+  const [loadingProf, setLoadingProf] = useState(false)
 
-  const [loading, setLoading] =
-    useState(false)
+  // Estado para presença
+  const [presencas, setPresencas] = useState<Presenca[]>([])
+  const [turmasList, setTurmasList] = useState<any[]>([])
+  const [filtroTurmaPresenca, setFiltroTurmaPresenca] = useState("")
+  const [dataInicioPres, setDataInicioPres] = useState("")
+  const [dataFimPres, setDataFimPres] = useState("")
+  const [loadingPres, setLoadingPres] = useState(false)
 
-  const [dados, setDados] =
-    useState<any[]>([])
+  // Estado para turmas (alunos por turma)
+  const [modalidades, setModalidades] = useState<any[]>([])
+  const [turmas, setTurmas] = useState<any[]>([])
+  const [modalidadeSelecionada, setModalidadeSelecionada] = useState("")
+  const [turmaSelecionada, setTurmaSelecionada] = useState("")
+  const [alunosTurma, setAlunosTurma] = useState<any[]>([])
 
-  const [professores, setProfessores] =
-    useState<any[]>([])
-
-  const [turmas, setTurmas] =
-    useState<any[]>([])
-
-  const [parceiros, setParceiros] =
-    useState<any[]>([])
-
-  const [professor, setProfessor] =
-    useState("")
-
-  const [turma, setTurma] =
-    useState("")
-
-  const [parceiro, setParceiro] =
-    useState("")
-
-  const [inicio, setInicio] =
-    useState("")
-
-  const [fim, setFim] =
-    useState("")
-
-  const [
-    chamadaSelecionada,
-    setChamadaSelecionada,
-  ] = useState<any>(null)
-
-  const [
-    detalheChamada,
-    setDetalheChamada,
-  ] = useState<any[]>([])
-
-  const [
-    alunosTurma,
-    setAlunosTurma,
-  ] = useState<any[]>([])
+  // Estado para parceiros
+  const [parceiros, setParceiros] = useState<any[]>([])
+  const [parceiroSelecionado, setParceiroSelecionado] = useState("")
+  const [dataInicioParceiro, setDataInicioParceiro] = useState("")
+  const [dataFimParceiro, setDataFimParceiro] = useState("")
+  const [vendasParceiro, setVendasParceiro] = useState<ParceiroVenda[]>([])
+  const [totalVendasParceiro, setTotalVendasParceiro] = useState(0)
+  const [loadingParceiro, setLoadingParceiro] = useState(false)
 
   useEffect(() => {
-    carregarBases()
+    carregarDadosBase()
   }, [])
 
   useEffect(() => {
-    carregar()
-  }, [
-    aba,
-    professor,
-    turma,
-    parceiro,
-    inicio,
-    fim,
-  ])
+    if (aba === "professores" && professorSelecionado && dataInicioProf && dataFimProf) {
+      carregarRelatorioProfessor()
+    }
+  }, [professorSelecionado, dataInicioProf, dataFimProf])
 
-  async function carregarBases() {
-    const { data: p } =
-      await supabase
-        .from(
-          "professores"
-        )
-        .select("*")
-        .order("nome")
+  useEffect(() => {
+    if (aba === "presenca") {
+      carregarPresencas()
+    }
+  }, [filtroTurmaPresenca, dataInicioPres, dataFimPres])
 
-    const { data: t } =
-      await supabase
-        .from("turmas")
-        .select("*")
-        .order("nome")
+  useEffect(() => {
+    if (aba === "turmas") {
+      carregarModalidadesTurmas()
+    }
+  }, [modalidadeSelecionada])
 
-    const { data: pr } =
-      await supabase
-        .from(
-          "parceiros"
-        )
-        .select("*")
-        .order("nome")
+  useEffect(() => {
+    if (aba === "turmas" && turmaSelecionada) {
+      carregarAlunosPorTurma()
+    }
+  }, [turmaSelecionada])
 
-    setProfessores(p || [])
-    setTurmas(t || [])
-    setParceiros(pr || [])
+  useEffect(() => {
+    if (aba === "parceiros" && parceiroSelecionado && dataInicioParceiro && dataFimParceiro) {
+      carregarRelatorioParceiro()
+    }
+  }, [parceiroSelecionado, dataInicioParceiro, dataFimParceiro])
+
+  async function carregarDadosBase() {
+    const { data: profs } = await supabase.from("professores").select("*").eq("status", "ativo")
+    setProfessores(profs || [])
+    const { data: turmasData } = await supabase.from("turmas").select("*, modalidades(nome)").eq("status", "ativo")
+    setTurmasList(turmasData || [])
+    const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
+    setModalidades(mods || [])
+    const { data: turmasCompletas } = await supabase.from("turmas").select("*, modalidades(*)").eq("status", "ativo")
+    setTurmas(turmasCompletas || [])
+    const { data: pars } = await supabase.from("parceiros").select("*").eq("status", "ativo")
+    setParceiros(pars || [])
   }
 
-  function dentroPeriodo(
-    base: any
-  ) {
-    if (!base) return true
-
-    const data =
-      new Date(base)
-
-    let inicioOk = true
-    let fimOk = true
-
-    if (inicio) {
-      inicioOk =
-        data >=
-        new Date(inicio)
-    }
-
-    if (fim) {
-      const final =
-        new Date(fim)
-
-      final.setHours(
-        23,
-        59,
-        59
-      )
-
-      fimOk =
-        data <= final
-    }
-
-    return (
-      inicioOk &&
-      fimOk
-    )
+  async function carregarModalidadesTurmas() {
+    let query = supabase.from("turmas").select("*, modalidades(*)").eq("status", "ativo")
+    if (modalidadeSelecionada) query = query.eq("modalidade_id", modalidadeSelecionada)
+    const { data } = await query
+    setTurmas(data || [])
   }
 
-  function periodoProfessor(
-    base: any
-  ) {
-    const data =
-      new Date(base)
-
-    if (
-      inicio ||
-      fim
-    )
-      return dentroPeriodo(
-        data
-      )
-
-    const hoje =
-      new Date()
-
-    const ini =
-      new Date(
-        hoje.getFullYear(),
-        hoje.getMonth() - 1,
-        10,
-        0,
-        0,
-        0
-      )
-
-    const fimc =
-      new Date(
-        hoje.getFullYear(),
-        hoje.getMonth(),
-        9,
-        23,
-        59,
-        59
-      )
-
-    return (
-      data >= ini &&
-      data <= fimc
-    )
-  }
-
-  async function carregar() {
-    setLoading(true)
-    setDados([])
-
-    // =========================
-    // PROFESSORES
-    // =========================
-    if (
-      aba ===
-      "professores"
-    ) {
-      let query =
-        supabase
-          .from(
-            "caixa"
-          )
-          .select("*")
-          .in(
-            "tipo",
-            [
-              "matricula",
-              "mensalidade",
-            ]
-          )
-
-      if (professor) {
-        query =
-          query.eq(
-            "professor",
-            professor
-          )
-      }
-
-      const {
-        data,
-      } =
-        await query
-
-      const lista =
-        (data ||
-          []).filter(
-          (
-            x
-          ) =>
-            periodoProfessor(
-              x.created_at ||
-                x.data
-            )
-        )
-
-      const final =
-        lista.map(
-          (
-            x
-          ) => ({
-            ...x,
-            valor_comissao:
-              Number(
-                x.valor_base ||
-                  x.valor ||
-                  0
-              ) *
-              0.5,
-          })
-        )
-
-      setDados(final)
-    }
-
-    // =========================
-    // PRESENÇA
-    // =========================
-    if (
-      aba ===
-      "presenca"
-    ) {
-      let query =
-        supabase
-          .from(
-            "presencas"
-          )
-          .select("*")
-          .order(
-            "created_at",
-            {
-              ascending:
-                false,
-            }
-          )
-
-      if (turma) {
-        query =
-          query.eq(
-            "turma",
-            turma
-          )
-      }
-
-      const {
-        data,
-      } =
-        await query
-
-      const lista =
-        (data ||
-          []).filter(
-          (
-            x
-          ) =>
-            dentroPeriodo(
-              x.created_at ||
-                x.data
-            )
-        )
-
-      const grupos: any =
-        {}
-
-      lista.forEach(
-        (
-          item
-        ) => {
-          const dt =
-            new Date(
-              item.created_at ||
-                item.data
-            )
-
-          const chave = `${item.turma}_${dt.toLocaleDateString()}_${dt.getHours()}`
-
-          if (
-            !grupos[
-              chave
-            ]
-          ) {
-            grupos[
-              chave
-            ] = {
-              turma:
-                item.turma,
-              professor:
-                item.professor,
-              data:
-                item.created_at ||
-                item.data,
-              registros:
-                [],
-            }
-          }
-
-          grupos[
-            chave
-          ].registros.push(
-            item
-          )
-        }
-      )
-
-      setDados(
-        Object.values(
-          grupos
-        )
-      )
-    }
-
-    // =========================
-    // TURMAS
-    // =========================
-    if (
-      aba ===
-      "turmas"
-    ) {
-      setDados(turmas)
-    }
-
-    // =========================
-    // PARCEIROS
-    // =========================
-    if (
-      aba ===
-      "parceiros"
-    ) {
-      const {
-        data,
-      } =
-        await supabase
-          .from(
-            "caixa"
-          )
-          .select("*")
-          .eq(
-            "tipo",
-            "venda"
-          )
-
-      setDados(
-        (data ||
-          []).filter(
-          (
-            x
-          ) =>
-            dentroPeriodo(
-              x.created_at ||
-                x.data
-            )
-        )
-      )
-    }
-
-    setLoading(false)
-  }
-
-  async function verChamada(
-    item: any
-  ) {
-    setChamadaSelecionada(
-      item
-    )
-
-    const {
-      data:
-        matriculados,
-    } =
-      await supabase
-        .from(
-          "matriculas"
-        )
-        .select("*")
-        .eq(
-          "turma",
-          item.turma
-        )
-        .eq(
-          "status",
-          "ativo"
-        )
-
-    const presentes =
-      item.registros.map(
-        (
-          x: any
-        ) =>
-          x.aluno_id
-      )
-
-    const lista =
-      (
-        matriculados ||
-        []
-      ).map(
-        (
-          al: any
-        ) => ({
-          ...al,
-          presente:
-            presentes.includes(
-              al.aluno_id
-            ),
-        })
-      )
-
-    setDetalheChamada(
-      lista
-    )
-  }
-
-  async function abrirTurma(
-    nome: string
-  ) {
-    setTurma(nome)
-
-    const {
-      data,
-    } =
-      await supabase
-        .from(
-          "matriculas"
-        )
-        .select("*")
-        .eq(
-          "turma",
-          nome
-        )
-        .eq(
-          "status",
-          "ativo"
-        )
-        .order("nome")
-
-    setAlunosTurma(
-      data || []
-    )
-  }
-
-  async function apagarChamada() {
-    if (
-      !confirm(
-        "Apagar chamada?"
-      )
-    )
+  async function carregarRelatorioProfessor() {
+    setLoadingProf(true)
+    // 1. Buscar turmas do professor
+    const { data: turmasProfessor } = await supabase
+      .from("turmas")
+      .select("id, nome")
+      .eq("professor_id", professorSelecionado)
+      .eq("status", "ativo")
+    if (!turmasProfessor?.length) {
+      setMovimentacoesProf([])
+      setTotalComissaoProf(0)
+      setLoadingProf(false)
       return
+    }
+    const turmaIds = turmasProfessor.map(t => t.id)
 
-    for (const item of detalheChamada) {
-      if (
-        item.presente
-      ) {
-        await supabase
-          .from(
-            "presencas"
-          )
-          .delete()
-          .eq(
-            "aluno_id",
-            item.aluno_id
-          )
-          .eq(
-            "turma",
-            chamadaSelecionada.turma
-          )
-      }
+    // 2. Buscar matriculas ativas nessas turmas
+    const { data: matriculas } = await supabase
+      .from("matriculas")
+      .select("id, aluno_id, turma_id, alunos(nome)")
+      .in("turma_id", turmaIds)
+      .eq("status", "ativo")
+    if (!matriculas?.length) {
+      setMovimentacoesProf([])
+      setTotalComissaoProf(0)
+      setLoadingProf(false)
+      return
     }
 
-    setChamadaSelecionada(
-      null
-    )
-    setDetalheChamada(
-      []
-    )
+    const alunoIds = matriculas.map(m => m.aluno_id)
+    const matriculaPorAluno = new Map()
+    matriculas.forEach(m => {
+      matriculaPorAluno.set(m.aluno_id, {
+        turmaId: m.turma_id,
+        alunoNome: m.alunos?.nome
+      })
+    })
 
-    carregar()
+    // 3. Buscar movimentações pagas no caixa (matricula ou mensalidade)
+    const { data: movimentacoes } = await supabase
+      .from("caixa")
+      .select("*")
+      .in("aluno_id", alunoIds)
+      .in("tipo", ["matricula", "mensalidade"])
+      .eq("cancelado", false)
+      .gte("data", `${dataInicioProf}T00:00:00`)
+      .lte("data", `${dataFimProf}T23:59:59`)
+
+    const professor = professores.find(p => p.id === professorSelecionado)
+    const comissaoPercent = professor?.comissao || 0
+
+    const lista: Movimentacao[] = []
+    let total = 0
+    for (const mov of movimentacoes || []) {
+      const matInfo = matriculaPorAluno.get(mov.aluno_id)
+      if (!matInfo) continue
+      const valorBase = Number(mov.valor_base || 0)
+      const comissao = valorBase * (comissaoPercent / 100)
+      lista.push({
+        id: mov.id,
+        aluno_nome: matInfo.alunoNome,
+        turma_nome: turmasProfessor.find(t => t.id === matInfo.turmaId)?.nome || "",
+        data: mov.data,
+        tipo: mov.tipo,
+        valor_base: valorBase,
+        valor_comissao: comissao,
+      })
+      total += comissao
+    }
+    setMovimentacoesProf(lista)
+    setTotalComissaoProf(total)
+    setLoadingProf(false)
   }
 
-  function imprimir() {
-    window.print()
+  function imprimirRelatorioProfessor() {
+    const professor = professores.find(p => p.id === professorSelecionado)
+    const comissaoPercent = professor?.comissao || 0
+    const w = window.open("", "", "width=800,height=600")
+    w?.document.write(`
+      <html><head><title>Relatório Professor</title>
+      <style>body{font-family:Arial;padding:30px} table{border-collapse:collapse;width:100%} th,td{border:1px solid #ccc;padding:8px} .assinatura{margin-top:50px;display:flex;justify-content:space-between}</style>
+      </head><body>
+      <h1>CT OKINAWA</h1>
+      <h2>Relatório de Comissão - Professor ${professor?.nome}</h2>
+      <p>Período: ${new Date(dataInicioProf).toLocaleDateString()} a ${new Date(dataFimProf).toLocaleDateString()}</p>
+      <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Tipo</th><th>Valor Base</th><th>Comissão (${comissaoPercent}%)</th></tr></thead><tbody>
+      ${movimentacoesProf.map(m => `<tr><td>${m.aluno_nome}</td><td>${m.turma_nome}</td><td>${new Date(m.data).toLocaleDateString()}</td><td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td><td>R$ ${m.valor_base.toFixed(2)}</td><td>R$ ${m.valor_comissao.toFixed(2)}</td></tr>`).join('')}
+      </tbody></table>
+      <div class="total">Total de Comissão: R$ ${totalComissaoProf.toFixed(2)}</div>
+      <div class="assinatura"><div>__________________________<br/>Professor</div><div>__________________________<br/>Coordenação</div></div>
+      <script>window.onload=()=>window.print()</script>
+      </body></html>
+    `)
+    w?.document.close()
   }
 
-  const total =
-    useMemo(() => {
-      if (
-        aba ===
-        "professores"
-      ) {
-        return dados.reduce(
-          (
-            acc,
-            x
-          ) =>
-            acc +
-            Number(
-              x.valor_comissao ||
-                0
-            ),
-          0
-        )
-      }
+  async function carregarPresencas() {
+    setLoadingPres(true)
+    let query = supabase.from("presencas").select("*, alunos(nome), turmas(nome)").order("data", { ascending: false })
+    if (filtroTurmaPresenca) query = query.eq("turma_id", filtroTurmaPresenca)
+    if (dataInicioPres) query = query.gte("data", dataInicioPres)
+    if (dataFimPres) query = query.lte("data", dataFimPres)
+    const { data } = await query
+    const lista = (data || []).map(p => ({
+      id: p.id,
+      aluno_nome: p.alunos?.nome || "?",
+      turma_nome: p.turmas?.nome || "?",
+      data: p.data,
+      status: p.status
+    }))
+    setPresencas(lista)
+    setLoadingPres(false)
+  }
 
-      return dados.length
-    }, [dados, aba])
+  async function excluirPresenca(id: string) {
+    if (!confirm("Excluir esta presença?")) return
+    await supabase.from("presencas").delete().eq("id", id)
+    carregarPresencas()
+  }
+
+  async function editarPresenca(id: string, novoStatus: string) {
+    await supabase.from("presencas").update({ status: novoStatus }).eq("id", id)
+    carregarPresencas()
+  }
+
+  function imprimirPresencas() {
+    const w = window.open("", "", "width=800,height=600")
+    w?.document.write(`<html><head><title>Relatório de Presenças</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
+    <h1>CT OKINAWA</h1><h2>Relatório de Presenças</h2><p>Período: ${dataInicioPres || "início"} a ${dataFimPres || "fim"}</p>
+    <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th></tr></thead><tbody>
+    ${presencas.map(p => `<tr><td>${p.aluno_nome}</td><td>${p.turma_nome}</td><td>${new Date(p.data).toLocaleDateString()}</td><td>${p.status}</td></tr>`).join('')}
+    </tbody></table>
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`)
+    w?.document.close()
+  }
+
+  async function carregarAlunosPorTurma() {
+    if (!turmaSelecionada) return
+    const { data: matriculas } = await supabase
+      .from("matriculas")
+      .select("alunos(id, nome, cpf, status)")
+      .eq("turma_id", turmaSelecionada)
+      .eq("status", "ativo")
+    const alunos = matriculas?.map(m => m.alunos).filter(Boolean) || []
+    setAlunosTurma(alunos)
+  }
+
+  async function carregarRelatorioParceiro() {
+    setLoadingParceiro(true)
+    const { data: vendas } = await supabase
+      .from("caixa")
+      .select("*")
+      .eq("tipo", "venda")
+      .eq("parceiro_id", parceiroSelecionado)
+      .eq("cancelado", false)
+      .gte("data", `${dataInicioParceiro}T00:00:00`)
+      .lte("data", `${dataFimParceiro}T23:59:59`)
+    const lista = (vendas || []).map(v => ({
+      id: v.id,
+      produto: v.descricao || v.nome || "Produto",
+      valor: Number(v.valor),
+      data: v.data
+    }))
+    const total = lista.reduce((acc, v) => acc + v.valor, 0)
+    setVendasParceiro(lista)
+    setTotalVendasParceiro(total)
+    setLoadingParceiro(false)
+  }
+
+  function imprimirRelatorioParceiro() {
+    const parceiro = parceiros.find(p => p.id === parceiroSelecionado)
+    const w = window.open("", "", "width=800,height=600")
+    w?.document.write(`<html><head><title>Relatório Parceiro</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
+    <h1>CT OKINAWA</h1><h2>Relatório de Vendas - Parceiro ${parceiro?.nome}</h2>
+    <p>Período: ${new Date(dataInicioParceiro).toLocaleDateString()} a ${new Date(dataFimParceiro).toLocaleDateString()}</p>
+    <table><thead><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead><tbody>
+    ${vendasParceiro.map(v => `<tr><td>${v.produto}</td><td>R$ ${v.valor.toFixed(2)}</td><td>${new Date(v.data).toLocaleDateString()}</td></tr>`).join('')}
+    </tbody></table>
+    <h3>Total: R$ ${totalVendasParceiro.toFixed(2)}</h3>
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`)
+    w?.document.close()
+  }
+
+  function getModalidadeNome(turma: any): string {
+    if (!turma.modalidades) return "?"
+    if (Array.isArray(turma.modalidades)) return turma.modalidades[0]?.nome || "?"
+    return turma.modalidades.nome || "?"
+  }
 
   return (
     <AdminGuard>
-      <div className="p-4 max-w-7xl mx-auto">
-
-        <div className="flex justify-between gap-3 flex-wrap mb-6">
-          <h1 className="text-2xl font-bold">
-            Central de Relatórios
-          </h1>
-
-          <button
-            onClick={
-              imprimir
-            }
-            className="btn"
-          >
-            🖨️ Imprimir
-          </button>
+      <div className="max-w-7xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">Central de Relatórios</h1>
+        <div className="flex gap-2 mb-6 border-b">
+          <button className={`px-4 py-2 ${aba === 'professores' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('professores')}>Professores</button>
+          <button className={`px-4 py-2 ${aba === 'presenca' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('presenca')}>Presença</button>
+          <button className={`px-4 py-2 ${aba === 'turmas' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('turmas')}>Modalidades / Turmas</button>
+          <button className={`px-4 py-2 ${aba === 'parceiros' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('parceiros')}>Parceiros</button>
         </div>
 
-        <div className="flex gap-2 flex-wrap mb-6">
-
-          <button className={`tab ${aba==="professores"?"ativo":""}`} onClick={()=>setAba("professores")}>
-            Professores
-          </button>
-
-          <button className={`tab ${aba==="presenca"?"ativo":""}`} onClick={()=>setAba("presenca")}>
-            Presença
-          </button>
-
-          <button className={`tab ${aba==="turmas"?"ativo":""}`} onClick={()=>setAba("turmas")}>
-            Modalidades / Turmas
-          </button>
-
-          <button className={`tab ${aba==="parceiros"?"ativo":""}`} onClick={()=>setAba("parceiros")}>
-            Parceiros
-          </button>
-
-        </div>
-
-        <div className="grid md:grid-cols-4 gap-4 mb-6">
-
-          <input type="date" className="input" value={inicio} onChange={(e)=>setInicio(e.target.value)}/>
-          <input type="date" className="input" value={fim} onChange={(e)=>setFim(e.target.value)}/>
-
-        </div>
-
-        {/* PROFESSORES */}
-        {aba==="professores" && (
-          <div className="card space-y-3">
-
-            {dados.map((x:any,i:number)=>(
-              <div key={i} className="linha between">
-                <div>
-                  {x.nome}<br/>
-                  {x.tipo}
-                </div>
-
-                <div className="text-right">
-                  <b>
-                    R$ {Number(x.valor_comissao).toFixed(2)}
-                  </b>
-                </div>
-              </div>
-            ))}
-
-            <div className="total">
-              TOTAL: R$ {Number(total).toFixed(2)}
+        {aba === 'professores' && (
+          <div className="bg-white p-4 rounded-xl shadow">
+            <div className="grid md:grid-cols-3 gap-4 mb-4">
+              <select className="p-2 border rounded" value={professorSelecionado} onChange={e => setProfessorSelecionado(e.target.value)}>
+                <option value="">Selecione o professor</option>
+                {professores.map(p => <option key={p.id} value={p.id}>{p.nome} (Comissão {p.comissao}%)</option>)}
+              </select>
+              <input type="date" className="p-2 border rounded" value={dataInicioProf} onChange={e => setDataInicioProf(e.target.value)} />
+              <input type="date" className="p-2 border rounded" value={dataFimProf} onChange={e => setDataFimProf(e.target.value)} />
             </div>
-
+            {loadingProf && <p>Carregando...</p>}
+            {!loadingProf && movimentacoesProf.length === 0 && professorSelecionado && dataInicioProf && dataFimProf && (
+              <p className="text-gray-500">Nenhuma movimentação paga no período.</p>
+            )}
+            {movimentacoesProf.length > 0 && (
+              <>
+                <div className="overflow-auto">
+                  <table className="w-full border">
+                    <thead className="bg-gray-100"><tr><th className="p-2">Aluno</th><th>Turma</th><th>Data</th><th>Tipo</th><th>Valor Base</th><th>Comissão</th></tr></thead>
+                    <tbody>
+                      {movimentacoesProf.map(m => (
+                        <tr key={m.id}><td className="p-2">{m.aluno_nome}</td><td>{m.turma_nome}</td><td>{new Date(m.data).toLocaleDateString()}</td><td>{m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td><td>R$ {m.valor_base.toFixed(2)}</td><td>R$ {m.valor_comissao.toFixed(2)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex justify-between items-center">
+                  <p className="font-bold text-lg">Total Comissão: R$ {totalComissaoProf.toFixed(2)}</p>
+                  <button onClick={imprimirRelatorioProfessor} className="bg-red-600 text-white px-4 py-2 rounded">Imprimir</button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
-        {/* PRESENÇA */}
-        {aba==="presenca" && (
-          <div className="card space-y-3">
-
-            {dados.map((x:any,i:number)=>(
-              <div key={i} className="linha between">
-
-                <div>
-                  <b>{x.turma}</b><br/>
-                  {new Date(x.data).toLocaleDateString()} {" "}
-                  {new Date(x.data).toLocaleTimeString()}
-                </div>
-
-                <button className="mini green" onClick={()=>verChamada(x)}>
-                  VER
-                </button>
-
-              </div>
-            ))}
-
+        {aba === 'presenca' && (
+          <div className="bg-white p-4 rounded-xl shadow">
+            <div className="grid md:grid-cols-4 gap-4 mb-4">
+              <select className="p-2 border rounded" value={filtroTurmaPresenca} onChange={e => setFiltroTurmaPresenca(e.target.value)}>
+                <option value="">Todas as turmas</option>
+                {turmasList.map(t => <option key={t.id} value={t.id}>{t.nome} ({getModalidadeNome(t)})</option>)}
+              </select>
+              <input type="date" className="p-2 border rounded" value={dataInicioPres} onChange={e => setDataInicioPres(e.target.value)} />
+              <input type="date" className="p-2 border rounded" value={dataFimPres} onChange={e => setDataFimPres(e.target.value)} />
+              <button onClick={carregarPresencas} className="bg-blue-500 text-white p-2 rounded">Filtrar</button>
+              <button onClick={imprimirPresencas} className="bg-green-600 text-white p-2 rounded">Imprimir</button>
+            </div>
+            {loadingPres && <p>Carregando...</p>}
+            <div className="overflow-auto">
+              <table className="w-full border">
+                <thead className="bg-gray-100"><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th><th>Ações</th></tr></thead>
+                <tbody>
+                  {presencas.map(p => (
+                    <tr key={p.id}><td>{p.aluno_nome}</td><td>{p.turma_nome}</td><td>{new Date(p.data).toLocaleDateString()}</td>
+                    <td><select value={p.status} onChange={e => editarPresenca(p.id, e.target.value)} className="border rounded p-1"><option value="presente">Presente</option><option value="ausente">Ausente</option></select></td>
+                    <td><button onClick={() => excluirPresenca(p.id)} className="bg-red-500 text-white px-2 py-1 rounded text-sm">Excluir</button></td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
-        {/* DETALHE CHAMADA */}
-        {chamadaSelecionada && (
-          <div className="card mt-6">
-
-            <h2 className="font-bold text-xl mb-4">
-              {chamadaSelecionada.turma}
-            </h2>
-
-            {detalheChamada.map((x:any,i:number)=>(
-              <div key={i} className="linha between">
-
-                <span>{x.nome}</span>
-
-                <span className={x.presente?"text-green-600":"text-red-600"}>
-                  {x.presente ? "Presente" : "Ausente"}
-                </span>
-
-              </div>
-            ))}
-
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              <button className="btn" onClick={imprimir}>
-                Imprimir
-              </button>
-
-              <button className="btn redbg" onClick={apagarChamada}>
-                Apagar
-              </button>
-            </div>
-
+        {aba === 'turmas' && (
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-white p-4 rounded-xl shadow"><h3 className="font-bold mb-2">Modalidades</h3>{modalidades.map(mod => <button key={mod.id} onClick={() => setModalidadeSelecionada(mod.id)} className={`block w-full text-left p-2 rounded ${modalidadeSelecionada === mod.id ? 'bg-red-600 text-white' : 'bg-gray-100'}`}>{mod.nome}</button>)}</div>
+            <div className="bg-white p-4 rounded-xl shadow"><h3 className="font-bold mb-2">Turmas</h3>{turmas.filter(t => t.modalidade_id === modalidadeSelecionada).map(turma => <button key={turma.id} onClick={() => setTurmaSelecionada(turma.id)} className={`block w-full text-left p-2 rounded ${turmaSelecionada === turma.id ? 'bg-red-600 text-white' : 'bg-gray-100'}`}>{turma.nome}</button>)}</div>
+            <div className="bg-white p-4 rounded-xl shadow"><h3 className="font-bold mb-2">Alunos - {turmas.find(t => t.id === turmaSelecionada)?.nome || ''}</h3>{alunosTurma.length === 0 ? <p className="text-gray-500">Nenhum aluno matriculado.</p> : <ul className="list-disc pl-5">{alunosTurma.map(aluno => <li key={aluno.id}>{aluno.nome} - {aluno.cpf} ({aluno.status})</li>)}</ul>}</div>
           </div>
         )}
 
-        {/* TURMAS */}
-        {aba==="turmas" && (
-          <div className="grid md:grid-cols-2 gap-6">
-
-            <div className="card">
-
-              {turmas.map((t:any,i:number)=>(
-                <div key={i} className="linha" onClick={()=>abrirTurma(t.nome)}>
-                  <b>{t.nome}</b><br/>
-                  <small>{t.professor}</small>
-                </div>
-              ))}
-
+        {aba === 'parceiros' && (
+          <div className="bg-white p-4 rounded-xl shadow">
+            <div className="grid md:grid-cols-3 gap-4 mb-4">
+              <select className="p-2 border rounded" value={parceiroSelecionado} onChange={e => setParceiroSelecionado(e.target.value)}><option value="">Selecione o parceiro</option>{parceiros.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
+              <input type="date" className="p-2 border rounded" value={dataInicioParceiro} onChange={e => setDataInicioParceiro(e.target.value)} />
+              <input type="date" className="p-2 border rounded" value={dataFimParceiro} onChange={e => setDataFimParceiro(e.target.value)} />
             </div>
-
-            <div className="card">
-
-              <h2 className="font-bold mb-4">
-                {turma || "Selecione uma turma"}
-              </h2>
-
-              {alunosTurma.map((a:any,i:number)=>(
-                <div key={i} className="linha between">
-
-                  <span>{a.nome}</span>
-
-                  <span className="text-xs">
-                    {a.modalidade}
-                  </span>
-
-                </div>
-              ))}
-
-            </div>
-
+            {loadingParceiro && <p>Carregando...</p>}
+            {!loadingParceiro && vendasParceiro.length === 0 && parceiroSelecionado && dataInicioParceiro && dataFimParceiro && <p className="text-gray-500">Nenhuma venda no período.</p>}
+            {vendasParceiro.length > 0 && (
+              <>
+                <div className="overflow-auto"><table className="w-full border"><thead className="bg-gray-100"><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead><tbody>{vendasParceiro.map(v => <tr key={v.id}><td>{v.produto}</td><td>R$ {v.valor.toFixed(2)}</td><td>{new Date(v.data).toLocaleDateString()}</td></tr>)}</tbody></table></div>
+                <div className="mt-4 flex justify-between items-center"><p className="font-bold text-lg">Total de Vendas: R$ {totalVendasParceiro.toFixed(2)}</p><button onClick={imprimirRelatorioParceiro} className="bg-red-600 text-white px-4 py-2 rounded">Imprimir</button></div>
+              </>
+            )}
           </div>
         )}
-
-        <style jsx>{`
-          .input{
-            width:100%;
-            padding:14px;
-            border:1px solid #ccc;
-            border-radius:10px;
-          }
-
-          .btn{
-            background:red;
-            color:white;
-            padding:12px 16px;
-            border-radius:10px;
-          }
-
-          .redbg{
-            background:#111;
-          }
-
-          .tab{
-            background:white;
-            padding:10px 16px;
-            border-radius:10px;
-            border:1px solid #ddd;
-          }
-
-          .ativo{
-            background:red;
-            color:white;
-          }
-
-          .card{
-            background:white;
-            padding:24px;
-            border-radius:18px;
-            box-shadow:0 2px 10px rgba(0,0,0,.08);
-          }
-
-          .linha{
-            padding:14px;
-            border-bottom:1px solid #eee;
-          }
-
-          .between{
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-          }
-
-          .mini{
-            background:#16a34a;
-            color:white;
-            padding:8px 12px;
-            border-radius:10px;
-          }
-
-          .total{
-            margin-top:10px;
-            font-size:22px;
-            font-weight:bold;
-          }
-        `}</style>
-
       </div>
     </AdminGuard>
   )

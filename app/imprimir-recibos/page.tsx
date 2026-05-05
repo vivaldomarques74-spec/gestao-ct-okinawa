@@ -4,282 +4,93 @@ import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
 export default function ImprimirRecibos() {
-  const [lista, setLista] =
-    useState<any[]>([])
-
-  const [tipo, setTipo] =
-    useState("todos")
-
-  const [loading, setLoading] =
-    useState(false)
+  const [recibos, setRecibos] = useState<any[]>([])
+  const [filtro, setFiltro] = useState("todos")
+  const [data, setData] = useState("")
 
   useEffect(() => {
-    carregar()
-  }, [tipo])
+    carregarRecibos()
+  }, [filtro, data])
 
-  const carregar =
-    async () => {
-      setLoading(true)
+  async function carregarRecibos() {
+    let query = supabase
+      .from("caixa")
+      .select("*, alunos(nome, cpf)")
+      .order("data", { ascending: false })
 
-      let query =
-        supabase
-          .from("recibos")
-          .select("*")
-          .order(
-            "created_at",
-            {
-              ascending:
-                false,
-            }
-          )
-          .limit(5)
-
-      if (
-        tipo !==
-        "todos"
-      ) {
-        query =
-          query.eq(
-            "tipo",
-            tipo
-          )
-      }
-
-      const {
-        data,
-        error,
-      } = await query
-
-      if (error) {
-        console.error(
-          error
-        )
-        alert(
-          "Tabela recibos não encontrada no Supabase"
-        )
-      }
-
-      setLista(
-        data || []
-      )
-
-      setLoading(false)
+    if (data) {
+      const inicio = new Date(data)
+      inicio.setHours(0,0,0,0)
+      const fim = new Date(data)
+      fim.setHours(23,59,59,999)
+      query = query.gte("data", inicio.toISOString()).lte("data", fim.toISOString())
     }
 
-  const imprimir =
-    (
-      html: string
-    ) => {
-      const w =
-        window.open(
-          "",
-          "",
-          "width=320,height=700"
-        )
+    const { data: movs } = await query
+    if (!movs) return
 
-      w?.document.write(
-        html
-      )
+    // Filtrar por tipo
+    let lista = movs
+    if (filtro !== "todos") lista = movs.filter(m => m.tipo === filtro)
 
-      w?.document.close()
-    }
+    // Transformar em recibos (simular HTML)
+    const recibosFormatados = lista.map(mov => ({
+      id: mov.id,
+      tipo: mov.tipo,
+      nome: mov.alunos?.nome || mov.descricao || "Venda",
+      valor: mov.valor,
+      data: mov.data,
+      html: gerarHTMLRecibo(mov)
+    }))
+    setRecibos(recibosFormatados)
+  }
+
+  function gerarHTMLRecibo(mov: any) {
+    // Reuso da função de recibo já existente (simplificado)
+    return `
+      <html>
+      <body style="font-family:monospace;padding:20px">
+        <h2>CT OKINAWA</h2>
+        <p>${mov.tipo.toUpperCase()}</p>
+        <p>Valor: R$ ${Number(mov.valor).toFixed(2)}</p>
+        <p>Data: ${new Date(mov.data).toLocaleString()}</p>
+        <hr/>
+        <p>Provérbios 3:5</p>
+      </body>
+      </html>
+    `
+  }
+
+  function imprimir(html: string) {
+    const w = window.open("", "", "width=500,height=700")
+    w?.document.write(html)
+    w?.document.close()
+  }
 
   return (
-    <div className="p-4 max-w-6xl mx-auto">
-
-      <h1 className="text-2xl font-bold mb-6">
-        Imprimir Recibos
-      </h1>
-
-      <div className="bg-white rounded-2xl shadow p-4 text-black mb-6">
-
-        <div className="grid md:grid-cols-3 gap-3">
-
-          <select
-            className="input"
-            value={tipo}
-            onChange={(
-              e
-            ) =>
-              setTipo(
-                e.target
-                  .value
-              )
-            }
-          >
-            <option value="todos">
-              Todos
-            </option>
-
-            <option value="pdv">
-              PDV
-            </option>
-
-            <option value="matricula">
-              Matrícula
-            </option>
-
-            <option value="mensalidade">
-              Mensalidade
-            </option>
-
-            <option value="caixa">
-              Caixa
-            </option>
-          </select>
-
-          <button
-            onClick={
-              carregar
-            }
-            className="btn"
-          >
-            Atualizar
-          </button>
-
-        </div>
-
+    <div className="max-w-5xl mx-auto p-6 bg-white rounded-xl shadow">
+      <h1 className="text-2xl font-bold mb-6">Reimpressão de Recibos</h1>
+      <div className="flex gap-3 mb-4 flex-wrap">
+        <select className="p-2 border rounded" value={filtro} onChange={e => setFiltro(e.target.value)}>
+          <option value="todos">Todos</option>
+          <option value="matricula">Matrícula</option>
+          <option value="mensalidade">Mensalidade</option>
+          <option value="venda">Venda</option>
+        </select>
+        <input type="date" className="p-2 border rounded" value={data} onChange={e => setData(e.target.value)} />
+        <button onClick={() => { setData(""); carregarRecibos(); }} className="bg-gray-300 p-2 rounded">Limpar data</button>
       </div>
-
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
-
-        <table className="w-full text-black">
-
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-left">
-                Data
-              </th>
-
-              <th className="p-3 text-left">
-                Tipo
-              </th>
-
-              <th className="p-3 text-left">
-                Nome
-              </th>
-
-              <th className="p-3 text-left">
-                Valor
-              </th>
-
-              <th className="p-3 text-left">
-                Ação
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="p-4"
-                >
-                  Carregando...
-                </td>
-              </tr>
-            ) : lista.length ===
-              0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="p-4"
-                >
-                  Nenhum recibo encontrado
-                </td>
-              </tr>
-            ) : (
-              lista.map(
-                (
-                  item,
-                  i
-                ) => (
-                  <tr
-                    key={i}
-                    className="border-t"
-                  >
-                    <td className="p-3">
-                      {new Date(
-                        item.created_at
-                      ).toLocaleDateString()}
-                      <br />
-                      <small>
-                        {new Date(
-                          item.created_at
-                        ).toLocaleTimeString()}
-                      </small>
-                    </td>
-
-                    <td className="p-3 capitalize">
-                      {
-                        item.tipo
-                      }
-                    </td>
-
-                    <td className="p-3">
-                      {
-                        item.nome
-                      }
-                    </td>
-
-                    <td className="p-3">
-                      R${" "}
-                      {Number(
-                        item.valor ||
-                          0
-                      ).toFixed(
-                        2
-                      )}
-                    </td>
-
-                    <td className="p-3">
-                      <button
-                        onClick={() =>
-                          imprimir(
-                            item.html_recibo
-                          )
-                        }
-                        className="mini"
-                      >
-                        Imprimir
-                      </button>
-                    </td>
-                  </tr>
-                )
-              )
-            )}
-
-          </tbody>
-
-        </table>
-
+      <div className="overflow-auto">
+        {recibos.map(rec => (
+          <div key={rec.id} className="border-b py-2 flex justify-between items-center">
+            <div>
+              <p className="font-semibold">{new Date(rec.data).toLocaleString()} - {rec.tipo}</p>
+              <p>{rec.nome} - R$ {Number(rec.valor).toFixed(2)}</p>
+            </div>
+            <button onClick={() => imprimir(rec.html)} className="bg-red-600 text-white px-3 py-1 rounded">Imprimir</button>
+          </div>
+        ))}
       </div>
-
-      <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ccc;
-          border-radius: 10px;
-        }
-
-        .btn {
-          background: red;
-          color: white;
-          padding: 12px;
-          border-radius: 10px;
-        }
-
-        .mini {
-          background: #111;
-          color: white;
-          padding: 8px 12px;
-          border-radius: 8px;
-        }
-      `}</style>
-
     </div>
   )
 }

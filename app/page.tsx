@@ -1,388 +1,126 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import {
-  Users,
-  AlertTriangle,
-  Layers,
-} from "lucide-react"
 import { supabase } from "../lib/supabase"
+import { Users, AlertTriangle, Layers } from "lucide-react"
 
 export default function Dashboard() {
-  const [stats, setStats] =
-    useState({
-      ativos: 0,
-      inativos: 0,
-      alertas: 0,
-      turmas: 0,
-    })
-
-  const [turmas, setTurmas] =
-    useState<any[]>([])
-
-  const [
-    modalidades,
-    setModalidades,
-  ] = useState<any[]>([])
+  const [stats, setStats] = useState({ ativos: 0, inativos: 0, alertas: 0, turmas: 0 })
+  const [turmasList, setTurmasList] = useState<any[]>([])
+  const [modalidadesList, setModalidadesList] = useState<any[]>([])
 
   useEffect(() => {
     carregar()
   }, [])
 
-  const carregar =
-    async () => {
-      const {
-        data: alunos,
-      } = await supabase
-        .from("alunos")
-        .select("*")
+  async function carregar() {
+    // Alunos
+    const { data: alunos } = await supabase.from("alunos").select("*")
+    const ativos = alunos?.filter(a => a.status === "ativo").length || 0
+    const inativos = alunos?.filter(a => a.status === "inativo").length || 0
 
-      const ativos =
-        (
-          alunos || []
-        ).filter(
-          (a: any) =>
-            a.status ===
-            "ativo"
-        ).length
+    // Mensalidades pendentes (alertas)
+    const { data: mensalidades } = await supabase.from("mensalidades").select("*").eq("status", "pendente")
+    const alertas = mensalidades?.length || 0
 
-      const inativos =
-        (
-          alunos || []
-        ).filter(
-          (a: any) =>
-            a.status ===
-            "inativo"
-        ).length
+    // Turmas
+    const { data: turmas } = await supabase.from("turmas").select("*")
+    const totalTurmas = turmas?.length || 0
 
-      const {
-        data:
-          listaTurmas,
-      } = await supabase
-        .from("turmas")
-        .select("*")
+    setStats({ ativos, inativos, alertas, turmas: totalTurmas })
 
-      const {
-        data:
-          mensalidades,
-      } = await supabase
-        .from(
-          "mensalidades"
-        )
-        .select("*")
+    // Alunos por turma (via matriculas)
+    const { data: matriculas } = await supabase.from("matriculas").select("*, turmas(nome)")
+    const turmaCount: any = {}
+    matriculas?.forEach((m: any) => {
+      const nome = m.turmas?.nome || "Sem turma"
+      turmaCount[nome] = (turmaCount[nome] || 0) + 1
+    })
+    const turmaArray = Object.keys(turmaCount).map(nome => ({ nome, alunos: turmaCount[nome] }))
+    setTurmasList(turmaArray)
 
-      const alertas =
-        (
-          mensalidades ||
-          []
-        ).filter(
-          (m: any) =>
-            m.status !==
-            "pago"
-        ).length
-
-      /* alunos por turma */
-      const mapaTurmas:
-        any = {}
-
-      ;(
-        alunos || []
-      ).forEach(
-        (a: any) => {
-          const nome =
-            a.turma ||
-            "Sem turma"
-
-          mapaTurmas[
-            nome
-          ] =
-            (mapaTurmas[
-              nome
-            ] || 0) + 1
-        }
-      )
-
-      const arrTurmas =
-        Object.keys(
-          mapaTurmas
-        ).map(
-          (nome) => ({
-            nome,
-            alunos:
-              mapaTurmas[
-                nome
-              ],
-          })
-        )
-
-      /* alunos por modalidade */
-      const mapaMod:
-        any = {}
-
-      ;(
-        alunos || []
-      ).forEach(
-        (a: any) => {
-          const nome =
-            a.modalidade ||
-            "Sem modalidade"
-
-          mapaMod[nome] =
-            (mapaMod[
-              nome
-            ] || 0) + 1
-        }
-      )
-
-      const arrMod =
-        Object.keys(
-          mapaMod
-        ).map(
-          (nome) => ({
-            nome,
-            qtd: mapaMod[nome],
-          })
-        )
-
-      setStats({
-        ativos,
-        inativos,
-        alertas,
-        turmas:
-          (
-            listaTurmas ||
-            []
-          ).length,
-      })
-
-      setTurmas(
-        arrTurmas
-      )
-
-      setModalidades(
-        arrMod
-      )
+    // Alunos por modalidade (via turma -> modalidade)
+    const { data: turmasComModalidade } = await supabase.from("turmas").select("*, modalidades(nome)")
+    const modalidadeCount: any = {}
+    for (const turma of turmasComModalidade || []) {
+      const modalidadeNome = turma.modalidades?.nome || "Sem modalidade"
+      const { count } = await supabase
+        .from("matriculas")
+        .select("*", { count: "exact", head: true })
+        .eq("turma_id", turma.id)
+      modalidadeCount[modalidadeNome] = (modalidadeCount[modalidadeNome] || 0) + (count || 0)
     }
+    const modalidadeArray = Object.keys(modalidadeCount).map(nome => ({ nome, qtd: modalidadeCount[nome] }))
+    setModalidadesList(modalidadeArray)
+  }
 
   const cards = [
-    {
-      title:
-        "Alunos Ativos",
-      value:
-        stats.ativos,
-      icon: Users,
-    },
-    {
-      title:
-        "Alunos Inativos",
-      value:
-        stats.inativos,
-      icon: Users,
-    },
-    {
-      title:
-        "Alertas",
-      value:
-        stats.alertas,
-      icon:
-        AlertTriangle,
-    },
-    {
-      title:
-        "Turmas",
-      value:
-        stats.turmas,
-      icon: Layers,
-    },
+    { title: "Alunos Ativos", value: stats.ativos, icon: Users, color: "text-green-600" },
+    { title: "Alunos Inativos", value: stats.inativos, icon: Users, color: "text-gray-500" },
+    { title: "Alertas", value: stats.alertas, icon: AlertTriangle, color: "text-red-500" },
+    { title: "Turmas", value: stats.turmas, icon: Layers, color: "text-blue-500" },
   ]
 
-  const maiorTurma =
-    turmas.length
-      ? Math.max(
-          ...turmas.map(
-            (t) =>
-              t.alunos
-          )
-        )
-      : 1
-
-  const maiorMod =
-    modalidades.length
-      ? Math.max(
-          ...modalidades.map(
-            (m) =>
-              m.qtd
-          )
-        )
-      : 1
+  const maxTurma = Math.max(...turmasList.map(t => t.alunos), 1)
+  const maxModalidade = Math.max(...modalidadesList.map(m => m.qtd), 1)
 
   return (
-    <div>
+    <div className="p-6 bg-gray-50 min-h-screen">
+      <h2 className="text-2xl font-bold mb-6">Visão Geral</h2>
 
-      <h2 className="text-2xl font-semibold mb-6">
-        Visão Geral
-      </h2>
+      <div className="grid md:grid-cols-4 gap-4 mb-8">
+        {cards.map((card, i) => (
+          <div key={i} className="bg-white rounded-xl shadow p-4 flex justify-between items-center">
+            <div>
+              <p className="text-gray-500 text-sm">{card.title}</p>
+              <p className="text-3xl font-bold">{card.value}</p>
+            </div>
+            <card.icon className={`w-8 h-8 ${card.color}`} />
+          </div>
+        ))}
+      </div>
 
-      {/* cards */}
-      <div className="grid md:grid-cols-4 gap-4 mb-6">
-
-        {cards.map(
-          (s, i) => (
-            <Card
-              key={i}
-              className="bg-zinc-900 border border-red-900"
-            >
-              <CardContent className="p-4 flex items-center justify-between">
-
-                <div>
-                  <p className="text-sm text-zinc-400">
-                    {s.title}
-                  </p>
-
-                  <p className="text-2xl font-bold">
-                    {s.value}
-                  </p>
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Alunos por Turma */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h3 className="font-semibold mb-3">Alunos por Turma</h3>
+          {turmasList.length === 0 ? (
+            <p className="text-gray-400">Nenhum aluno matriculado em turma</p>
+          ) : (
+            turmasList.map((t, i) => (
+              <div key={i} className="mb-2">
+                <div className="flex justify-between text-sm">
+                  <span>{t.nome}</span>
+                  <span>{t.alunos}</span>
                 </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(t.alunos / maxTurma) * 100}%` }} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
 
-                <s.icon className="text-red-500" />
-
-              </CardContent>
-            </Card>
-          )
-        )}
-
+        {/* Distribuição por Modalidade */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h3 className="font-semibold mb-3">Distribuição por Modalidade</h3>
+          {modalidadesList.length === 0 ? (
+            <p className="text-gray-400">Nenhum aluno vinculado a modalidade</p>
+          ) : (
+            modalidadesList.map((m, i) => (
+              <div key={i} className="mb-2">
+                <div className="flex justify-between text-sm">
+                  <span>{m.nome}</span>
+                  <span>{m.qtd}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(m.qtd / maxModalidade) * 100}%` }} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
-
-      {/* gráficos */}
-      <div className="grid md:grid-cols-2 gap-4">
-
-        {/* turma */}
-        <Card className="bg-zinc-900 border border-red-900">
-          <CardContent className="p-6">
-
-            <h3 className="mb-4 text-zinc-300">
-              Alunos por Turma
-            </h3>
-
-            <div className="space-y-4">
-
-              {turmas.length ===
-              0 ? (
-                <p className="text-zinc-500">
-                  Nenhum dado
-                </p>
-              ) : (
-                turmas.map(
-                  (
-                    t,
-                    i
-                  ) => (
-                    <div
-                      key={i}
-                    >
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>
-                          {
-                            t.nome
-                          }
-                        </span>
-
-                        <span>
-                          {
-                            t.alunos
-                          }
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-zinc-800 rounded-full h-2">
-
-                        <div
-                          className="bg-red-600 h-2 rounded-full"
-                          style={{
-                            width: `${
-                              (t.alunos /
-                                maiorTurma) *
-                              100
-                            }%`,
-                          }}
-                        />
-
-                      </div>
-                    </div>
-                  )
-                )
-              )}
-
-            </div>
-
-          </CardContent>
-        </Card>
-
-        {/* modalidade */}
-        <Card className="bg-zinc-900 border border-red-900">
-          <CardContent className="p-6">
-
-            <h3 className="mb-4 text-zinc-300">
-              Distribuição por Modalidade
-            </h3>
-
-            <div className="space-y-4">
-
-              {modalidades.length ===
-              0 ? (
-                <p className="text-zinc-500">
-                  Nenhum dado
-                </p>
-              ) : (
-                modalidades.map(
-                  (
-                    m,
-                    i
-                  ) => (
-                    <div
-                      key={i}
-                    >
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>
-                          {
-                            m.nome
-                          }
-                        </span>
-
-                        <span>
-                          {
-                            m.qtd
-                          }
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-zinc-800 rounded-full h-2">
-
-                        <div
-                          className="bg-red-600 h-2 rounded-full"
-                          style={{
-                            width: `${
-                              (m.qtd /
-                                maiorMod) *
-                              100
-                            }%`,
-                          }}
-                        />
-
-                      </div>
-                    </div>
-                  )
-                )
-              )}
-
-            </div>
-
-          </CardContent>
-        </Card>
-
-      </div>
-
     </div>
   )
 }

@@ -1,252 +1,233 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { supabase } from "../../lib/supabase"
 
 export default function Mensalidades() {
-  const [nome, setNome] = useState("")
-  const [dados, setDados] = useState<any>(null)
-
+  const [busca, setBusca] = useState("")
+  const [alunos, setAlunos] = useState<any[]>([])
+  const [mensalidades, setMensalidades] = useState<any[]>([])
+  const [selecionado, setSelecionado] = useState<any>(null)
   const [formaPagamento, setFormaPagamento] = useState("Pix")
   const [tipoCartao, setTipoCartao] = useState("Crédito")
   const [parcelas, setParcelas] = useState("1x")
+  const [loading, setLoading] = useState(false)
 
-  const buscar = async () => {
+  useEffect(() => {
+    carregarAlunos()
+  }, [])
+
+  async function carregarAlunos() {
+    const { data } = await supabase.from("alunos").select("*").order("nome")
+    setAlunos(data || [])
+  }
+
+  async function buscarMensalidades(alunoId: string) {
     const { data } = await supabase
       .from("mensalidades")
-      .select("*")
-      .ilike("nome", `%${nome}%`)
+      .select("*, matriculas(turmas(*, modalidades(*)))")
+      .eq("aluno_id", alunoId)
       .eq("status", "pendente")
       .order("vencimento", { ascending: true })
-      .limit(1)
-      .single()
+    return data || []
+  }
 
-    if (!data) {
-      alert("Nenhuma mensalidade encontrada")
+  async function selecionarAluno(aluno: any) {
+    setSelecionado(aluno)
+    const mens = await buscarMensalidades(aluno.id)
+    setMensalidades(mens)
+  }
+
+  function calcularTotal() {
+    let total = mensalidades.reduce((acc, m) => acc + Number(m.valor), 0)
+    if (formaPagamento === "Pix" || formaPagamento === "Dinheiro") {
+      total -= 10
+    }
+    return total > 0 ? total : 0
+  }
+
+  async function pagar() {
+    if (!selecionado || mensalidades.length === 0) return
+    const { data: caixaTurno } = await supabase.from("caixa_turno").select("*").eq("status", "aberto").maybeSingle()
+    if (!caixaTurno) {
+      alert("❌ Caixa não está aberto.")
       return
     }
 
-    setDados(data)
-  }
+    setLoading(true)
+    const totalPago = calcularTotal()
+    const valorBaseTotal = mensalidades.reduce((acc, m) => acc + Number(m.valor_base || m.valor), 0)
 
-  const calcularValorFinal = () => {
-    if (!dados) return 0
+    // Registrar no caixa
+    await supabase.from("caixa").insert([{
+      caixa_turno_id: caixaTurno.id,
+      tipo: "mensalidade",
+      descricao: `Pagamento de mensalidade(s) de ${selecionado.nome}`,
+      valor: totalPago,
+      valor_base: valorBaseTotal,
+      forma_pagamento: formaPagamento,
+      tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
+      parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
+      aluno_id: selecionado.id,
+      data: new Date().toISOString(),
+      cancelado: false,
+    }])
 
-    let valor = dados.valor
+    // Atualizar mensalidades pagas e gerar próximas
+    for (const m of mensalidades) {
+      // Marcar como paga
+      await supabase.from("mensalidades").update({ status: "pago", data_pagamento: new Date().toISOString() }).eq("id", m.id)
 
-    if (formaPagamento === "Pix" || formaPagamento === "Dinheiro") {
-      valor -= 10
+      // Gerar próxima mensalidade (mesmo dia do mês seguinte)
+      const proxVenc = new Date(m.vencimento)
+      proxVenc.setMonth(proxVenc.getMonth() + 1)
+      await supabase.from("mensalidades").insert([{
+        aluno_id: selecionado.id,
+        matricula_id: m.matricula_id,
+        vencimento: proxVenc.toISOString().slice(0,10),
+        valor: m.valor,
+        valor_base: m.valor_base,
+        status: "pendente",
+      }])
     }
 
-    return valor
+    gerarRecibo(selecionado, mensalidades, totalPago, formaPagamento, tipoCartao, parcelas)
+    alert("✅ Pagamento realizado com sucesso!")
+    setSelecionado(null)
+    setMensalidades([])
+    setLoading(false)
   }
 
-  const gerarRecibo = (valorFinal:any) => {
-    const agora = new Date()
+  function gerarRecibo(aluno: any, mensalidades: any[], totalPago: number, pagamento: string, cartao: string, parcelas: string) {
+    const totalBase = mensalidades.reduce((a,b)=>a+Number(b.valor),0)
+    const desconto = totalBase - totalPago
+    const turmasTexto = mensalidades.map(m => {
+      const turma = m.matriculas?.turmas
+      const modalidadeNome = turma?.modalidades?.nome || "?"
+      const turmaNome = turma?.nome || "?"
+      return `${modalidadeNome} - ${turmaNome}`
+    }).join(", ")
 
-    const w = window.open("", "", "width=300,height=600")
-
+    const w = window.open("", "", "width=400,height=600")
     w?.document.write(`
       <html>
-      <body style="font-family:monospace;width:58mm">
-
-      <div style="text-align:center">
-        <img src="${window.location.origin}/logo.png" style="width:100px"/>
-      </div>
-
-      <div style="text-align:center"><b>CT OKINAWA</b></div>
-      <div style="text-align:center">Disciplina - Respeito - Evolução</div>
-
-      <hr/>
-
-      <div><b>Recibo de Mensalidade</b></div>
-
-      <hr/>
-
-      <div>NOME: ${dados.nome}</div>
-      <div>MÊS REFERENTE: ${new Date(dados.vencimento).toLocaleDateString()}</div>
-
-      <hr/>
-
-      <div>VALOR BASE: R$ ${dados.valor}</div>
-      <div>DESCONTO: R$ ${(formaPagamento === "Pix" || formaPagamento === "Dinheiro") ? 10 : 0}</div>
-      <div><b>VALOR: R$ ${valorFinal}</b></div>
-
-      <hr/>
-
-      <div>FORMA: ${formaPagamento}</div>
-      ${
-        formaPagamento === "Cartão"
-          ? `<div>${tipoCartao} - ${parcelas}</div>`
-          : ""
-      }
-
-      <hr/>
-
-      <div>Data: ${agora.toLocaleDateString()}</div>
-      <div>Hora: ${agora.toLocaleTimeString()}</div>
-
-      <div>Cupom não fiscal</div>
-
-      <hr/>
-
-      <div style="text-align:center">Provérbios 13:3</div>
-      <div style="text-align:center">Deus abençoe!</div>
-
-      <script>
-        window.onload = () => {
-          setTimeout(()=>{window.print();window.close()},300)
-        }
-      </script>
-
+      <head>
+        <title>Recibo de Mensalidade</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
+          .logo { text-align: center; margin-bottom: 4px; }
+          .logo img { max-width: 40mm; height: auto; }
+          .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
+          hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+          .total { font-weight: bold; font-size: 11pt; }
+          .verse { text-align: center; margin-top: 8px; font-style: italic; }
+          .center { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="logo"><img src="${window.location.origin}/logo.png" /></div>
+        <div class="titulo">CT OKINAWA</div>
+        <div class="center">Disciplina • Respeito • Evolução</div>
+        <hr/>
+        <div><b>RECIBO DE MENSALIDADE</b></div>
+        <hr/>
+        <div><b>Aluno:</b> ${aluno.nome}</div>
+        <div><b>CPF:</b> ${aluno.cpf || '---'}</div>
+        <div><b>Turmas:</b> ${turmasTexto}</div>
+        <hr/>
+        <div><b>Valor das mensalidades:</b> R$ ${totalBase.toFixed(2)}</div>
+        <div><b>Desconto (Pix/Dinheiro):</b> R$ ${desconto.toFixed(2)}</div>
+        <div class="total"><b>Total pago:</b> R$ ${totalPago.toFixed(2)}</div>
+        <div><b>Pagamento:</b> ${pagamento} ${pagamento === "Cartão" ? `- ${cartao} ${parcelas}` : ""}</div>
+        <hr/>
+        <div>Data: ${new Date().toLocaleString()}</div>
+        <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
+        <div class="center">Obrigado! 🙏</div>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200); }</script>
       </body>
       </html>
     `)
-
     w?.document.close()
   }
 
-  const pagar = async () => {
-    if (!dados) return
-
-    const { data: caixa } = await supabase
-      .from("caixa_turno")
-      .select("*")
-      .eq("status", "aberto")
-      .single()
-
-    if (!caixa) {
-      alert("Nenhum caixa aberto")
-      return
-    }
-
-    const valorFinal = calcularValorFinal()
-
-    await supabase.from("caixa").insert([
-      {
-        tipo: "mensalidade",
-        nome: dados.nome,
-        valor: valorFinal,
-        forma_pagamento: formaPagamento,
-        caixa_id: caixa.id,
-      },
-    ])
-
-    await supabase
-      .from("mensalidades")
-      .update({ status: "pago" })
-      .eq("id", dados.id)
-
-    const prox = new Date(dados.vencimento)
-    prox.setMonth(prox.getMonth() + 1)
-
-    await supabase.from("mensalidades").insert([
-      {
-        aluno_id: dados.aluno_id,
-        nome: dados.nome,
-        valor: dados.valor,
-        vencimento: prox,
-        status: "pendente",
-      },
-    ])
-
-    gerarRecibo(valorFinal)
-
-    alert("Mensalidade paga")
-
-    setDados(null)
-    setNome("")
-  }
+  const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(busca.toLowerCase()))
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Mensalidades</h1>
-
+    <div className="max-w-5xl mx-auto p-6 bg-white rounded-xl shadow">
+      <h1 className="text-2xl font-bold mb-6">Pagamento de Mensalidades</h1>
       <input
-        placeholder="Nome do aluno"
-        className="input mb-4"
-        value={nome}
-        onChange={(e) => setNome(e.target.value)}
+        type="text"
+        placeholder="Buscar aluno por nome..."
+        className="w-full p-3 border rounded mb-4"
+        value={busca}
+        onChange={e => setBusca(e.target.value)}
       />
-
-      <button onClick={buscar} className="btn mb-4">
-        Buscar
-      </button>
-
-      {dados && (
-        <div className="bg-white p-6 rounded shadow text-black">
-
-          <p><b>Aluno:</b> {dados.nome}</p>
-          <p><b>Valor Base:</b> R$ {dados.valor}</p>
-          <p><b>Vencimento:</b> {new Date(dados.vencimento).toLocaleDateString()}</p>
-
-          <div className="mt-4">
-            <select
-              className="input"
-              value={formaPagamento}
-              onChange={(e) => setFormaPagamento(e.target.value)}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Lista de alunos */}
+        <div className="border rounded-lg p-2 max-h-[600px] overflow-y-auto">
+          {alunosFiltrados.map(aluno => (
+            <div
+              key={aluno.id}
+              className="p-3 border-b cursor-pointer hover:bg-gray-100"
+              onClick={() => selecionarAluno(aluno)}
             >
-              <option>Pix</option>
-              <option>Dinheiro</option>
-              <option>Cartão</option>
-            </select>
-          </div>
-
-          {formaPagamento === "Cartão" && (
-            <>
-              <select
-                className="input mt-2"
-                value={tipoCartao}
-                onChange={(e) => setTipoCartao(e.target.value)}
-              >
-                <option>Crédito</option>
-                <option>Débito</option>
-              </select>
-
-              {tipoCartao === "Crédito" && (
-                <select
-                  className="input mt-2"
-                  value={parcelas}
-                  onChange={(e) => setParcelas(e.target.value)}
-                >
-                  <option>1x</option>
-                  <option>2x</option>
-                  <option>3x</option>
-                </select>
-              )}
-            </>
-          )}
-
-          <div className="mt-4 bg-black text-white p-4 rounded">
-            <p>Valor Base: R$ {dados.valor}</p>
-            <p>Desconto: R$ {(formaPagamento === "Pix" || formaPagamento === "Dinheiro") ? 10 : 0}</p>
-            <p className="text-lg">
-              Total: <b>R$ {calcularValorFinal()}</b>
-            </p>
-          </div>
-
-          <button onClick={pagar} className="btn mt-4 w-full">
-            Confirmar Pagamento
-          </button>
-
+              <p className="font-semibold">{aluno.nome}</p>
+              <p className="text-xs text-gray-500">CPF: {aluno.cpf || "---"}</p>
+            </div>
+          ))}
         </div>
-      )}
 
-      <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-        }
-
-        .btn {
-          background: red;
-          color: white;
-          padding: 12px;
-          border-radius: 8px;
-        }
-      `}</style>
+        {/* Detalhes do aluno e mensalidades pendentes */}
+        {selecionado && (
+          <div className="border rounded-lg p-4">
+            <h2 className="font-bold text-xl">{selecionado.nome}</h2>
+            {mensalidades.length === 0 ? (
+              <p className="text-gray-500 mt-2">Nenhuma mensalidade pendente.</p>
+            ) : (
+              <>
+                <div className="mt-3 space-y-2">
+                  {mensalidades.map(m => (
+                    <div key={m.id} className="border-b pb-2">
+                      <p>Vencimento: {new Date(m.vencimento).toLocaleDateString()}</p>
+                      <p>Valor: R$ {Number(m.valor).toFixed(2)}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4">
+                  <label className="block font-semibold mb-1">Forma de pagamento</label>
+                  <select className="w-full p-2 border rounded" value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)}>
+                    <option>Pix</option>
+                    <option>Dinheiro</option>
+                    <option>Cartão</option>
+                  </select>
+                  {formaPagamento === "Cartão" && (
+                    <>
+                      <select className="w-full p-2 border rounded mt-2" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}>
+                        <option>Débito</option>
+                        <option>Crédito</option>
+                      </select>
+                      {tipoCartao === "Crédito" && (
+                        <select className="w-full p-2 border rounded mt-2" value={parcelas} onChange={e => setParcelas(e.target.value)}>
+                          <option>1x</option><option>2x</option><option>3x</option>
+                        </select>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="bg-gray-100 p-3 rounded mt-4">
+                  <p>Total das mensalidades: R$ {mensalidades.reduce((a,b)=>a+Number(b.valor),0).toFixed(2)}</p>
+                  <p>Desconto (Pix/Dinheiro): R$ {(formaPagamento === "Pix" || formaPagamento === "Dinheiro") ? 10 : 0}</p>
+                  <p className="font-bold text-lg">Total a pagar: R$ {calcularTotal().toFixed(2)}</p>
+                </div>
+                <button onClick={pagar} disabled={loading} className="w-full bg-red-600 text-white p-3 rounded mt-4">
+                  {loading ? "Processando..." : "Confirmar Pagamento"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

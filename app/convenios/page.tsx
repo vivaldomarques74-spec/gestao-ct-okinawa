@@ -2,373 +2,244 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
+import AdminGuard from "../../components/AdminGuard"
 
-export default function Convenios() {
-  const vazio = {
-    nome: "",
-    tipo: "percentual",
-    desconto: "",
-    ativo: true,
-  }
+type Convenio = {
+  id: string
+  nome: string
+  tipo: "percentual" | "fixo"
+  desconto: number
+  ativo: boolean
+  created_at?: string
+}
 
-  const [form, setForm] =
-    useState(vazio)
-
-  const [lista, setLista] =
-    useState<any[]>([])
-
-  const [editando, setEditando] =
-    useState<string | null>(null)
+export default function ConveniosPage() {
+  const [convenios, setConvenios] = useState<Convenio[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ nome: "", tipo: "percentual", desconto: "" })
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    carregar()
+    carregarConvenios()
   }, [])
 
-  const carregar =
-    async () => {
-      const { data } =
-        await supabase
-          .from("convenios")
-          .select("*")
-          .order("nome")
+  async function carregarConvenios() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from("convenios")
+      .select("*")
+      .order("nome")
+    if (error) {
+      console.error(error)
+      alert("Erro ao carregar convênios")
+    } else {
+      setConvenios(data || [])
+    }
+    setLoading(false)
+  }
 
-      setLista(data || [])
+  async function salvarConvenio() {
+    if (!form.nome.trim() || !form.desconto) {
+      alert("Preencha nome e desconto")
+      return
     }
 
-  const salvar =
-    async () => {
-      if (
-        !form.nome ||
-        !form.desconto
-      ) {
-        alert(
-          "Preencha nome e desconto"
-        )
-        return
-      }
+    setSalvando(true)
 
-      const payload = {
-        nome: form.nome,
-        tipo: form.tipo,
-        desconto:
-          Number(
-            form.desconto
-          ),
-        ativo: form.ativo,
-      }
+    const payload = {
+      nome: form.nome.trim(),
+      tipo: form.tipo,
+      desconto: Number(form.desconto),
+      ativo: true,
+    }
 
-      let error = null
-
-      if (editando) {
-        const res =
-          await supabase
-            .from(
-              "convenios"
-            )
-            .update(payload)
-            .eq(
-              "id",
-              editando
-            )
-
-        error = res.error
-      } else {
-        const res =
-          await supabase
-            .from(
-              "convenios"
-            )
-            .insert([
-              payload,
-            ])
-
-        error = res.error
-      }
-
+    if (editandoId) {
+      // Editar
+      const { error } = await supabase
+        .from("convenios")
+        .update(payload)
+        .eq("id", editandoId)
       if (error) {
-        alert(
-          "Erro ao salvar"
-        )
-        return
+        alert("Erro ao atualizar: " + error.message)
+      } else {
+        alert("Convênio atualizado")
+        cancelarEdicao()
+        carregarConvenios()
       }
-
-      alert(
-        editando
-          ? "Convênio atualizado"
-          : "Convênio cadastrado"
-      )
-
-      setForm(vazio)
-      setEditando(null)
-      carregar()
+    } else {
+      // Cadastrar novo
+      const { error } = await supabase
+        .from("convenios")
+        .insert([payload])
+      if (error) {
+        alert("Erro ao cadastrar: " + error.message)
+      } else {
+        alert("Convênio cadastrado")
+        setForm({ nome: "", tipo: "percentual", desconto: "" })
+        carregarConvenios()
+      }
     }
+    setSalvando(false)
+  }
 
-  const editar =
-    (item: any) => {
-      setForm({
-        nome:
-          item.nome,
-        tipo:
-          item.tipo,
-        desconto:
-          item.desconto,
-        ativo:
-          item.ativo,
-      })
-
-      setEditando(
-        item.id
-      )
+  async function alternarAtivo(convenio: Convenio) {
+    const novoStatus = !convenio.ativo
+    const { error } = await supabase
+      .from("convenios")
+      .update({ ativo: novoStatus })
+      .eq("id", convenio.id)
+    if (error) {
+      alert("Erro ao alterar status: " + error.message)
+    } else {
+      carregarConvenios()
     }
+  }
 
-  const excluir =
-    async (
-      id: string
-    ) => {
-      const ok =
-        confirm(
-          "Excluir convênio?"
-        )
-
-      if (!ok) return
-
-      await supabase
-        .from(
-          "convenios"
-        )
-        .delete()
-        .eq("id", id)
-
-      carregar()
+  async function excluirConvenio(id: string) {
+    if (!confirm("Excluir convênio permanentemente?")) return
+    const { error } = await supabase.from("convenios").delete().eq("id", id)
+    if (error) {
+      alert("Erro ao excluir: " + error.message)
+    } else {
+      alert("Convênio excluído")
+      if (editandoId === id) cancelarEdicao()
+      carregarConvenios()
     }
+  }
+
+  function editarConvenio(convenio: Convenio) {
+    setEditandoId(convenio.id)
+    setForm({
+      nome: convenio.nome,
+      tipo: convenio.tipo,
+      desconto: convenio.desconto.toString(),
+    })
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null)
+    setForm({ nome: "", tipo: "percentual", desconto: "" })
+  }
 
   return (
-    <div className="p-6">
+    <AdminGuard>
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">Convênios e Descontos</h1>
 
-      <h1 className="text-2xl font-bold mb-6">
-        Convênios e Descontos
-      </h1>
-
-      {/* FORM */}
-      <div className="bg-white text-black p-6 rounded-2xl shadow max-w-lg mb-6">
-
-        <input
-          className="input"
-          placeholder="Nome do convênio"
-          value={form.nome}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              nome:
-                e.target.value,
-            })
-          }
-        />
-
-        <select
-          className="input"
-          value={form.tipo}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              tipo:
-                e.target.value,
-            })
-          }
-        >
-          <option value="percentual">
-            Percentual %
-          </option>
-
-          <option value="valor">
-            Valor Fixo R$
-          </option>
-        </select>
-
-        <input
-          className="input"
-          placeholder="Desconto"
-          value={
-            form.desconto
-          }
-          onChange={(e) =>
-            setForm({
-              ...form,
-              desconto:
-                e.target.value,
-            })
-          }
-        />
-
-        <select
-          className="input"
-          value={
-            form.ativo
-              ? "true"
-              : "false"
-          }
-          onChange={(e) =>
-            setForm({
-              ...form,
-              ativo:
-                e.target
-                  .value ===
-                "true",
-            })
-          }
-        >
-          <option value="true">
-            Ativo
-          </option>
-
-          <option value="false">
-            Inativo
-          </option>
-        </select>
-
-        <button
-          onClick={salvar}
-          className="btn"
-        >
-          {editando
-            ? "Salvar Alterações"
-            : "Cadastrar Convênio"}
-        </button>
-
-      </div>
-
-      {/* LISTA */}
-      <div className="bg-white text-black rounded-2xl shadow overflow-hidden">
-
-        <table className="w-full">
-
-          <thead className="bg-zinc-100">
-            <tr>
-              <th className="p-3 text-left">
-                Nome
-              </th>
-
-              <th className="p-3 text-left">
-                Tipo
-              </th>
-
-              <th className="p-3 text-left">
-                Desconto
-              </th>
-
-              <th className="p-3 text-left">
-                Status
-              </th>
-
-              <th className="p-3 text-left">
-                Ações
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-
-            {lista.map(
-              (item) => (
-                <tr
-                  key={
-                    item.id
-                  }
-                  className="border-t"
-                >
-                  <td className="p-3">
-                    {
-                      item.nome
-                    }
-                  </td>
-
-                  <td className="p-3">
-                    {item.tipo ===
-                    "percentual"
-                      ? "%"
-                      : "R$"}
-                  </td>
-
-                  <td className="p-3">
-                    {
-                      item.desconto
-                    }
-                  </td>
-
-                  <td className="p-3">
-                    {item.ativo
-                      ? "Ativo"
-                      : "Inativo"}
-                  </td>
-
-                  <td className="p-3 flex gap-2">
-
-                    <button
-                      onClick={() =>
-                        editar(
-                          item
-                        )
-                      }
-                      className="mini azul"
-                    >
-                      Editar
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        excluir(
-                          item.id
-                        )
-                      }
-                      className="mini vermelho"
-                    >
-                      Excluir
-                    </button>
-
-                  </td>
-                </tr>
-              )
+        {/* Formulário */}
+        <div className="bg-white p-4 rounded-xl shadow mb-6">
+          <h2 className="font-semibold text-lg mb-3">
+            {editandoId ? "Editar Convênio" : "Novo Convênio"}
+          </h2>
+          <div className="grid md:grid-cols-3 gap-3">
+            <input
+              type="text"
+              placeholder="Nome do convênio"
+              className="p-2 border rounded"
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            />
+            <select
+              className="p-2 border rounded"
+              value={form.tipo}
+              onChange={(e) => setForm({ ...form, tipo: e.target.value })}
+            >
+              <option value="percentual">Percentual (%)</option>
+              <option value="fixo">Valor Fixo (R$)</option>
+            </select>
+            <input
+              type="number"
+              step="0.01"
+              placeholder={form.tipo === "percentual" ? "Ex: 10" : "Ex: 20.00"}
+              className="p-2 border rounded"
+              value={form.desconto}
+              onChange={(e) => setForm({ ...form, desconto: e.target.value })}
+            />
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={salvarConvenio}
+              disabled={salvando}
+              className="bg-red-600 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {salvando ? "Salvando..." : editandoId ? "Salvar Alterações" : "Cadastrar"}
+            </button>
+            {editandoId && (
+              <button onClick={cancelarEdicao} className="bg-gray-300 px-4 py-2 rounded">
+                Cancelar
+              </button>
             )}
+          </div>
+        </div>
 
-          </tbody>
+        {/* Lista de convênios */}
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          {loading ? (
+            <div className="p-6 text-center">Carregando...</div>
+          ) : convenios.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">Nenhum convênio cadastrado.</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="p-3 text-left">Nome</th>
+                  <th className="p-3 text-left">Tipo</th>
+                  <th className="p-3 text-left">Desconto</th>
+                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-left">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {convenios.map((c) => (
+                  <tr key={c.id} className="border-t">
+                    <td className="p-3">{c.nome}</td>
+                    <td className="p-3">{c.tipo === "percentual" ? "%" : "R$"}</td>
+                    <td className="p-3">
+                      {c.tipo === "percentual" ? `${c.desconto}%` : `R$ ${c.desconto.toFixed(2)}`}
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          c.ativo ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {c.ativo ? "Ativo" : "Inativo"}
+                      </span>
+                    </td>
+                    <td className="p-3 flex gap-2">
+                      <button
+                        onClick={() => editarConvenio(c)}
+                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => alternarAtivo(c)}
+                        className={`px-3 py-1 rounded text-sm ${
+                          c.ativo ? "bg-yellow-500" : "bg-green-500"
+                        } text-white`}
+                      >
+                        {c.ativo ? "Inativar" : "Ativar"}
+                      </button>
+                      <button
+                        onClick={() => excluirConvenio(c.id)}
+                        className="bg-red-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Excluir
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-        </table>
-
+        <div className="mt-4 text-xs text-gray-500">
+          * Convênios ativos aparecem na matrícula e nas mensalidades para aplicação de desconto.
+        </div>
       </div>
-
-      <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ccc;
-          border-radius: 10px;
-          margin-bottom: 12px;
-        }
-
-        .btn {
-          width: 100%;
-          background: red;
-          color: white;
-          padding: 12px;
-          border-radius: 10px;
-        }
-
-        .mini {
-          color: white;
-          padding: 8px 12px;
-          border-radius: 8px;
-          font-size: 12px;
-        }
-
-        .azul {
-          background: #2563eb;
-        }
-
-        .vermelho {
-          background: #dc2626;
-        }
-      `}</style>
-
-    </div>
+    </AdminGuard>
   )
 }

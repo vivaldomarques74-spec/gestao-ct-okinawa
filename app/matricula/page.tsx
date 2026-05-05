@@ -1,856 +1,276 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
 export default function Matricula() {
   const [loading, setLoading] = useState(false)
-
-  const [menor, setMenor] = useState(false)
-  const [saude, setSaude] = useState(false)
-  const [remedio, setRemedio] = useState(false)
-
-  const [modalidadesLista, setModalidadesLista] = useState<any[]>([])
-  const [turmasDb, setTurmasDb] = useState<any[]>([])
-  const [conveniosDb, setConveniosDb] = useState<any[]>([])
-
-  const [form, setForm] = useState<any>({
-    nome: "",
-    cpf: "",
-    rg: "",
-    nascimento: "",
-    whatsapp: "",
-    email: "",
-    endereco: "",
-
-    responsavelNome: "",
-    responsavelCpf: "",
-    responsavelWhatsapp: "",
-    responsavelEmail: "",
-
-    problemaSaude: "",
-    remedioUso: "",
-
-    formaPagamento: "Pix",
-    tipoCartao: "",
-    parcelas: "1x",
-
-    convenio: "Nenhum",
-
-    valorBase: 0,
-    valorFinal: 0,
-    desconto: 0,
-
-    modalidades: [
-      {
-        modalidade: "",
-        turma: "",
-      },
-    ],
+  const [caixaAberto, setCaixaAberto] = useState<any>(null)
+  const [modalidades, setModalidades] = useState<any[]>([])
+  const [todasTurmas, setTodasTurmas] = useState<any[]>([])
+  const [convenios, setConvenios] = useState<any[]>([])
+  const [aluno, setAluno] = useState({
+    nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "",
+    menor: false,
+    responsavel_nome: "", responsavel_cpf: "", responsavel_whatsapp: "", responsavel_email: "",
+    problema_saude: false, saude_detalhes: "",
+    usa_remedio: false, remedio_detalhes: "",
+    convenio_id: "",
   })
+  const [itensMatricula, setItensMatricula] = useState<{ modalidadeId: string; turmaId: string }[]>([])
+  const [formaPagamento, setFormaPagamento] = useState("Pix")
+  const [tipoCartao, setTipoCartao] = useState("Crédito")
+  const [parcelas, setParcelas] = useState("1x")
+  const [valorGeralTotal, setValorGeralTotal] = useState(0)
+  const [valorFinal, setValorFinal] = useState(0)
 
-  useEffect(() => {
-    carregarBases()
-  }, [])
+  useEffect(() => { carregarDados(); verificarCaixa() }, [])
+  useEffect(() => { calcularValores() }, [itensMatricula, aluno.convenio_id, formaPagamento])
 
-  useEffect(() => {
-    recalcularValores()
-  }, [
-    form.modalidades,
-    form.formaPagamento,
-    form.convenio,
-    modalidadesLista,
-    conveniosDb,
-  ])
-
-  async function carregarBases() {
-    const { data: mods } = await supabase
-      .from("modalidades")
-      .select("*")
-      .eq("status", "ativo")
-      .order("nome")
-
-    const { data: tur } = await supabase
-      .from("turmas")
-      .select("*")
-      .eq("status", "ativo")
-      .order("nome")
-
-    const { data: conv } = await supabase
-      .from("convenios")
-      .select("*")
-      .eq("ativo", true)
-      .order("nome")
-
-    setModalidadesLista(mods || [])
-    setTurmasDb(tur || [])
-    setConveniosDb(conv || [])
+  async function verificarCaixa() {
+    const { data } = await supabase.from("caixa_turno").select("*").eq("status", "aberto").maybeSingle()
+    setCaixaAberto(data)
   }
 
-  function recalcularValores() {
-    let baseTotal = 0
+  async function carregarDados() {
+    const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
+    setModalidades(mods || [])
+    const { data: turmasData } = await supabase.from("turmas").select("*, modalidades!inner(*)").eq("status", "ativo")
+    setTodasTurmas(turmasData || [])
+    const { data: conv } = await supabase.from("convenios").select("*").eq("ativo", true)
+    setConvenios(conv || [])
+  }
 
-    form.modalidades.forEach((m: any) => {
-      const mod = modalidadesLista.find(
-        (x: any) => x.nome === m.modalidade
-      )
-
-      if (mod) {
-        baseTotal += Number(mod.valor_geral || 0)
-      }
-    })
-
+  function calcularValores() {
+    let totalGeral = 0
+    for (const item of itensMatricula) {
+      const turma = todasTurmas.find(t => t.id === item.turmaId)
+      if (turma?.modalidades) totalGeral += Number(turma.modalidades.valor_geral || 0)
+    }
+    setValorGeralTotal(totalGeral)
     let desconto = 0
-
-    if (
-      form.formaPagamento === "Pix" ||
-      form.formaPagamento === "Dinheiro"
-    ) {
-      desconto += 10
+    if (aluno.convenio_id?.trim()) {
+      const convenio = convenios.find(c => c.id === aluno.convenio_id)
+      if (convenio) desconto += convenio.tipo === "percentual" ? totalGeral * (convenio.desconto / 100) : convenio.desconto
     }
-
-    if (form.convenio !== "Nenhum") {
-      const conv = conveniosDb.find(
-        (c: any) => c.nome === form.convenio
-      )
-
-      if (conv) {
-        if (conv.tipo === "percentual") {
-          desconto +=
-            (baseTotal *
-              Number(conv.desconto || 0)) /
-            100
-        } else {
-          desconto += Number(
-            conv.desconto || 0
-          )
-        }
-      }
-    }
-
-    let valorFinal =
-      baseTotal - desconto
-
-    if (valorFinal < 0)
-      valorFinal = 0
-
-    setForm((prev: any) => ({
-      ...prev,
-      valorBase: baseTotal,
-      valorFinal,
-      desconto,
-    }))
+    if (formaPagamento === "Pix" || formaPagamento === "Dinheiro") desconto += 10
+    setValorFinal(Math.max(0, totalGeral - desconto))
   }
 
-  function setCampo(
-    campo: string,
-    valor: any
-  ) {
-    setForm({
-      ...form,
-      [campo]: valor,
-    })
+  function adicionarModalidade() { setItensMatricula([...itensMatricula, { modalidadeId: "", turmaId: "" }]) }
+  function removerModalidade(i: number) { const nova = [...itensMatricula]; nova.splice(i,1); setItensMatricula(nova) }
+  function atualizarModalidade(i: number, modalidadeId: string) { const nova = [...itensMatricula]; nova[i] = { modalidadeId, turmaId: "" }; setItensMatricula(nova) }
+  function atualizarTurma(i: number, turmaId: string) { const nova = [...itensMatricula]; nova[i].turmaId = turmaId; setItensMatricula(nova) }
+  function turmasDaModalidade(modalidadeId: string) { return todasTurmas.filter(t => t.modalidade_id === modalidadeId) }
+
+  async function gerarNumeroMatricula() {
+    const { data, error } = await supabase
+      .from("alunos")
+      .select("numero_matricula")
+      .order("numero_matricula", { ascending: false })
+      .limit(1);
+    if (error || !data || data.length === 0) return "CT001";
+    const ultimo = data[0].numero_matricula;
+    const match = ultimo.match(/CT(\d+)/);
+    let num = match ? parseInt(match[1], 10) : 0;
+    if (isNaN(num)) return "CT001";
+    num++;
+    return `CT${num.toString().padStart(3, "0")}`;
   }
 
-  function adicionarModalidade() {
-    setForm({
-      ...form,
-      modalidades: [
-        ...form.modalidades,
-        {
-          modalidade: "",
-          turma: "",
-        },
-      ],
-    })
-  }
-
-  function removerModalidade(
-    index: number
-  ) {
-    const lista = [
-      ...form.modalidades,
-    ]
-
-    lista.splice(index, 1)
-
-    setForm({
-      ...form,
-      modalidades:
-        lista.length > 0
-          ? lista
-          : [
-              {
-                modalidade:
-                  "",
-                turma: "",
-              },
-            ],
-    })
-  }
-
-  function atualizarModalidade(
-    index: number,
-    campo: string,
-    valor: string
-  ) {
-    const lista = [
-      ...form.modalidades,
-    ]
-
-    lista[index] = {
-      ...lista[index],
-      [campo]: valor,
-    }
-
-    if (campo === "modalidade") {
-      lista[index].turma = ""
-    }
-
-    setForm({
-      ...form,
-      modalidades: lista,
-    })
-  }
-
-  async function gerarMensalidades(
-    alunoId: any,
-    nome: string,
-    item: any,
-    professor: string,
-    valorBase: number
-  ) {
-    for (let i = 0; i < 120; i++) {
-      const venc = new Date()
-      venc.setMonth(
-        venc.getMonth() + i
-      )
-
-      await supabase
-        .from("mensalidades")
-        .insert([
-          {
-            aluno_id: alunoId,
-            nome,
-            modalidade:
-              item.modalidade,
-            turma: item.turma,
-            professor,
-            valor: valorBase,
-            valor_base:
-              valorBase,
-            vencimento: venc,
-            status:
-              i === 0
-                ? "pago"
-                : "pendente",
-          },
-        ])
-    }
-  }
-
-  function gerarRecibo() {
-    const agora = new Date()
-
-    const mods =
-      form.modalidades
-        .filter(
-          (m: any) =>
-            m.modalidade &&
-            m.turma
-        )
-        .map(
-          (m: any) =>
-            `${m.modalidade} - ${m.turma}`
-        )
-        .join("<br/>")
-
-    const w = window.open(
-      "",
-      "",
-      "width=320,height=700"
-    )
-
-    w?.document.write(`
-<html>
-<body style="font-family:monospace;width:58mm">
-<div style="text-align:center">
-<img src="${window.location.origin}/logo.png" style="width:90px"/>
-<h3>CT OKINAWA</h3>
-</div>
-
-<hr/>
-
-<p><b>RECIBO MATRÍCULA</b></p>
-<p>Nome: ${form.nome}</p>
-<p>CPF: ${form.cpf}</p>
-
-<hr/>
-
-<p>${mods}</p>
-
-<hr/>
-
-<p>Base: R$ ${Number(
-      form.valorBase
-    ).toFixed(2)}</p>
-
-<p>Desconto: R$ ${Number(
-      form.desconto
-    ).toFixed(2)}</p>
-
-<p><b>Total: R$ ${Number(
-      form.valorFinal
-    ).toFixed(2)}</b></p>
-
-<hr/>
-
-<p>${form.formaPagamento}</p>
-
-<p>${agora.toLocaleDateString()} ${agora.toLocaleTimeString()}</p>
-
-<script>
-window.onload=()=>{
-window.print()
-setTimeout(()=>window.close(),500)
-}
-</script>
-</body>
-</html>
-`)
-    w?.document.close()
-  }
-
-  async function salvarDados() {
+  async function salvarMatricula() {
+    if (!caixaAberto) return alert("❌ Caixa não está aberto.")
+    if (!aluno.nome.trim() || itensMatricula.length === 0 || itensMatricula.some(i => !i.turmaId))
+      return alert("Preencha nome e selecione pelo menos uma turma.")
+    setLoading(true)
     try {
-      setLoading(true)
-
-      const {
-        data: caixaAberto,
-      } = await supabase
-        .from("caixa_turno")
-        .select("*")
-        .eq("status", "aberto")
-        .single()
-
-      if (!caixaAberto) {
-        alert("Nenhum caixa aberto.")
-        return
+      const numeroMatricula = await gerarNumeroMatricula()
+      const alunoParaInserir = {
+        nome: aluno.nome.trim(), cpf: aluno.cpf || null, rg: aluno.rg || null,
+        nascimento: aluno.nascimento || null, whatsapp: aluno.whatsapp || null,
+        email: aluno.email || null, endereco: aluno.endereco || null,
+        menor: aluno.menor,
+        responsavel_nome: aluno.responsavel_nome || null,
+        responsavel_cpf: aluno.responsavel_cpf || null,
+        responsavel_whatsapp: aluno.responsavel_whatsapp || null,
+        responsavel_email: aluno.responsavel_email || null,
+        problema_saude: aluno.problema_saude, saude_detalhes: aluno.saude_detalhes || null,
+        usa_remedio: aluno.usa_remedio, remedio_detalhes: aluno.remedio_detalhes || null,
+        convenio_id: aluno.convenio_id?.trim() || null,
+        numero_matricula: numeroMatricula, status: "ativo"
       }
 
-      const principal =
-        form.modalidades.find(
-          (m: any) =>
-            m.modalidade &&
-            m.turma
-        ) || {
-          modalidade: "",
-          turma: "",
-        }
+      const { data: novoAluno, error: errAluno } = await supabase.from("alunos").insert([alunoParaInserir]).select().single()
+      if (errAluno) throw new Error(`Erro ao inserir aluno: ${errAluno.message}`)
+      const alunoId = novoAluno.id
 
-      const {
-        data: aluno,
-        error,
-      } = await supabase
-        .from("alunos")
-        .insert([
-          {
-            nome: form.nome,
-            cpf: form.cpf,
-            rg: form.rg,
-            nascimento:
-              form.nascimento ||
-              null,
-            whatsapp:
-              form.whatsapp,
-            email: form.email,
-            endereco:
-              form.endereco,
-            convenio:
-              form.convenio,
-            status: "Ativo",
-            turma:
-              principal.turma,
-            modalidade:
-              principal.modalidade,
-
-            menor,
-
-            responsavel_nome:
-              menor
-                ? form.responsavelNome
-                : null,
-
-            responsavel_cpf:
-              menor
-                ? form.responsavelCpf
-                : null,
-
-            responsavel_whatsapp:
-              menor
-                ? form.responsavelWhatsapp
-                : null,
-
-            responsavel_email:
-              menor
-                ? form.responsavelEmail
-                : null,
-
-            problema_saude:
-              saude,
-
-            saude_detalhes:
-              saude
-                ? form.problemaSaude
-                : null,
-
-            usa_remedio:
-              remedio,
-
-            remedio_detalhes:
-              remedio
-                ? form.remedioUso
-                : null,
-          },
-        ])
-        .select()
-        .single()
-
-      if (
-        error ||
-        !aluno
-      ) {
-        alert(
-          error?.message ||
-            "Erro ao cadastrar aluno."
-        )
-        return
-      }
-
-      const validas =
-        form.modalidades.filter(
-          (m: any) =>
-            m.modalidade &&
-            m.turma
-        )
-
-      for (const item of validas) {
-        const turmaInfo =
-          turmasDb.find(
-            (t: any) =>
-              t.nome ===
-              item.turma
-          )
-
-        const modInfo =
-          modalidadesLista.find(
-            (x: any) =>
-              x.nome ===
-              item.modalidade
-          )
-
-        const professor =
-          turmaInfo?.professor ||
-          ""
-
-        const valorBase =
-          Number(
-            modInfo?.valor_geral ||
-              0
-          )
-
-        await supabase
+      const matriculasInseridas = []
+      for (const item of itensMatricula) {
+        const { data: mat, error: errMat } = await supabase
           .from("matriculas")
-          .insert([
-            {
-              aluno_id:
-                aluno.id,
-              nome:
-                form.nome,
-              modalidade:
-                item.modalidade,
-              turma:
-                item.turma,
-              professor,
-              valor_base:
-                valorBase,
-              status:
-                "ativo",
-            },
-          ])
-
-        await gerarMensalidades(
-          aluno.id,
-          form.nome,
-          item,
-          professor,
-          valorBase
-        )
+          .insert([{ aluno_id: alunoId, turma_id: item.turmaId, status: "ativo" }])
+          .select()
+          .single()
+        if (errMat) throw new Error(`Erro ao vincular turma: ${errMat.message}`)
+        matriculasInseridas.push(mat)
       }
 
-      await supabase
-        .from("caixa")
-        .insert([
-          {
-            tipo:
-              "matricula",
-            nome:
-              form.nome,
-            valor:
-              form.valorFinal,
-            valor_base:
-              form.valorBase,
-            forma_pagamento:
-              form.formaPagamento,
-            tipo_cartao:
-              form.tipoCartao ||
-              null,
-            parcelas:
-              form.parcelas ||
-              null,
-            professor:
-              turmasDb.find(
-                (t: any) =>
-                  t.nome ===
-                  principal.turma
-              )?.professor ||
-              "",
-            turma:
-              principal.turma,
-            modalidade:
-              principal.modalidade,
-            data:
-              new Date(),
-            caixa_id:
-              caixaAberto.id,
-          },
-        ])
+      const hoje = new Date()
+      const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + 1, hoje.getDate()).toISOString().slice(0,10)
+      for (const mat of matriculasInseridas) {
+        const turma = todasTurmas.find(t => t.id === mat.turma_id)
+        const valor = turma?.modalidades?.valor_geral || 0
+        const valorBase = turma?.modalidades?.valor_base || 0
+        const { error: errMens } = await supabase.from("mensalidades").insert([{
+          aluno_id: alunoId, matricula_id: mat.id, vencimento,
+          valor, valor_base: valorBase, status: "pendente"
+        }])
+        if (errMens) throw new Error(`Erro ao gerar mensalidade: ${errMens.message}`)
+      }
 
-      gerarRecibo()
+      const { error: errCaixa } = await supabase.from("caixa").insert([{
+        caixa_turno_id: caixaAberto.id,
+        tipo: "matricula",
+        nome: `Matrícula ${aluno.nome}`,
+        valor: valorFinal,
+        valor_base: valorGeralTotal,
+        forma_pagamento: formaPagamento,
+        tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
+        parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
+        aluno_id: alunoId,
+        data: new Date().toISOString(),
+        cancelado: false
+      }])
+      if (errCaixa) throw new Error(`Erro ao registrar no caixa: ${errCaixa.message}`)
 
-      alert(
-        "Matrícula efetuada com sucesso!"
-      )
-
-      window.location.reload()
-    } catch (e) {
-      alert(
-        "Erro geral ao salvar."
-      )
+      gerarRecibo(numeroMatricula)
+      alert(`✅ Matrícula realizada! Nº ${numeroMatricula}`)
+      setAluno({
+        nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "",
+        menor: false, responsavel_nome: "", responsavel_cpf: "", responsavel_whatsapp: "", responsavel_email: "",
+        problema_saude: false, saude_detalhes: "", usa_remedio: false, remedio_detalhes: "",
+        convenio_id: ""
+      })
+      setItensMatricula([])
+    } catch (err: any) {
+      console.error("ERRO:", err)
+      alert("Erro: " + err.message)
     } finally {
       setLoading(false)
     }
   }
 
+  function gerarRecibo(numeroMatricula: string) {
+    const detalhes = itensMatricula.map(item => {
+      const turma = todasTurmas.find(t => t.id === item.turmaId)
+      return `${turma?.modalidades?.nome} - ${turma?.nome}`
+    }).join(", ")
+    const w = window.open("", "", "width=400,height=600")
+    w?.document.write(`<html><head><title>Recibo</title><style>body{width:58mm;margin:0 auto;padding:2mm;font-family:monospace}</style></head><body>
+      <div style="text-align:center"><img src="${window.location.origin}/logo.png" style="max-width:40mm"/><br/><b>CT OKINAWA</b><br/>Disciplina • Respeito • Evolução</div>
+      <hr/><h3 style="text-align:center">RECIBO DE MATRÍCULA</h3><hr/>
+      <div><b>Nº:</b> ${numeroMatricula}</div>
+      <div><b>Aluno:</b> ${aluno.nome}</div>
+      <div><b>CPF:</b> ${aluno.cpf || '---'}</div>
+      <div><b>Turmas:</b> ${detalhes}</div>
+      <hr/>
+      <div>Valor geral: R$ ${valorGeralTotal.toFixed(2)}</div>
+      <div>Desconto: R$ ${(valorGeralTotal - valorFinal).toFixed(2)}</div>
+      <div><b>Total pago: R$ ${valorFinal.toFixed(2)}</b></div>
+      <div>Pagamento: ${formaPagamento}${formaPagamento==="Cartão"?` - ${tipoCartao} ${parcelas}`:""}</div>
+      <hr/><div>Data: ${new Date().toLocaleString()}</div>
+      <div style="text-align:center;margin-top:8px">"Confie no Senhor"<br/>Provérbios 3:5</div>
+      <div style="text-align:center">Obrigado!</div>
+      <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 200); }</script>
+    </body></html>`)
+    w?.document.close()
+  }
+
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">
-        Matrícula
-      </h1>
-
-      <div className="bg-white p-6 rounded-2xl shadow text-black">
-
-        <div className="grid grid-cols-2 gap-4">
-
-          <input
-            className="input"
-            placeholder="Nome"
-            onChange={(e) =>
-              setCampo(
-                "nome",
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            className="input"
-            placeholder="CPF"
-            onChange={(e) =>
-              setCampo(
-                "cpf",
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            className="input"
-            placeholder="RG"
-            onChange={(e) =>
-              setCampo(
-                "rg",
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            type="date"
-            className="input"
-            onChange={(e) =>
-              setCampo(
-                "nascimento",
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            className="input"
-            placeholder="WhatsApp"
-            onChange={(e) =>
-              setCampo(
-                "whatsapp",
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            className="input"
-            placeholder="Email"
-            onChange={(e) =>
-              setCampo(
-                "email",
-                e.target.value
-              )
-            }
-          />
-
-          <input
-            className="input col-span-2"
-            placeholder="Endereço"
-            onChange={(e) =>
-              setCampo(
-                "endereco",
-                e.target.value
-              )
-            }
-          />
-
+    <div className="max-w-4xl mx-auto p-6 bg-white rounded-xl shadow">
+      <h1 className="text-2xl font-bold mb-6">Nova Matrícula</h1>
+      {!caixaAberto && <div className="bg-red-100 p-3 mb-4 rounded">⚠️ Caixa fechado. Abra o caixa primeiro.</div>}
+      <div className="space-y-4">
+        {/* Dados pessoais */}
+        <div className="grid md:grid-cols-2 gap-3">
+          <input className="p-2 border rounded" placeholder="Nome completo" value={aluno.nome} onChange={e => setAluno({...aluno, nome: e.target.value})} />
+          <input className="p-2 border rounded" placeholder="CPF" value={aluno.cpf} onChange={e => setAluno({...aluno, cpf: e.target.value})} />
+          <input className="p-2 border rounded" placeholder="RG" value={aluno.rg} onChange={e => setAluno({...aluno, rg: e.target.value})} />
+          <input type="date" className="p-2 border rounded" value={aluno.nascimento} onChange={e => setAluno({...aluno, nascimento: e.target.value})} />
+          <input className="p-2 border rounded" placeholder="WhatsApp" value={aluno.whatsapp} onChange={e => setAluno({...aluno, whatsapp: e.target.value})} />
+          <input className="p-2 border rounded" placeholder="Email" value={aluno.email} onChange={e => setAluno({...aluno, email: e.target.value})} />
+          <input className="p-2 border rounded col-span-2" placeholder="Endereço" value={aluno.endereco} onChange={e => setAluno({...aluno, endereco: e.target.value})} />
         </div>
-
-        <div className="mt-6">
-
-          <label>
-            <input
-              type="checkbox"
-              checked={menor}
-              onChange={() =>
-                setMenor(!menor)
-              }
-            />{" "}
-            Menor de idade
-          </label>
-
+        {/* Menor, saúde, modalidades, convênio, pagamento, totais, botão (mesmo código anterior, omitido por brevidade) */}
+        {/* ... mantenha o restante do JSX como no seu arquivo atual ... */}
+        <label className="flex items-center gap-2"><input type="checkbox" checked={aluno.menor} onChange={e => setAluno({...aluno, menor: e.target.checked})} /> Menor de idade</label>
+        {aluno.menor && (
+          <div className="grid md:grid-cols-2 gap-3 pl-4">
+            <input className="p-2 border rounded" placeholder="Responsável" value={aluno.responsavel_nome} onChange={e => setAluno({...aluno, responsavel_nome: e.target.value})} />
+            <input className="p-2 border rounded" placeholder="CPF Responsável" value={aluno.responsavel_cpf} onChange={e => setAluno({...aluno, responsavel_cpf: e.target.value})} />
+            <input className="p-2 border rounded" placeholder="WhatsApp Responsável" value={aluno.responsavel_whatsapp} onChange={e => setAluno({...aluno, responsavel_whatsapp: e.target.value})} />
+            <input className="p-2 border rounded" placeholder="Email Responsável" value={aluno.responsavel_email} onChange={e => setAluno({...aluno, responsavel_email: e.target.value})} />
+          </div>
+        )}
+        <div className="border p-3 rounded">
+          <label><input type="checkbox" checked={aluno.problema_saude} onChange={e => setAluno({...aluno, problema_saude: e.target.checked})} /> Problema de saúde</label>
+          {aluno.problema_saude && <textarea className="w-full border rounded mt-1" value={aluno.saude_detalhes} onChange={e => setAluno({...aluno, saude_detalhes: e.target.value})} />}
+          <label className="mt-2 block"><input type="checkbox" checked={aluno.usa_remedio} onChange={e => setAluno({...aluno, usa_remedio: e.target.checked})} /> Uso de remédio</label>
+          {aluno.usa_remedio && <textarea className="w-full border rounded mt-1" value={aluno.remedio_detalhes} onChange={e => setAluno({...aluno, remedio_detalhes: e.target.value})} />}
         </div>
-
-        <div className="mt-6">
-
-          <h2 className="font-bold mb-2">
-            Modalidades
-          </h2>
-
-          {form.modalidades.map(
-            (m: any, i: number) => {
-              const turmas =
-                turmasDb.filter(
-                  (t: any) =>
-                    t.modalidade ===
-                    m.modalidade
-                )
-
-              return (
-                <div
-                  key={i}
-                  className="grid grid-cols-3 gap-2 mb-3"
-                >
-
-                  <select
-                    className="input"
-                    value={
-                      m.modalidade
-                    }
-                    onChange={(e) =>
-                      atualizarModalidade(
-                        i,
-                        "modalidade",
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="">
-                      Modalidade
-                    </option>
-
-                    {modalidadesLista.map(
-                      (mod: any) => (
-                        <option
-                          key={mod.id}
-                          value={
-                            mod.nome
-                          }
-                        >
-                          {mod.nome}
-                        </option>
-                      )
-                    )}
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <label className="font-semibold">Modalidades e Turmas</label>
+            <button type="button" onClick={adicionarModalidade} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">+ Adicionar Modalidade</button>
+          </div>
+          {itensMatricula.map((item, idx) => {
+            const turmasDisponiveis = turmasDaModalidade(item.modalidadeId)
+            return (
+              <div key={idx} className="border p-3 rounded mb-2">
+                <div className="flex gap-2">
+                  <select className="flex-1 p-2 border rounded" value={item.modalidadeId} onChange={e => atualizarModalidade(idx, e.target.value)}>
+                    <option value="">Selecione a modalidade</option>
+                    {modalidades.map(mod => <option key={mod.id} value={mod.id}>{mod.nome} - R$ {mod.valor_geral}</option>)}
                   </select>
-
-                  <select
-                    className="input"
-                    value={m.turma}
-                    onChange={(e) =>
-                      atualizarModalidade(
-                        i,
-                        "turma",
-                        e.target.value
-                      )
-                    }
-                  >
-                    <option value="">
-                      Turma
-                    </option>
-
-                    {turmas.map(
-                      (t: any) => (
-                        <option
-                          key={t.id}
-                          value={
-                            t.nome
-                          }
-                        >
-                          {t.nome}
-                        </option>
-                      )
-                    )}
+                  <select className="flex-1 p-2 border rounded" value={item.turmaId} onChange={e => atualizarTurma(idx, e.target.value)} disabled={!item.modalidadeId}>
+                    <option value="">Selecione a turma</option>
+                    {turmasDisponiveis.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
                   </select>
-
-                  <button
-                    onClick={() =>
-                      removerModalidade(
-                        i
-                      )
-                    }
-                    className="bg-red-600 text-white rounded"
-                  >
-                    Remover
-                  </button>
-
+                  <button type="button" onClick={() => removerModalidade(idx)} className="bg-red-500 text-white px-3 rounded">X</button>
                 </div>
-              )
-            }
-          )}
-
-          <button
-            onClick={
-              adicionarModalidade
-            }
-            className="bg-zinc-800 text-white px-4 py-2 rounded"
-          >
-            + Adicionar Modalidade
-          </button>
-
+              </div>
+            )
+          })}
+          {itensMatricula.length === 0 && <p className="text-gray-400 text-sm">Clique em "Adicionar Modalidade" para começar.</p>}
         </div>
-
-        <div className="mt-6">
-
-          <select
-            className="input"
-            value={form.convenio}
-            onChange={(e) =>
-              setCampo(
-                "convenio",
-                e.target.value
-              )
-            }
-          >
-            <option value="Nenhum">
-              Nenhum
-            </option>
-
-            {conveniosDb.map(
-              (c: any) => (
-                <option
-                  key={c.id}
-                  value={c.nome}
-                >
-                  {c.nome}
-                </option>
-              )
+        <select className="w-full p-2 border rounded" value={aluno.convenio_id} onChange={e => setAluno({...aluno, convenio_id: e.target.value})}>
+          <option value="">Nenhum convênio</option>
+          {convenios.map(c => <option key={c.id} value={c.id}>{c.nome} - {c.tipo === "percentual" ? `${c.desconto}%` : `R$ ${c.desconto}`}</option>)}
+        </select>
+        <select className="w-full p-2 border rounded" value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)}>
+          <option>Pix</option><option>Dinheiro</option><option>Cartão</option>
+        </select>
+        {formaPagamento === "Cartão" && (
+          <>
+            <select className="w-full p-2 border rounded" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}>
+              <option>Débito</option><option>Crédito</option>
+            </select>
+            {tipoCartao === "Crédito" && (
+              <select className="w-full p-2 border rounded" value={parcelas} onChange={e => setParcelas(e.target.value)}>
+                <option>1x</option><option>2x</option><option>3x</option>
+              </select>
             )}
-          </select>
-
+          </>
+        )}
+        <div className="bg-gray-100 p-4 rounded">
+          <p>Valor geral: R$ {valorGeralTotal.toFixed(2)}</p>
+          <p>Desconto: R$ {(valorGeralTotal - valorFinal).toFixed(2)}</p>
+          <p className="font-bold text-lg">Total a pagar: R$ {valorFinal.toFixed(2)}</p>
         </div>
-
-        <div className="mt-6">
-
-          <select
-            className="input mb-2"
-            value={
-              form.formaPagamento
-            }
-            onChange={(e) =>
-              setCampo(
-                "formaPagamento",
-                e.target.value
-              )
-            }
-          >
-            <option>Pix</option>
-            <option>Dinheiro</option>
-            <option>Cartão</option>
-          </select>
-
-        </div>
-
-        <div className="mt-6 bg-black text-white p-4 rounded">
-
-          <p>
-            Base: R${" "}
-            {Number(
-              form.valorBase
-            ).toFixed(2)}
-          </p>
-
-          <p>
-            Desconto: R${" "}
-            {Number(
-              form.desconto
-            ).toFixed(2)}
-          </p>
-
-          <p className="text-xl font-bold">
-            Total: R${" "}
-            {Number(
-              form.valorFinal
-            ).toFixed(2)}
-          </p>
-
-        </div>
-
-        <button
-          onClick={salvarDados}
-          disabled={loading}
-          className="mt-6 w-full bg-red-600 text-white p-3 rounded-lg"
-        >
-          {loading
-            ? "Salvando..."
-            : "Matricular e imprimir recibo"}
+        <button onClick={salvarMatricula} disabled={loading || !caixaAberto} className="w-full bg-red-600 text-white p-3 rounded disabled:opacity-50">
+          {loading ? "Salvando..." : "Confirmar Matrícula"}
         </button>
-
       </div>
-
-      <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-        }
-      `}</style>
-
     </div>
   )
 }

@@ -1,15 +1,11 @@
 export function Card({ children, className = "" }: any) {
   return (
-    <div className={`rounded-2xl shadow-md ${className}`}>
+    <div className={`bg-white rounded-xl shadow-sm border border-gray-100 ${className}`}>
       {children}
     </div>
   )
 }
 
 export function CardContent({ children, className = "" }: any) {
-  return (
-    <div className={className}>
-      {children}
-    </div>
-  )
+  return <div className={className}>{children}</div>
 }

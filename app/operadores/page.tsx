@@ -2,385 +2,219 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
+import AdminGuard from "../../components/AdminGuard"
 
-export default function Operadores() {
-  const vazio = {
-    nome: "",
-    codigo: "",
-    tipo: "secretaria",
-  }
+type Operador = {
+  id: string
+  nome: string
+  codigo: string
+  ativo: boolean
+  created_at?: string
+}
 
-  const [form, setForm] =
-    useState(vazio)
-
-  const [lista, setLista] =
-    useState<any[]>([])
-
-  const [editandoId, setEditandoId] =
-    useState<string | null>(null)
-
-  const [loading, setLoading] =
-    useState(false)
+export default function OperadoresPage() {
+  const [operadores, setOperadores] = useState<Operador[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ nome: "", codigo: "" })
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    carregar()
+    carregarOperadores()
   }, [])
 
-  const carregar =
-    async () => {
-      setLoading(true)
+  async function carregarOperadores() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from("operadores")
+      .select("*")
+      .order("nome")
+    if (error) {
+      console.error(error)
+      alert("Erro ao carregar operadores")
+    } else {
+      setOperadores(data || [])
+    }
+    setLoading(false)
+  }
 
-      const { data } =
-        await supabase
-          .from("operadores")
-          .select("*")
-          .order("nome")
-
-      setLista(data || [])
-      setLoading(false)
+  async function salvarOperador() {
+    if (!form.nome.trim() || !form.codigo.trim()) {
+      alert("Preencha nome e código")
+      return
     }
 
-  const salvarOperador =
-    async () => {
-      if (
-        !form.nome ||
-        !form.codigo
-      ) {
-        alert(
-          "Preencha nome e código"
-        )
-        return
-      }
+    setSalvando(true)
 
-      let error = null
-
-      if (editandoId) {
-        const res =
-          await supabase
-            .from(
-              "operadores"
-            )
-            .update({
-              nome: form.nome,
-              codigo:
-                form.codigo,
-              tipo: form.tipo,
-            })
-            .eq(
-              "id",
-              editandoId
-            )
-
-        error = res.error
+    if (editandoId) {
+      // Editar
+      const { error } = await supabase
+        .from("operadores")
+        .update({ nome: form.nome.trim(), codigo: form.codigo.trim() })
+        .eq("id", editandoId)
+      if (error) {
+        alert("Erro ao atualizar: " + error.message)
       } else {
-        const res =
-          await supabase
-            .from(
-              "operadores"
-            )
-            .insert([
-              {
-                nome: form.nome,
-                codigo:
-                  form.codigo,
-                tipo: form.tipo,
-              },
-            ])
-
-        error = res.error
+        alert("Operador atualizado")
+        cancelarEdicao()
+        carregarOperadores()
       }
-
+    } else {
+      // Cadastrar novo
+      const { error } = await supabase
+        .from("operadores")
+        .insert([{ nome: form.nome.trim(), codigo: form.codigo.trim(), ativo: true }])
       if (error) {
-        alert(
-          "Erro ao salvar operador"
-        )
-        return
+        alert("Erro ao cadastrar: " + error.message)
+      } else {
+        alert("Operador cadastrado")
+        setForm({ nome: "", codigo: "" })
+        carregarOperadores()
       }
-
-      alert(
-        editandoId
-          ? "Operador atualizado"
-          : "Operador cadastrado"
-      )
-
-      setForm(vazio)
-      setEditandoId(null)
-
-      carregar()
     }
+    setSalvando(false)
+  }
 
-  const editar =
-    (item: any) => {
-      setForm({
-        nome:
-          item.nome || "",
-        codigo:
-          item.codigo || "",
-        tipo:
-          item.tipo ||
-          "secretaria",
-      })
-
-      setEditandoId(
-        item.id
-      )
-
-      window.scrollTo({
-        top: 0,
-        behavior:
-          "smooth",
-      })
+  async function alternarAtivo(operador: Operador) {
+    const novoStatus = !operador.ativo
+    const { error } = await supabase
+      .from("operadores")
+      .update({ ativo: novoStatus })
+      .eq("id", operador.id)
+    if (error) {
+      alert("Erro ao alterar status: " + error.message)
+    } else {
+      carregarOperadores()
     }
+  }
 
-  const excluir =
-    async (
-      id: string
-    ) => {
-      const ok =
-        confirm(
-          "Deseja excluir este operador?"
-        )
-
-      if (!ok) return
-
-      const { error } =
-        await supabase
-          .from(
-            "operadores"
-          )
-          .delete()
-          .eq("id", id)
-
-      if (error) {
-        alert(
-          "Erro ao excluir"
-        )
-        return
-      }
-
-      carregar()
+  async function excluirOperador(id: string) {
+    if (!confirm("Excluir operador permanentemente?")) return
+    const { error } = await supabase.from("operadores").delete().eq("id", id)
+    if (error) {
+      alert("Erro ao excluir: " + error.message)
+    } else {
+      alert("Operador excluído")
+      if (editandoId === id) cancelarEdicao()
+      carregarOperadores()
     }
+  }
 
-  const cancelarEdicao =
-    () => {
-      setEditandoId(null)
-      setForm(vazio)
-    }
+  function editarOperador(operador: Operador) {
+    setEditandoId(operador.id)
+    setForm({ nome: operador.nome, codigo: operador.codigo })
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null)
+    setForm({ nome: "", codigo: "" })
+  }
 
   return (
-    <div className="p-6">
+    <AdminGuard>
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">Operadores de Caixa</h1>
 
-      <h1 className="text-2xl font-bold mb-6">
-        Cadastro de Operadores
-      </h1>
+        {/* Formulário */}
+        <div className="bg-white p-4 rounded-xl shadow mb-6">
+          <h2 className="font-semibold text-lg mb-3">
+            {editandoId ? "Editar Operador" : "Novo Operador"}
+          </h2>
+          <div className="grid md:grid-cols-2 gap-3">
+            <input
+              type="text"
+              placeholder="Nome do operador"
+              className="p-2 border rounded"
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            />
+            <input
+              type="text"
+              placeholder="Código numérico (ex: 1234)"
+              className="p-2 border rounded"
+              value={form.codigo}
+              onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+            />
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={salvarOperador}
+              disabled={salvando}
+              className="bg-red-600 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {salvando ? "Salvando..." : editandoId ? "Salvar Alterações" : "Cadastrar"}
+            </button>
+            {editandoId && (
+              <button onClick={cancelarEdicao} className="bg-gray-300 px-4 py-2 rounded">
+                Cancelar
+              </button>
+            )}
+          </div>
+        </div>
 
-      {/* FORM */}
-      <div className="bg-white p-6 rounded-2xl shadow text-black max-w-md mb-6">
-
-        <input
-          placeholder="Nome"
-          className="input mb-3"
-          value={form.nome}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              nome:
-                e.target.value,
-            })
-          }
-        />
-
-        <input
-          placeholder="Código"
-          className="input mb-3"
-          value={form.codigo}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              codigo:
-                e.target.value,
-            })
-          }
-        />
-
-        <select
-          className="input mb-3"
-          value={form.tipo}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              tipo:
-                e.target.value,
-            })
-          }
-        >
-          <option value="secretaria">
-            Secretaria
-          </option>
-
-          <option value="admin">
-            Admin
-          </option>
-        </select>
-
-        <button
-          onClick={
-            salvarOperador
-          }
-          className="w-full bg-red-600 text-white p-3 rounded-lg mb-2"
-        >
-          {editandoId
-            ? "Salvar Alterações"
-            : "Salvar Operador"}
-        </button>
-
-        {editandoId && (
-          <button
-            onClick={
-              cancelarEdicao
-            }
-            className="w-full bg-zinc-800 text-white p-3 rounded-lg"
-          >
-            Cancelar Edição
-          </button>
-        )}
-
-      </div>
-
-      {/* LISTA */}
-      <div className="bg-white rounded-2xl shadow overflow-hidden text-black">
-
-        <table className="w-full">
-
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3 text-left">
-                Nome
-              </th>
-
-              <th className="p-3 text-left">
-                Código
-              </th>
-
-              <th className="p-3 text-left">
-                Tipo
-              </th>
-
-              <th className="p-3 text-left">
-                Ações
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="p-4"
-                >
-                  Carregando...
-                </td>
-              </tr>
-            ) : lista.length ===
-              0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="p-4"
-                >
-                  Nenhum operador cadastrado
-                </td>
-              </tr>
-            ) : (
-              lista.map(
-                (
-                  item,
-                  i
-                ) => (
-                  <tr
-                    key={i}
-                    className="border-t"
-                  >
+        {/* Lista de operadores */}
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          {loading ? (
+            <div className="p-6 text-center">Carregando...</div>
+          ) : operadores.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">Nenhum operador cadastrado.</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="p-3 text-left">Nome</th>
+                  <th className="p-3 text-left">Código</th>
+                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-left">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operadores.map((op) => (
+                  <tr key={op.id} className="border-t">
+                    <td className="p-3">{op.nome}</td>
+                    <td className="p-3">{op.codigo}</td>
                     <td className="p-3">
-                      {
-                        item.nome
-                      }
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          op.ativo ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {op.ativo ? "Ativo" : "Inativo"}
+                      </span>
                     </td>
-
-                    <td className="p-3">
-                      {
-                        item.codigo
-                      }
-                    </td>
-
-                    <td className="p-3 capitalize">
-                      {
-                        item.tipo
-                      }
-                    </td>
-
                     <td className="p-3 flex gap-2">
-
                       <button
-                        onClick={() =>
-                          editar(
-                            item
-                          )
-                        }
-                        className="mini azul"
+                        onClick={() => editarOperador(op)}
+                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm"
                       >
                         Editar
                       </button>
-
                       <button
-                        onClick={() =>
-                          excluir(
-                            item.id
-                          )
-                        }
-                        className="mini vermelho"
+                        onClick={() => alternarAtivo(op)}
+                        className={`px-3 py-1 rounded text-sm ${
+                          op.ativo ? "bg-yellow-500" : "bg-green-500"
+                        } text-white`}
+                      >
+                        {op.ativo ? "Inativar" : "Ativar"}
+                      </button>
+                      <button
+                        onClick={() => excluirOperador(op.id)}
+                        className="bg-red-600 text-white px-3 py-1 rounded text-sm"
                       >
                         Excluir
                       </button>
-
                     </td>
                   </tr>
-                )
-              )
-            )}
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-          </tbody>
-
-        </table>
-
+        <div className="mt-4 text-xs text-gray-500">
+          * O código do operador é usado para abrir/fechar o caixa.
+        </div>
       </div>
-
-      <style jsx>{`
-        .input {
-          width: 100%;
-          padding: 12px;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-        }
-
-        .mini {
-          color: white;
-          padding: 8px 12px;
-          border-radius: 8px;
-          font-size: 12px;
-        }
-
-        .azul {
-          background: #2563eb;
-        }
-
-        .vermelho {
-          background: #dc2626;
-        }
-      `}</style>
-
-    </div>
+    </AdminGuard>
   )
 }
