@@ -37,7 +37,8 @@ type ParceiroVenda = {
 
 export default function RelatoriosPage() {
   const [aba, setAba] = useState("professores")
-  
+
+  // Professores
   const [professores, setProfessores] = useState<Professor[]>([])
   const [professorSelecionado, setProfessorSelecionado] = useState("")
   const [dataInicioProf, setDataInicioProf] = useState("")
@@ -46,6 +47,7 @@ export default function RelatoriosPage() {
   const [totalComissaoProf, setTotalComissaoProf] = useState(0)
   const [loadingProf, setLoadingProf] = useState(false)
 
+  // Presença
   const [presencas, setPresencas] = useState<Presenca[]>([])
   const [turmasList, setTurmasList] = useState<any[]>([])
   const [filtroTurmaPresenca, setFiltroTurmaPresenca] = useState("")
@@ -53,12 +55,14 @@ export default function RelatoriosPage() {
   const [dataFimPres, setDataFimPres] = useState("")
   const [loadingPres, setLoadingPres] = useState(false)
 
+  // Turmas
   const [modalidades, setModalidades] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
   const [modalidadeSelecionada, setModalidadeSelecionada] = useState("")
   const [turmaSelecionada, setTurmaSelecionada] = useState("")
   const [alunosTurma, setAlunosTurma] = useState<any[]>([])
 
+  // Parceiros
   const [parceiros, setParceiros] = useState<any[]>([])
   const [parceiroSelecionado, setParceiroSelecionado] = useState("")
   const [dataInicioParceiro, setDataInicioParceiro] = useState("")
@@ -78,15 +82,21 @@ export default function RelatoriosPage() {
   }, [professorSelecionado, dataInicioProf, dataFimProf])
 
   useEffect(() => {
-    if (aba === "presenca") carregarPresencas()
+    if (aba === "presenca") {
+      carregarPresencas()
+    }
   }, [filtroTurmaPresenca, dataInicioPres, dataFimPres])
 
   useEffect(() => {
-    if (aba === "turmas") carregarModalidadesTurmas()
+    if (aba === "turmas") {
+      carregarModalidadesTurmas()
+    }
   }, [modalidadeSelecionada])
 
   useEffect(() => {
-    if (aba === "turmas" && turmaSelecionada) carregarAlunosPorTurma()
+    if (aba === "turmas" && turmaSelecionada) {
+      carregarAlunosPorTurma()
+    }
   }, [turmaSelecionada])
 
   useEffect(() => {
@@ -130,39 +140,36 @@ export default function RelatoriosPage() {
     }
     const turmaIds = turmasProfessor.map(t => t.id)
 
-    // Buscar matrículas ativas nestas turmas, com os dados do aluno via join
-    const { data: matriculas, error: errMat } = await supabase
+    const { data: matriculas } = await supabase
       .from("matriculas")
-      .select("id, aluno_id, turma_id")
+      .select("id, aluno_id, turma_id, alunos ( id, nome )")
       .in("turma_id", turmaIds)
       .eq("status", "ativo")
-    if (errMat || !matriculas?.length) {
+
+    if (!matriculas?.length) {
       setMovimentacoesProf([])
       setTotalComissaoProf(0)
       setLoadingProf(false)
       return
     }
 
-    const alunoIds = matriculas.map(m => m.aluno_id)
-    // Buscar dados dos alunos separadamente
-    const { data: alunosData, error: errAlunos } = await supabase
-      .from("alunos")
-      .select("id, nome")
-      .in("id", alunoIds)
-    if (errAlunos) {
-      console.error("Erro ao buscar alunos:", errAlunos)
-    }
-    const mapAlunoNome = new Map()
-    alunosData?.forEach(a => mapAlunoNome.set(a.id, a.nome))
-
-    // Mapear matrícula para turma e aluno
     const matriculaPorAluno = new Map()
-    matriculas.forEach(m => {
+    for (const m of matriculas) {
+      let alunoNome = "?"
+      if (m.alunos) {
+        if (Array.isArray(m.alunos) && m.alunos.length > 0) {
+          alunoNome = m.alunos[0]?.nome || "?"
+        } else if (typeof m.alunos === "object" && m.alunos !== null) {
+          alunoNome = (m.alunos as any).nome || "?"
+        }
+      }
       matriculaPorAluno.set(m.aluno_id, {
         turmaId: m.turma_id,
-        alunoNome: mapAlunoNome.get(m.aluno_id) || "?"
+        alunoNome,
       })
-    })
+    }
+
+    const alunoIds = Array.from(matriculaPorAluno.keys())
 
     const { data: movimentacoes } = await supabase
       .from("caixa")
@@ -179,14 +186,14 @@ export default function RelatoriosPage() {
     const lista: Movimentacao[] = []
     let total = 0
     for (const mov of movimentacoes || []) {
-      const matInfo = matriculaPorAluno.get(mov.aluno_id)
-      if (!matInfo) continue
+      const info = matriculaPorAluno.get(mov.aluno_id)
+      if (!info) continue
       const valorBase = Number(mov.valor_base || 0)
       const comissao = valorBase * (comissaoPercent / 100)
       lista.push({
         id: mov.id,
-        aluno_nome: matInfo.alunoNome,
-        turma_nome: turmasProfessor.find(t => t.id === matInfo.turmaId)?.nome || "",
+        aluno_nome: info.alunoNome,
+        turma_nome: turmasProfessor.find(t => t.id === info.turmaId)?.nome || "",
         data: mov.data,
         tipo: mov.tipo,
         valor_base: valorBase,
@@ -223,21 +230,30 @@ export default function RelatoriosPage() {
 
   async function carregarPresencas() {
     setLoadingPres(true)
-    let query = supabase
-      .from("presencas")
-      .select("*, alunos(nome), turmas(nome)")
-      .order("data", { ascending: false })
+    let query = supabase.from("presencas").select("*, alunos(nome), turmas(nome)").order("data", { ascending: false })
     if (filtroTurmaPresenca) query = query.eq("turma_id", filtroTurmaPresenca)
     if (dataInicioPres) query = query.gte("data", dataInicioPres)
     if (dataFimPres) query = query.lte("data", dataFimPres)
     const { data } = await query
-    const lista = (data || []).map(p => ({
-      id: p.id,
-      aluno_nome: p.alunos?.nome || "?",
-      turma_nome: p.turmas?.nome || "?",
-      data: p.data,
-      status: p.status
-    }))
+    const lista = (data || []).map(p => {
+      let alunoNome = "?"
+      if (p.alunos) {
+        if (Array.isArray(p.alunos) && p.alunos.length > 0) alunoNome = p.alunos[0]?.nome || "?"
+        else if (typeof p.alunos === "object") alunoNome = (p.alunos as any).nome || "?"
+      }
+      let turmaNome = "?"
+      if (p.turmas) {
+        if (Array.isArray(p.turmas) && p.turmas.length > 0) turmaNome = p.turmas[0]?.nome || "?"
+        else if (typeof p.turmas === "object") turmaNome = (p.turmas as any).nome || "?"
+      }
+      return {
+        id: p.id,
+        aluno_nome: alunoNome,
+        turma_nome: turmaNome,
+        data: p.data,
+        status: p.status,
+      }
+    })
     setPresencas(lista)
     setLoadingPres(false)
   }
@@ -255,15 +271,13 @@ export default function RelatoriosPage() {
 
   function imprimirPresencas() {
     const w = window.open("", "", "width=800,height=600")
-    w?.document.write(`
-      <html><head><title>Relatório de Presenças</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
-      <h1>CT OKINAWA</h1><h2>Relatório de Presenças</h2><p>Período: ${dataInicioPres || "início"} a ${dataFimPres || "fim"}</p>
-      <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th></tr></thead><tbody>
-      ${presencas.map(p => `<tr><td>${p.aluno_nome}</td><td>${p.turma_nome}</td><td>${new Date(p.data).toLocaleDateString()}</td><td>${p.status}</td></tr>`).join('')}
-      </tbody></table>
-      <script>window.onload=()=>window.print()</script>
-      </body></html>
-    `)
+    w?.document.write(`<html><head><title>Relatório de Presenças</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
+    <h1>CT OKINAWA</h1><h2>Relatório de Presenças</h2><p>Período: ${dataInicioPres || "início"} a ${dataFimPres || "fim"}</p>
+    <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th></tr></thead><tbody>
+    ${presencas.map(p => `<tr><td>${p.aluno_nome}</td><td>${p.turma_nome}</td><td>${new Date(p.data).toLocaleDateString()}</td><td>${p.status}</td></tr>`).join('')}
+    </tbody></table>
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`)
     w?.document.close()
   }
 
@@ -271,19 +285,15 @@ export default function RelatoriosPage() {
     if (!turmaSelecionada) return
     const { data: matriculas } = await supabase
       .from("matriculas")
-      .select("aluno_id")
+      .select("alunos(id, nome, cpf, status)")
       .eq("turma_id", turmaSelecionada)
       .eq("status", "ativo")
-    if (!matriculas?.length) {
-      setAlunosTurma([])
-      return
-    }
-    const alunoIds = matriculas.map(m => m.aluno_id)
-    const { data: alunos } = await supabase
-      .from("alunos")
-      .select("id, nome, cpf, status")
-      .in("id", alunoIds)
-    setAlunosTurma(alunos || [])
+    const alunos = matriculas?.map(m => {
+      const a = m.alunos
+      if (Array.isArray(a) && a.length > 0) return a[0]
+      return a
+    }).filter(Boolean) || []
+    setAlunosTurma(alunos)
   }
 
   async function carregarRelatorioParceiro() {
@@ -300,7 +310,7 @@ export default function RelatoriosPage() {
       id: v.id,
       produto: v.descricao || v.nome || "Produto",
       valor: Number(v.valor),
-      data: v.data
+      data: v.data,
     }))
     const total = lista.reduce((acc, v) => acc + v.valor, 0)
     setVendasParceiro(lista)
@@ -311,17 +321,15 @@ export default function RelatoriosPage() {
   function imprimirRelatorioParceiro() {
     const parceiro = parceiros.find(p => p.id === parceiroSelecionado)
     const w = window.open("", "", "width=800,height=600")
-    w?.document.write(`
-      <html><head><title>Relatório Parceiro</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
-      <h1>CT OKINAWA</h1><h2>Relatório de Vendas - Parceiro ${parceiro?.nome}</h2>
-      <p>Período: ${new Date(dataInicioParceiro).toLocaleDateString()} a ${new Date(dataFimParceiro).toLocaleDateString()}</p>
-      <tr><thead><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead><tbody>
-      ${vendasParceiro.map(v => `</td><td>${v.produto}</td><td>R$ ${v.valor.toFixed(2)}</td><td>${new Date(v.data).toLocaleDateString()}</td></tr>`).join('')}
-      </tbody></table>
-      <h3>Total: R$ ${totalVendasParceiro.toFixed(2)}</h3>
-      <script>window.onload=()=>window.print()</script>
-      </body></html>
-    `)
+    w?.document.write(`<html><head><title>Relatório Parceiro</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
+    <h1>CT OKINAWA</h1><h2>Relatório de Vendas - Parceiro ${parceiro?.nome}</h2>
+    <p>Período: ${new Date(dataInicioParceiro).toLocaleDateString()} a ${new Date(dataFimParceiro).toLocaleDateString()}</p>
+    <table><thead><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead><tbody>
+    ${vendasParceiro.map(v => `<tr><td>${v.produto}</td><td>R$ ${v.valor.toFixed(2)}</td><td>${new Date(v.data).toLocaleDateString()}</td></tr>`).join('')}
+    </tbody></table>
+    <h3>Total: R$ ${totalVendasParceiro.toFixed(2)}</h3>
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`)
     w?.document.close()
   }
 
@@ -336,13 +344,14 @@ export default function RelatoriosPage() {
       <div className="max-w-7xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-6">Central de Relatórios</h1>
         <div className="flex gap-2 mb-6 border-b">
-          <button className={`px-4 py-2 ${aba === 'professores' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('professores')}>Professores</button>
-          <button className={`px-4 py-2 ${aba === 'presenca' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('presenca')}>Presença</button>
-          <button className={`px-4 py-2 ${aba === 'turmas' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('turmas')}>Modalidades / Turmas</button>
-          <button className={`px-4 py-2 ${aba === 'parceiros' ? 'bg-red-600 text-white rounded-t' : 'text-gray-600'}`} onClick={() => setAba('parceiros')}>Parceiros</button>
+          <button className={`px-4 py-2 ${aba === "professores" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("professores")}>Professores</button>
+          <button className={`px-4 py-2 ${aba === "presenca" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("presenca")}>Presença</button>
+          <button className={`px-4 py-2 ${aba === "turmas" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("turmas")}>Modalidades / Turmas</button>
+          <button className={`px-4 py-2 ${aba === "parceiros" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("parceiros")}>Parceiros</button>
         </div>
 
-        {aba === 'professores' && (
+        {/* Professores */}
+        {aba === "professores" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-3 gap-4 mb-4">
               <select className="p-2 border rounded" value={professorSelecionado} onChange={e => setProfessorSelecionado(e.target.value)}>
@@ -353,21 +362,21 @@ export default function RelatoriosPage() {
               <input type="date" className="p-2 border rounded" value={dataFimProf} onChange={e => setDataFimProf(e.target.value)} />
             </div>
             {loadingProf && <p>Carregando...</p>}
-            {!loadingProf && movimentacoesProf.length === 0 && professorSelecionado && dataInicioProf && dataFimProf && (
-              <p className="text-gray-500">Nenhuma movimentação paga no período.</p>
-            )}
+            {!loadingProf && movimentacoesProf.length === 0 && professorSelecionado && dataInicioProf && dataFimProf && <p className="text-gray-500">Nenhuma movimentação paga no período.</p>}
             {movimentacoesProf.length > 0 && (
               <>
                 <div className="overflow-auto">
                   <table className="w-full border">
-                    <thead className="bg-gray-100"><tr><th className="p-2">Aluno</th><th>Turma</th><th>Data</th><th>Tipo</th><th>Valor Base</th><th>Comissão</th></tr></thead>
+                    <thead className="bg-gray-100">
+                      <tr><th className="p-2">Aluno</th><th>Turma</th><th>Data</th><th>Tipo</th><th>Valor Base</th><th>Comissão</th></tr>
+                    </thead>
                     <tbody>
                       {movimentacoesProf.map(m => (
                         <tr key={m.id}>
                           <td className="p-2">{m.aluno_nome}</td>
                           <td className="p-2">{m.turma_nome}</td>
                           <td className="p-2">{new Date(m.data).toLocaleDateString()}</td>
-                          <td className="p-2">{m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td>
+                          <td className="p-2">{m.tipo === "matricula" ? "Matrícula" : "Mensalidade"}</td>
                           <td className="p-2">R$ {m.valor_base.toFixed(2)}</td>
                           <td className="p-2">R$ {m.valor_comissao.toFixed(2)}</td>
                         </tr>
@@ -384,7 +393,8 @@ export default function RelatoriosPage() {
           </div>
         )}
 
-        {aba === 'presenca' && (
+        {/* Presença */}
+        {aba === "presenca" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-4 gap-4 mb-4">
               <select className="p-2 border rounded" value={filtroTurmaPresenca} onChange={e => setFiltroTurmaPresenca(e.target.value)}>
@@ -399,7 +409,9 @@ export default function RelatoriosPage() {
             {loadingPres && <p>Carregando...</p>}
             <div className="overflow-auto">
               <table className="w-full border">
-                <thead className="bg-gray-100"><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th><th>Ações</th></tr></thead>
+                <thead className="bg-gray-100">
+                  <tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th><th>Ações</th></tr>
+                </thead>
                 <tbody>
                   {presencas.map(p => (
                     <tr key={p.id}>
@@ -421,12 +433,13 @@ export default function RelatoriosPage() {
           </div>
         )}
 
-        {aba === 'turmas' && (
+        {/* Turmas */}
+        {aba === "turmas" && (
           <div className="grid md:grid-cols-3 gap-6">
             <div className="bg-white p-4 rounded-xl shadow">
               <h3 className="font-bold mb-2">Modalidades</h3>
               {modalidades.map(mod => (
-                <button key={mod.id} onClick={() => setModalidadeSelecionada(mod.id)} className={`block w-full text-left p-2 rounded ${modalidadeSelecionada === mod.id ? 'bg-red-600 text-white' : 'bg-gray-100'}`}>
+                <button key={mod.id} onClick={() => setModalidadeSelecionada(mod.id)} className={`block w-full text-left p-2 rounded ${modalidadeSelecionada === mod.id ? "bg-red-600 text-white" : "bg-gray-100"}`}>
                   {mod.nome}
                 </button>
               ))}
@@ -434,22 +447,20 @@ export default function RelatoriosPage() {
             <div className="bg-white p-4 rounded-xl shadow">
               <h3 className="font-bold mb-2">Turmas</h3>
               {turmas.filter(t => t.modalidade_id === modalidadeSelecionada).map(turma => (
-                <button key={turma.id} onClick={() => setTurmaSelecionada(turma.id)} className={`block w-full text-left p-2 rounded ${turmaSelecionada === turma.id ? 'bg-red-600 text-white' : 'bg-gray-100'}`}>
+                <button key={turma.id} onClick={() => setTurmaSelecionada(turma.id)} className={`block w-full text-left p-2 rounded ${turmaSelecionada === turma.id ? "bg-red-600 text-white" : "bg-gray-100"}`}>
                   {turma.nome}
                 </button>
               ))}
             </div>
             <div className="bg-white p-4 rounded-xl shadow">
-              <h3 className="font-bold mb-2">Alunos - {turmas.find(t => t.id === turmaSelecionada)?.nome || ''}</h3>
-              {alunosTurma.length === 0 && <p className="text-gray-500">Nenhum aluno matriculado.</p>}
-              <ul className="list-disc pl-5">
-                {alunosTurma.map(aluno => <li key={aluno.id}>{aluno.nome} - {aluno.cpf} ({aluno.status})</li>)}
-              </ul>
+              <h3 className="font-bold mb-2">Alunos - {turmas.find(t => t.id === turmaSelecionada)?.nome || ""}</h3>
+              {alunosTurma.length === 0 ? <p className="text-gray-500">Nenhum aluno matriculado.</p> : <ul className="list-disc pl-5">{alunosTurma.map(aluno => <li key={aluno.id}>{aluno.nome} - {aluno.cpf} ({aluno.status})</li>)}</ul>}
             </div>
           </div>
         )}
 
-        {aba === 'parceiros' && (
+        {/* Parceiros */}
+        {aba === "parceiros" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-3 gap-4 mb-4">
               <select className="p-2 border rounded" value={parceiroSelecionado} onChange={e => setParceiroSelecionado(e.target.value)}>
@@ -460,22 +471,14 @@ export default function RelatoriosPage() {
               <input type="date" className="p-2 border rounded" value={dataFimParceiro} onChange={e => setDataFimParceiro(e.target.value)} />
             </div>
             {loadingParceiro && <p>Carregando...</p>}
-            {!loadingParceiro && vendasParceiro.length === 0 && parceiroSelecionado && dataInicioParceiro && dataFimParceiro && (
-              <p className="text-gray-500">Nenhuma venda no período.</p>
-            )}
+            {!loadingParceiro && vendasParceiro.length === 0 && parceiroSelecionado && dataInicioParceiro && dataFimParceiro && <p className="text-gray-500">Nenhuma venda no período.</p>}
             {vendasParceiro.length > 0 && (
               <>
                 <div className="overflow-auto">
                   <table className="w-full border">
-                    <thead className="bg-gray-100"></tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead>
+                    <thead className="bg-gray-100"><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead>
                     <tbody>
-                      {vendasParceiro.map(v => (
-                        <tr key={v.id}>
-                          <td className="p-2">{v.produto}</td>
-                          <td className="p-2">R$ {v.valor.toFixed(2)}</td>
-                          <td className="p-2">{new Date(v.data).toLocaleDateString()}</td>
-                        </tr>
-                      ))}
+                      {vendasParceiro.map(v => <tr key={v.id}><td className="p-2">{v.produto}</td><td className="p-2">R$ {v.valor.toFixed(2)}</td><td className="p-2">{new Date(v.data).toLocaleDateString()}</td></tr>)}
                     </tbody>
                   </table>
                 </div>
