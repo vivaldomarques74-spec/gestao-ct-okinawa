@@ -44,6 +44,7 @@ const menuAdmin = [
   { href: "/convenios", icon: Handshake, label: "Convênios" },
   { href: "/parceiros", icon: Package, label: "Gestão de Parceiros" },
   { href: "/produtos", icon: Boxes, label: "Catálogo de Produtos" },
+  { href: "/estoque", icon: Package, label: "Entrada de Estoque" },
   { href: "/sorteios", icon: Gift, label: "Sorteios / Promoções" },
   { href: "/modalidades", icon: GraduationCap, label: "Modalidades" },
   { href: "/turmas", icon: School, label: "Turmas" },

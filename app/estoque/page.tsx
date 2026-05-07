@@ -1,225 +1,189 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { supabase } from "../../lib/supabase"
-import AdminGuard from "../../components/AdminGuard"
-
-type Produto = {
-  id: string
-  nome: string
-  estoque: number
-  custo: number
-}
-
-type Movimentacao = {
-  id: string
-  produto_id: string
-  produto_nome: string
-  tipo: "entrada" | "saida"
-  quantidade: number
-  custo_unitario: number
-  observacao: string
-  created_at: string
-}
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
+import AdminGuard from "../../components/AdminGuard";
+import { Package, Plus, Search } from "lucide-react";
 
 export default function EstoquePage() {
-  const [produtos, setProdutos] = useState<Produto[]>([])
-  const [produtoSelecionado, setProdutoSelecionado] = useState("")
-  const [quantidade, setQuantidade] = useState("")
-  const [custoUnitario, setCustoUnitario] = useState("")
-  const [observacao, setObservacao] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>([])
-  const [carregandoMov, setCarregandoMov] = useState(false)
+  const [produtos, setProdutos] = useState<any[]>([]);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<any>(null);
+  const [quantidade, setQuantidade] = useState(1);
+  const [observacao, setObservacao] = useState("");
+  const [busca, setBusca] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    carregarProdutos()
-    carregarMovimentacoes()
-  }, [])
+    carregarProdutos();
+  }, []);
 
   async function carregarProdutos() {
-    const { data } = await supabase
-      .from("produtos")
-      .select("id, nome, estoque, custo")
-      .eq("status", "ativo")
-      .order("nome")
-    setProdutos(data || [])
+    setLoading(true);
+    const { data } = await supabase.from("produtos").select("*").order("nome");
+    setProdutos(data || []);
+    setLoading(false);
   }
 
-  async function carregarMovimentacoes() {
-    setCarregandoMov(true)
-    const { data } = await supabase
-      .from("estoque_movimentacoes")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50)
-    setMovimentacoes(data || [])
-    setCarregandoMov(false)
-  }
+  const produtosFiltrados = produtos.filter(p =>
+    p.nome.toLowerCase().includes(busca.toLowerCase())
+  );
 
-  async function registrarEntrada() {
-    if (!produtoSelecionado) {
-      alert("Selecione um produto")
-      return
-    }
-    const qtd = Number(quantidade)
-    if (isNaN(qtd) || qtd <= 0) {
-      alert("Quantidade inválida")
-      return
-    }
-    const custo = Number(custoUnitario)
-    if (isNaN(custo) || custo < 0) {
-      alert("Custo unitário inválido (use 0 se não quiser alterar)")
-      return
-    }
+  async function adicionarEstoque() {
+    if (!produtoSelecionado) return alert("Selecione um produto");
+    if (quantidade <= 0) return alert("Quantidade deve ser maior que zero");
 
-    setLoading(true)
+    setSalvando(true);
+    const novaQuantidade = (produtoSelecionado.estoque || 0) + quantidade;
 
-    // 1. Buscar produto atual
-    const produto = produtos.find(p => p.id === produtoSelecionado)
-    if (!produto) {
-      alert("Produto não encontrado")
-      setLoading(false)
-      return
-    }
-
-    // 2. Atualizar estoque e (opcional) custo
-    const novoEstoque = produto.estoque + qtd
-    const updateData: any = { estoque: novoEstoque }
-    if (custo > 0) {
-      updateData.custo = custo
-    }
-
-    const { error: updateError } = await supabase
+    // 1. Atualizar estoque do produto
+    const { error: errProd } = await supabase
       .from("produtos")
-      .update(updateData)
-      .eq("id", produtoSelecionado)
+      .update({ estoque: novaQuantidade })
+      .eq("id", produtoSelecionado.id);
 
-    if (updateError) {
-      alert("Erro ao atualizar estoque: " + updateError.message)
-      setLoading(false)
-      return
+    if (errProd) {
+      alert("Erro ao atualizar: " + errProd.message);
+      setSalvando(false);
+      return;
     }
 
-    // 3. Registrar movimentação
-    const { error: movError } = await supabase
-      .from("estoque_movimentacoes")
-      .insert([{
-        produto_id: produtoSelecionado,
-        produto_nome: produto.nome,
-        tipo: "entrada",
-        quantidade: qtd,
-        custo_unitario: custo > 0 ? custo : produto.custo,
-        observacao: observacao || "Entrada de estoque"
-      }])
+    // 2. Registrar movimentação
+    const { error: errMov } = await supabase.from("estoque_movimentacoes").insert([{
+      produto_id: produtoSelecionado.id,
+      produto: produtoSelecionado.nome,
+      tipo: "entrada",
+      quantidade: quantidade,
+      custo: produtoSelecionado.custo || 0,
+      observacao: observacao || "Entrada manual",
+      created_at: new Date().toISOString()
+    }]);
 
-    if (movError) {
-      alert("Erro ao registrar movimentação: " + movError.message)
-    } else {
-      alert("Entrada de estoque registrada com sucesso!")
-      setQuantidade("")
-      setCustoUnitario("")
-      setObservacao("")
-      setProdutoSelecionado("")
-      await carregarProdutos()
-      await carregarMovimentacoes()
-    }
-    setLoading(false)
+    if (errMov) console.error("Erro ao registrar movimentação:", errMov);
+
+    alert(`✅ Adicionado ${quantidade} unidade(s) de ${produtoSelecionado.nome}`);
+    setProdutoSelecionado(null);
+    setQuantidade(1);
+    setObservacao("");
+    carregarProdutos();
+    setSalvando(false);
   }
 
   return (
     <AdminGuard>
-      <div className="max-w-5xl mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-6">Entrada de Estoque</h1>
+      <div className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
+          <Package className="text-red-600" /> Entrada de Estoque
+        </h1>
 
-        {/* Formulário de entrada */}
-        <div className="bg-white p-6 rounded-xl shadow mb-8">
-          <h2 className="text-xl font-semibold mb-4">Registrar Entrada</h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            <select
-              className="p-2 border rounded"
-              value={produtoSelecionado}
-              onChange={e => setProdutoSelecionado(e.target.value)}
-            >
-              <option value="">Selecione o produto</option>
-              {produtos.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.nome} (estoque atual: {p.estoque})
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              placeholder="Quantidade"
-              className="p-2 border rounded"
-              value={quantidade}
-              onChange={e => setQuantidade(e.target.value)}
-            />
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Custo unitário (opcional)"
-              className="p-2 border rounded"
-              value={custoUnitario}
-              onChange={e => setCustoUnitario(e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder="Observação (motivo)"
-              className="p-2 border rounded"
-              value={observacao}
-              onChange={e => setObservacao(e.target.value)}
-            />
+        <div className="bg-white rounded-xl shadow p-6 mb-6">
+          <h2 className="font-semibold text-lg mb-4">Adicionar Estoque</h2>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Buscar Produto</label>
+            <div className="relative">
+              <Search size={18} className="absolute left-3 top-3 text-gray-400" />
+              <input
+                type="text"
+                className="w-full p-2 pl-10 border rounded"
+                placeholder="Digite o nome do produto..."
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+              />
+            </div>
+            {busca && produtosFiltrados.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full max-w-sm bg-white border rounded shadow-lg max-h-60 overflow-y-auto">
+                {produtosFiltrados.map(p => (
+                  <div
+                    key={p.id}
+                    className="p-2 hover:bg-gray-100 cursor-pointer border-b"
+                    onClick={() => {
+                      setProdutoSelecionado(p);
+                      setBusca(p.nome);
+                    }}
+                  >
+                    <p className="font-semibold">{p.nome}</p>
+                    <p className="text-xs text-gray-500">Estoque atual: {p.estoque || 0} un | R$ {p.preco}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <button
-            onClick={registrarEntrada}
-            disabled={loading}
-            className="mt-4 bg-red-600 text-white px-6 py-2 rounded disabled:opacity-50"
-          >
-            {loading ? "Processando..." : "Registrar Entrada"}
-          </button>
-          <p className="text-xs text-gray-500 mt-2">
-            * O campo custo, se preenchido, atualizará o custo do produto para futuras vendas.
-          </p>
+
+          {produtoSelecionado && (
+            <>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Produto Selecionado</label>
+                <div className="bg-gray-100 p-3 rounded">
+                  <p className="font-semibold">{produtoSelecionado.nome}</p>
+                  <p className="text-sm text-gray-600">Estoque atual: {produtoSelecionado.estoque || 0} unidades</p>
+                  <p className="text-sm text-gray-600">Preço: R$ {produtoSelecionado.preco}</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Quantidade a adicionar</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border rounded"
+                  value={quantidade}
+                  onChange={e => setQuantidade(parseInt(e.target.value) || 0)}
+                  min="1"
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Observação (opcional)</label>
+                <textarea
+                  className="w-full p-2 border rounded"
+                  rows={2}
+                  placeholder="Ex: Compra de fornecedor, devolução, etc."
+                  value={observacao}
+                  onChange={e => setObservacao(e.target.value)}
+                />
+              </div>
+
+              <button
+                onClick={adicionarEstoque}
+                disabled={salvando}
+                className="w-full bg-red-600 text-white p-2 rounded flex items-center justify-center gap-2 hover:bg-red-700"
+              >
+                <Plus size={18} /> {salvando ? "Processando..." : "Adicionar Estoque"}
+              </button>
+            </>
+          )}
         </div>
 
-        {/* Histórico de movimentações */}
+        {/* Lista de produtos com estoque baixo */}
         <div className="bg-white rounded-xl shadow overflow-hidden">
-          <h2 className="text-xl font-semibold p-4 border-b">Últimas Movimentações</h2>
-          {carregandoMov ? (
-            <div className="p-6 text-center">Carregando...</div>
-          ) : movimentacoes.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">Nenhuma movimentação registrada.</div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="w-full">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="p-3 text-left">Data</th>
-                    <th className="p-3 text-left">Produto</th>
-                    <th className="p-3 text-left">Tipo</th>
-                    <th className="p-3 text-left">Quantidade</th>
-                    <th className="p-3 text-left">Custo Unit.</th>
-                    <th className="p-3 text-left">Observação</th>
+          <h2 className="font-semibold text-lg p-4 border-b">Produtos com Estoque Baixo</h2>
+          <div className="overflow-auto">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="p-3 text-left">Produto</th>
+                  <th className="p-3 text-left">Estoque</th>
+                  <th className="p-3 text-left">Mínimo</th>
+                  <th className="p-3 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {produtos.filter(p => (p.estoque || 0) <= (p.estoque_minimo || 0)).map(p => (
+                  <tr key={p.id} className="border-t">
+                    <td className="p-3">{p.nome}</td>
+                    <td className="p-3">{p.estoque || 0} un</td>
+                    <td className="p-3">{p.estoque_minimo || 0} un</td>
+                    <td className="p-3"><span className="text-red-600 font-semibold">⚠️ Estoque baixo</span></td>
                   </tr>
-                </thead>
-                <tbody>
-                  {movimentacoes.map(mov => (
-                    <tr key={mov.id} className="border-t">
-                      <td className="p-3">{new Date(mov.created_at).toLocaleString()}</td>
-                      <td className="p-3">{mov.produto_nome}</td>
-                      <td className="p-3 capitalize">{mov.tipo}</td>
-                      <td className="p-3">{mov.quantidade}</td>
-                      <td className="p-3">R$ {mov.custo_unitario.toFixed(2)}</td>
-                      <td className="p-3">{mov.observacao || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                ))}
+                {produtos.filter(p => (p.estoque || 0) <= (p.estoque_minimo || 0)).length === 0 && (
+                  <tr><td colSpan={4} className="p-4 text-center text-gray-500">Todos os produtos com estoque adequado</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </AdminGuard>
-  )
+  );
 }
