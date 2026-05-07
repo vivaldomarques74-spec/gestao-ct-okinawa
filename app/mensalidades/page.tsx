@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "../../lib/supabase"
+import { aplicarDescontoCampanha } from "../../lib/descontos"
 
 export default function Mensalidades() {
   const [busca, setBusca] = useState("")
@@ -73,19 +74,25 @@ export default function Mensalidades() {
       cancelado: false,
     }])
 
-    // Atualizar mensalidades pagas e gerar próximas
+    // Atualizar mensalidades pagas e gerar próximas com desconto de campanha
     for (const m of mensalidades) {
       // Marcar como paga
-      await supabase.from("mensalidades").update({ status: "pago", data_pagamento: new Date().toISOString() }).eq("id", m.id)
+      await supabase.from("mensalidades").update({ 
+        status: "pago", 
+        data_pagamento: new Date().toISOString() 
+      }).eq("id", m.id)
 
-      // Gerar próxima mensalidade (mesmo dia do mês seguinte)
+      // Gerar próxima mensalidade com desconto de campanha
       const proxVenc = new Date(m.vencimento)
       proxVenc.setMonth(proxVenc.getMonth() + 1)
+      const valorOriginal = m.valor
+      const { valorFinal } = await aplicarDescontoCampanha(selecionado.id, valorOriginal)
+
       await supabase.from("mensalidades").insert([{
         aluno_id: selecionado.id,
         matricula_id: m.matricula_id,
         vencimento: proxVenc.toISOString().slice(0,10),
-        valor: m.valor,
+        valor: valorFinal,
         valor_base: m.valor_base,
         status: "pendente",
       }])
@@ -98,6 +105,15 @@ export default function Mensalidades() {
     setLoading(false)
   }
 
+  function formatarMesReferencia(dataVencimento: string) {
+    const data = new Date(dataVencimento)
+    const meses = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    return `${meses[data.getMonth()]} de ${data.getFullYear()}`
+  }
+
   function gerarRecibo(aluno: any, mensalidades: any[], totalPago: number, pagamento: string, cartao: string, parcelas: string) {
     const totalBase = mensalidades.reduce((a,b)=>a+Number(b.valor),0)
     const desconto = totalBase - totalPago
@@ -107,8 +123,10 @@ export default function Mensalidades() {
       const turmaNome = turma?.nome || "?"
       return `${modalidadeNome} - ${turmaNome}`
     }).join(", ")
+    
+    const mesesReferentes = mensalidades.map(m => formatarMesReferencia(m.vencimento)).join(", ")
 
-    const w = window.open("", "", "width=400,height=600")
+    const w = window.open("", "", "width=400,height=650")
     w?.document.write(`
       <html>
       <head>
@@ -135,13 +153,14 @@ export default function Mensalidades() {
         <div><b>Aluno:</b> ${aluno.nome}</div>
         <div><b>CPF:</b> ${aluno.cpf || '---'}</div>
         <div><b>Turmas:</b> ${turmasTexto}</div>
+        <div><b>Mês(es) referente(s):</b> ${mesesReferentes}</div>
         <hr/>
         <div><b>Valor das mensalidades:</b> R$ ${totalBase.toFixed(2)}</div>
         <div><b>Desconto (Pix/Dinheiro):</b> R$ ${desconto.toFixed(2)}</div>
         <div class="total"><b>Total pago:</b> R$ ${totalPago.toFixed(2)}</div>
         <div><b>Pagamento:</b> ${pagamento} ${pagamento === "Cartão" ? `- ${cartao} ${parcelas}` : ""}</div>
         <hr/>
-        <div>Data: ${new Date().toLocaleString()}</div>
+        <div>Data do pagamento: ${new Date().toLocaleDateString()} às ${new Date().toLocaleTimeString()}</div>
         <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
         <div class="center">Obrigado! 🙏</div>
         <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200); }</script>
@@ -164,7 +183,6 @@ export default function Mensalidades() {
         onChange={e => setBusca(e.target.value)}
       />
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Lista de alunos */}
         <div className="border rounded-lg p-2 max-h-[600px] overflow-y-auto">
           {alunosFiltrados.map(aluno => (
             <div
@@ -178,7 +196,6 @@ export default function Mensalidades() {
           ))}
         </div>
 
-        {/* Detalhes do aluno e mensalidades pendentes */}
         {selecionado && (
           <div className="border rounded-lg p-4">
             <h2 className="font-bold text-xl">{selecionado.nome}</h2>
@@ -189,8 +206,9 @@ export default function Mensalidades() {
                 <div className="mt-3 space-y-2">
                   {mensalidades.map(m => (
                     <div key={m.id} className="border-b pb-2">
-                      <p>Vencimento: {new Date(m.vencimento).toLocaleDateString()}</p>
-                      <p>Valor: R$ {Number(m.valor).toFixed(2)}</p>
+                      <p><strong>Mês referente:</strong> {formatarMesReferencia(m.vencimento)}</p>
+                      <p><strong>Vencimento:</strong> {new Date(m.vencimento).toLocaleDateString()}</p>
+                      <p><strong>Valor:</strong> R$ {Number(m.valor).toFixed(2)}</p>
                     </div>
                   ))}
                 </div>
