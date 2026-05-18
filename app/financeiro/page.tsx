@@ -13,10 +13,11 @@ import {
   ArcElement,
 } from 'chart.js'
 import { Bar, Pie } from 'react-chartjs-2'
+import AdminGuard from "../../components/AdminGuard"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement)
 
-export default function Financeiro() {
+function FinanceiroContent() {
   const [periodo, setPeriodo] = useState("mes")
   const [dataInicio, setDataInicio] = useState("")
   const [dataFim, setDataFim] = useState("")
@@ -93,7 +94,6 @@ export default function Financeiro() {
     definirPeriodoPadrao()
   }
 
-  // Dados para gráfico de barras (movimentações diárias)
   const movimentosPorDia = movimentacoes.reduce((acc: any, mov) => {
     const dia = new Date(mov.data).toLocaleDateString()
     if (!acc[dia]) acc[dia] = { matricula: 0, mensalidade: 0, venda: 0, total: 0 }
@@ -116,7 +116,6 @@ export default function Financeiro() {
     ],
   }
 
-  // Dados para gráfico de pizza (proporção por tipo)
   const pieData = {
     labels: ['Matrículas', 'Mensalidades', 'Vendas'],
     datasets: [{
@@ -129,7 +128,6 @@ export default function Financeiro() {
     <div className="max-w-7xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Painel Financeiro</h1>
 
-      {/* Filtros */}
       <div className="bg-white p-4 rounded-xl shadow mb-6 flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-sm font-semibold mb-1">Período</label>
@@ -150,7 +148,6 @@ export default function Financeiro() {
         <button onClick={carregarDados} className="bg-red-600 text-white px-4 py-2 rounded">Filtrar</button>
       </div>
 
-      {/* Cards */}
       <div className="grid md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white p-4 rounded-xl shadow">
           <p className="text-gray-500 text-sm">Total Geral</p>
@@ -170,7 +167,6 @@ export default function Financeiro() {
         </div>
       </div>
 
-      {/* Gráficos */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white p-4 rounded-xl shadow">
           <h2 className="font-semibold text-lg mb-4">Movimentação Diária</h2>
@@ -190,7 +186,6 @@ export default function Financeiro() {
         </div>
       </div>
 
-      {/* Tabela de últimas movimentações */}
       <div className="mt-8 bg-white rounded-xl shadow overflow-hidden">
         <h2 className="font-semibold text-lg p-4 border-b">Últimas Movimentações</h2>
         <div className="overflow-x-auto">
@@ -217,5 +212,13 @@ export default function Financeiro() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function Financeiro() {
+  return (
+    <AdminGuard>
+      <FinanceiroContent />
+    </AdminGuard>
   )
 }
