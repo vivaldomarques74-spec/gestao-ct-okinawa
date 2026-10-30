@@ -4,93 +4,96 @@ import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 
 export default function ImprimirRecibos() {
-  const [recibos, setRecibos] = useState<any[]>([])
-  const [filtro, setFiltro] = useState("todos")
-  const [data, setData] = useState("")
+  const [lista, setLista] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    carregarRecibos()
-  }, [filtro, data])
+    carregar()
+  }, [])
 
-  async function carregarRecibos() {
-    let query = supabase
+  async function carregar() {
+    setLoading(true)
+    const tresDiasAtras = new Date()
+    tresDiasAtras.setDate(tresDiasAtras.getDate() - 3)
+
+    const { data } = await supabase
       .from("caixa")
       .select("*, alunos(nome, cpf)")
+      .eq("cancelado", false)
+      .gte("data", tresDiasAtras.toISOString())
       .order("data", { ascending: false })
 
-    if (data) {
-      const inicio = new Date(data)
-      inicio.setHours(0,0,0,0)
-      const fim = new Date(data)
-      fim.setHours(23,59,59,999)
-      query = query.gte("data", inicio.toISOString()).lte("data", fim.toISOString())
-    }
-
-    const { data: movs } = await query
-    if (!movs) return
-
-    // Filtrar por tipo
-    let lista = movs
-    if (filtro !== "todos") lista = movs.filter(m => m.tipo === filtro)
-
-    // Transformar em recibos (simular HTML)
-    const recibosFormatados = lista.map(mov => ({
-      id: mov.id,
-      tipo: mov.tipo,
-      nome: mov.alunos?.nome || mov.descricao || "Venda",
-      valor: mov.valor,
-      data: mov.data,
-      html: gerarHTMLRecibo(mov)
-    }))
-    setRecibos(recibosFormatados)
+    setLista(data || [])
+    setLoading(false)
   }
 
-  function gerarHTMLRecibo(mov: any) {
-    // Reuso da função de recibo já existente (simplificado)
-    return `
+  function reimprimir(mov: any) {
+    const alunoNome = mov.alunos?.nome || mov.nome || "Aluno"
+    const alunoCpf = mov.alunos?.cpf || "---"
+    const tipo = mov.tipo === "matricula" ? "MATRÍCULA" : mov.tipo === "mensalidade" ? "MENSALIDADE" : "VENDA PDV"
+    
+    const w = window.open("", "", "width=400,height=650")
+    w?.document.write(`
       <html>
-      <body style="font-family:monospace;padding:20px">
-        <h2>CT OKINAWA</h2>
-        <p>${mov.tipo.toUpperCase()}</p>
-        <p>Valor: R$ ${Number(mov.valor).toFixed(2)}</p>
-        <p>Data: ${new Date(mov.data).toLocaleString()}</p>
+      <head>
+        <title>Recibo ${tipo}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
+          .logo { text-align: center; margin-bottom: 4px; }
+          .logo img { max-width: 40mm; height: auto; }
+          .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
+          hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+          .total { font-weight: bold; font-size: 11pt; }
+          .verse { text-align: center; margin-top: 8px; font-style: italic; }
+          .center { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="logo"><img src="${window.location.origin}/logo.png" /></div>
+        <div class="titulo">CT OKINAWA</div>
+        <div class="center">Disciplina • Respeito • Evolução</div>
         <hr/>
-        <p>Provérbios 3:5</p>
+        <div class="center"><b>RECIBO DE ${tipo}</b></div>
+        <hr/>
+        <div><b>Aluno:</b> ${alunoNome}</div>
+        <div><b>CPF:</b> ${alunoCpf}</div>
+        <div><b>Descrição:</b> ${mov.descricao || "Pagamento"}</div>
+        <hr/>
+        <div><b>Valor:</b> R$ ${Number(mov.valor).toFixed(2)}</div>
+        <div><b>Pagamento:</b> ${mov.forma_pagamento || "-"}</div>
+        <hr/>
+        <div><b>Data original:</b> ${new Date(mov.data).toLocaleString()}</div>
+        <div class="verse">"Confie no Senhor de todo o seu coração"<br/>Provérbios 3:5</div>
+        <div class="center">Reimpressão 🙏</div>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200); }</script>
       </body>
       </html>
-    `
-  }
-
-  function imprimir(html: string) {
-    const w = window.open("", "", "width=500,height=700")
-    w?.document.write(html)
+    `)
     w?.document.close()
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-6 bg-white rounded-xl shadow">
-      <h1 className="text-2xl font-bold mb-6">Reimpressão de Recibos</h1>
-      <div className="flex gap-3 mb-4 flex-wrap">
-        <select className="p-2 border rounded" value={filtro} onChange={e => setFiltro(e.target.value)}>
-          <option value="todos">Todos</option>
-          <option value="matricula">Matrícula</option>
-          <option value="mensalidade">Mensalidade</option>
-          <option value="venda">Venda</option>
-        </select>
-        <input type="date" className="p-2 border rounded" value={data} onChange={e => setData(e.target.value)} />
-        <button onClick={() => { setData(""); carregarRecibos(); }} className="bg-gray-300 p-2 rounded">Limpar data</button>
-      </div>
-      <div className="overflow-auto">
-        {recibos.map(rec => (
-          <div key={rec.id} className="border-b py-2 flex justify-between items-center">
-            <div>
-              <p className="font-semibold">{new Date(rec.data).toLocaleString()} - {rec.tipo}</p>
-              <p>{rec.nome} - R$ {Number(rec.valor).toFixed(2)}</p>
-            </div>
-            <button onClick={() => imprimir(rec.html)} className="bg-red-600 text-white px-3 py-1 rounded">Imprimir</button>
-          </div>
-        ))}
-      </div>
+    <div className="max-w-4xl mx-auto p-6 bg-white rounded-xl shadow">
+      <h1 className="text-2xl font-bold mb-6">Reimpressão de Recibos (Últimos 3 dias)</h1>
+      {loading ? <p>Carregando...</p> : lista.length === 0 ? <p className="text-gray-500">Nenhum recibo gerado nos últimos 3 dias.</p> : (
+        <table className="w-full">
+          <thead className="bg-gray-100">
+            <tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-left">Aluno/Descrição</th><th className="p-2 text-left">Valor</th><th className="p-2 text-left">Ação</th></tr>
+          </thead>
+          <tbody>
+            {lista.map(mov => (
+              <tr key={mov.id} className="border-t">
+                <td className="p-2">{new Date(mov.data).toLocaleString()}</td>
+                <td className="p-2 capitalize">{mov.tipo}</td>
+                <td className="p-2">{mov.alunos?.nome || mov.nome || mov.descricao || "Venda"}</td>
+                <td className="p-2">R$ {Number(mov.valor).toFixed(2)}</td>
+                <td className="p-2"><button onClick={() => reimprimir(mov)} className="bg-red-600 text-white px-3 py-1 rounded">Imprimir</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

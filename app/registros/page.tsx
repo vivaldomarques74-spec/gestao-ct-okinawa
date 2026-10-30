@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
+import { Gift, Lock, Trash2, X } from "lucide-react"
 
 export default function RegistrosPage() {
   const [aba, setAba] = useState("alunos")
@@ -15,6 +16,16 @@ export default function RegistrosPage() {
 
   const [alunoEditando, setAlunoEditando] = useState<any>(null)
   const [matriculasAluno, setMatriculasAluno] = useState<any[]>([])
+  const [descontoEspecial, setDescontoEspecial] = useState<any>(null)
+  
+  const [formDesconto, setFormDesconto] = useState({ tipo: "fixo", valor: "", meses: "", recorrente: false })
+  const [senhaDiretor, setSenhaDiretor] = useState("")
+  const [aplicandoDesconto, setAplicandoDesconto] = useState(false)
+
+  // ESTADOS DE CANCELAMENTO E AUDITORIA
+  const [movCancelar, setMovCancelar] = useState<any>(null)
+  const [senhaCancelamento, setSenhaCancelamento] = useState("")
+
   const [formAluno, setFormAluno] = useState<any>({
     nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "",
     menor: false,
@@ -25,19 +36,12 @@ export default function RegistrosPage() {
     convenio_id: "",
   })
 
-  // Filtros movimentações
   const [filtroTipo, setFiltroTipo] = useState("todos")
   const [filtroParceiro, setFiltroParceiro] = useState("")
-  const [filtroDataInicio, setFiltroDataInicio] = useState("")
-  const [filtroDataFim, setFiltroDataFim] = useState("")
   const [mostrarCancelados, setMostrarCancelados] = useState(false)
-
-  // Busca de aluno
   const [buscaAluno, setBuscaAluno] = useState("")
 
-  useEffect(() => {
-    carregarTudo()
-  }, [])
+  useEffect(() => { carregarTudo() }, [])
 
   async function carregarTudo() {
     await carregarAlunos()
@@ -60,10 +64,7 @@ export default function RegistrosPage() {
   async function carregarModalidadesTurmas() {
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
-    const { data: turmasData } = await supabase
-      .from("turmas")
-      .select("*, modalidades(*)")
-      .eq("status", "ativo")
+    const { data: turmasData } = await supabase.from("turmas").select("*, modalidades(*)").eq("status", "ativo")
     setTurmas(turmasData || [])
   }
 
@@ -79,65 +80,93 @@ export default function RegistrosPage() {
 
   async function editarAluno(aluno: any) {
     setAlunoEditando(aluno)
+    setSenhaDiretor("")
     setFormAluno({
-      nome: aluno.nome || "",
-      cpf: aluno.cpf || "",
-      rg: aluno.rg || "",
-      nascimento: aluno.nascimento || "",
-      whatsapp: aluno.whatsapp || "",
-      email: aluno.email || "",
-      endereco: aluno.endereco || "",
+      nome: aluno.nome || "", cpf: aluno.cpf || "", rg: aluno.rg || "", nascimento: aluno.nascimento || "",
+      whatsapp: aluno.whatsapp || "", email: aluno.email || "", endereco: aluno.endereco || "",
       menor: aluno.menor || false,
-      responsavel_nome: aluno.responsavel_nome || "",
-      responsavel_cpf: aluno.responsavel_cpf || "",
-      responsavel_whatsapp: aluno.responsavel_whatsapp || "",
-      responsavel_email: aluno.responsavel_email || "",
-      problema_saude: aluno.problema_saude || false,
-      saude_detalhes: aluno.saude_detalhes || "",
-      usa_remedio: aluno.usa_remedio || false,
-      remedio_detalhes: aluno.remedio_detalhes || "",
-      status: aluno.status || "ativo",
-      convenio_id: aluno.convenio_id || "",
+      responsavel_nome: aluno.responsavel_nome || "", responsavel_cpf: aluno.responsavel_cpf || "", 
+      responsavel_whatsapp: aluno.responsavel_whatsapp || "", responsavel_email: aluno.responsavel_email || "",
+      problema_saude: aluno.problema_saude || false, saude_detalhes: aluno.saude_detalhes || "",
+      usa_remedio: aluno.usa_remedio || false, remedio_detalhes: aluno.remedio_detalhes || "",
+      status: aluno.status || "ativo", convenio_id: aluno.convenio_id || "",
     })
-    const { data: mats } = await supabase
-      .from("matriculas")
-      .select("*, turmas(*)")
-      .eq("aluno_id", aluno.id)
-      .eq("status", "ativo")
+    
+    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", aluno.id).eq("status", "ativo")
     setMatriculasAluno(mats || [])
+
+    const { data: desc } = await supabase.from("descontos_especiais").select("*").eq("aluno_id", aluno.id).eq("status", "ativo").maybeSingle()
+    setDescontoEspecial(desc || null)
   }
 
   async function salvarAluno() {
     if (!alunoEditando) return
-    const { error } = await supabase
-      .from("alunos")
-      .update({
-        nome: formAluno.nome,
-        cpf: formAluno.cpf,
-        rg: formAluno.rg,
-        nascimento: formAluno.nascimento,
-        whatsapp: formAluno.whatsapp,
-        email: formAluno.email,
-        endereco: formAluno.endereco,
-        menor: formAluno.menor,
-        responsavel_nome: formAluno.responsavel_nome,
-        responsavel_cpf: formAluno.responsavel_cpf,
-        responsavel_whatsapp: formAluno.responsavel_whatsapp,
-        responsavel_email: formAluno.responsavel_email,
-        problema_saude: formAluno.problema_saude,
-        saude_detalhes: formAluno.saude_detalhes,
-        usa_remedio: formAluno.usa_remedio,
-        remedio_detalhes: formAluno.remedio_detalhes,
-        status: formAluno.status,
-        convenio_id: formAluno.convenio_id,
-      })
-      .eq("id", alunoEditando.id)
-    if (error) alert("Erro: " + error.message)
-    else {
-      alert("Aluno atualizado")
-      carregarAlunos()
-      setAlunoEditando(null)
+    await supabase.from("alunos").update({
+      nome: formAluno.nome, cpf: formAluno.cpf, rg: formAluno.rg, nascimento: formAluno.nascimento,
+      whatsapp: formAluno.whatsapp, email: formAluno.email, endereco: formAluno.endereco,
+      menor: formAluno.menor, responsavel_nome: formAluno.responsavel_nome, responsavel_cpf: formAluno.responsavel_cpf,
+      responsavel_whatsapp: formAluno.responsavel_whatsapp, responsavel_email: formAluno.responsavel_email,
+      problema_saude: formAluno.problema_saude, saude_detalhes: formAluno.saude_detalhes,
+      usa_remedio: formAluno.usa_remedio, remedio_detalhes: formAluno.remedio_detalhes,
+      status: formAluno.status, convenio_id: formAluno.convenio_id,
+    }).eq("id", alunoEditando.id)
+    alert("Aluno atualizado")
+    carregarAlunos()
+    setAlunoEditando(null)
+  }
+
+  async function aplicarDescontoDiretoria() {
+    if (senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta. Operação negada.")
+    if (!formDesconto.valor) return alert("Preencha o valor do desconto.")
+    if (!formDesconto.recorrente && !formDesconto.meses) return alert("Preencha a quantidade de meses ou marque 'Recorrente'.")
+    if (descontoEspecial) return alert("Este aluno já possui um desconto ativo.")
+
+    setAplicandoDesconto(true)
+    
+    const meses = formDesconto.recorrente ? 999 : Number(formDesconto.meses)
+    await supabase.from("descontos_especiais").insert([{
+      aluno_id: alunoEditando.id,
+      tipo: formDesconto.tipo,
+      valor: Number(formDesconto.valor),
+      meses_duracao: meses,
+      meses_restantes: meses,
+      recorrente: formDesconto.recorrente,
+      status: "ativo"
+    }])
+
+    const { data: pendentes } = await supabase.from("mensalidades").select("*").eq("aluno_id", alunoEditando.id).eq("status", "pendente").order("vencimento", { ascending: true })
+    
+    if (pendentes) {
+      let mesesUsados = 0;
+      for (const m of pendentes) {
+        if (!formDesconto.recorrente && mesesUsados >= Number(formDesconto.meses)) break;
+
+        let novoValor = m.valor;
+        if (formDesconto.tipo === 'fixo') novoValor = Math.max(0, novoValor - Number(formDesconto.valor));
+        else novoValor = Math.max(0, novoValor - (novoValor * (Number(formDesconto.valor) / 100)));
+
+        await supabase.from("mensalidades").update({ 
+          valor: novoValor, 
+          status: novoValor === 0 ? "isento" : "pendente" 
+        }).eq("id", m.id)
+        
+        mesesUsados++;
+      }
     }
+
+    alert("✅ Desconto de Diretoria aplicado!")
+    setDescontoEspecial({ tipo: formDesconto.tipo, valor: formDesconto.valor, meses_restantes: meses, recorrente: formDesconto.recorrente })
+    setFormDesconto({ tipo: "fixo", valor: "", meses: "", recorrente: false })
+    setSenhaDiretor("")
+    setAplicandoDesconto(false)
+  }
+
+  async function cancelarDescontoDiretoria() {
+    if (senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta. Operação negada.")
+    if (!confirm("Cancelar este desconto? As mensalidades pendentes voltarão ao valor normal.")) return
+    await supabase.from("descontos_especiais").update({ status: "cancelado" }).eq("id", descontoEspecial.id)
+    setDescontoEspecial(null)
+    alert("Desconto cancelado.")
   }
 
   async function excluirAluno(id: string) {
@@ -152,8 +181,7 @@ export default function RegistrosPage() {
   }
 
   async function ativarInativarAluno(aluno: any) {
-    const novoStatus = aluno.status === "ativo" ? "inativo" : "ativo"
-    await supabase.from("alunos").update({ status: novoStatus }).eq("id", aluno.id)
+    await supabase.from("alunos").update({ status: aluno.status === "ativo" ? "inativo" : "ativo" }).eq("id", aluno.id)
     carregarAlunos()
   }
 
@@ -161,52 +189,41 @@ export default function RegistrosPage() {
     if (!alunoEditando) return
     const turma = turmas.find(t => t.id === turmaId)
     if (!turma) return
-    const jaExiste = matriculasAluno.some(m => m.turma_id === turmaId)
-    if (jaExiste) { alert("Aluno já está nesta turma"); return }
-
-    const { data: novaMat, error } = await supabase
-      .from("matriculas")
-      .insert([{ aluno_id: alunoEditando.id, turma_id: turmaId, status: "ativo" }])
-      .select()
-      .single()
-    if (error) { alert("Erro: " + error.message); return }
-
+    const { data: novaMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoEditando.id, turma_id: turmaId, status: "ativo" }]).select().single()
     const hoje = new Date()
     const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + 1, hoje.getDate()).toISOString().slice(0, 10)
-    await supabase.from("mensalidades").insert([{
-      aluno_id: alunoEditando.id,
-      matricula_id: novaMat.id,
-      vencimento,
-      valor: turma.modalidades?.valor_geral || 0,
-      valor_base: turma.modalidades?.valor_base || 0,
-      status: "pendente",
-    }])
+    await supabase.from("mensalidades").insert([{ aluno_id: alunoEditando.id, matricula_id: novaMat.id, vencimento, valor: turma.modalidades?.valor_geral || 0, valor_base: turma.modalidades?.valor_base || 0, status: "pendente" }])
     alert("Modalidade adicionada")
-    const { data: mats } = await supabase
-      .from("matriculas")
-      .select("*, turmas(*)")
-      .eq("aluno_id", alunoEditando.id)
-      .eq("status", "ativo")
+    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
     setMatriculasAluno(mats || [])
   }
 
-  async function removerTurmaAluno(matriculaId: string, turmaNome: string) {
-    if (!confirm(`Remover "${turmaNome}"? Mensalidades futuras serão canceladas.`)) return
+  async function removerTurmaAluno(matriculaId: string) {
+    if (!confirm(`Remover esta turma?`)) return
     await supabase.from("mensalidades").update({ status: "cancelado" }).eq("matricula_id", matriculaId).eq("status", "pendente")
     await supabase.from("matriculas").update({ status: "inativo" }).eq("id", matriculaId)
-    alert("Removido")
-    const { data: mats } = await supabase
-      .from("matriculas")
-      .select("*, turmas(*)")
-      .eq("aluno_id", alunoEditando.id)
-      .eq("status", "ativo")
+    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
     setMatriculasAluno(mats || [])
   }
 
-  async function cancelarMovimentacao(mov: any) {
-    if (!confirm(`Cancelar ${mov.tipo} de R$ ${mov.valor}?`)) return
-    await supabase.from("caixa").update({ cancelado: true, valor: 0 }).eq("id", mov.id)
-    alert("Cancelado")
+  // CANCELAMENTO COM LOG E SENHA
+  async function confirmarCancelamento() {
+    if (senhaCancelamento !== "984215") return alert("❌ Senha incorreta. Cancelamento negado.")
+    if (!movCancelar) return
+
+    // 1. Cancela no caixa
+    await supabase.from("caixa").update({ cancelado: true, valor: 0 }).eq("id", movCancelar.id)
+    
+    // 2. Grava o log de auditoria
+    await supabase.from("logs_auditoria").insert([{
+      operador: "Admin (Diretoria)",
+      acao: "Cancelamento Financeiro",
+      detalhes: `Cancelou ${movCancelar.tipo} no valor de R$ ${movCancelar.valor} do aluno ${movCancelar.nome}. ID: ${movCancelar.id}`
+    }])
+
+    alert("✅ Cancelado com sucesso. Log registrado.")
+    setMovCancelar(null)
+    setSenhaCancelamento("")
     carregarMovimentacoes()
   }
 
@@ -214,8 +231,6 @@ export default function RegistrosPage() {
     if (!mostrarCancelados && mov.cancelado) return false
     if (filtroTipo !== "todos" && mov.tipo !== filtroTipo) return false
     if (filtroParceiro && mov.parceiro_id !== filtroParceiro) return false
-    if (filtroDataInicio && new Date(mov.data).toISOString().slice(0,10) < filtroDataInicio) return false
-    if (filtroDataFim && new Date(mov.data).toISOString().slice(0,10) > filtroDataFim) return false
     return true
   })
 
@@ -232,126 +247,66 @@ export default function RegistrosPage() {
           <div className="bg-white rounded-xl shadow overflow-hidden">
             <div className="grid md:grid-cols-2 gap-6 p-4">
               <div className="border-r pr-4">
-                <h2 className="font-bold mb-3">Lista de Alunos</h2>
-                <input
-                  type="text"
-                  placeholder="Buscar por nome, CPF ou nº matrícula..."
-                  className="w-full p-2 border rounded mb-3"
-                  value={buscaAluno}
-                  onChange={e => setBuscaAluno(e.target.value)}
-                />
-                <div className="max-h-[600px] overflow-y-auto">
-                  {alunos
-                    .filter(aluno =>
-                      aluno.nome?.toLowerCase().includes(buscaAluno.toLowerCase()) ||
-                      aluno.cpf?.includes(buscaAluno) ||
-                      aluno.numero_matricula?.toString().includes(buscaAluno)
-                    )
-                    .map(aluno => (
-                      <div key={aluno.id} className="border-b p-2">
-                        <div className="flex justify-between items-start">
-                          <div className="cursor-pointer" onClick={() => editarAluno(aluno)}>
-                            <p className="font-semibold">{aluno.nome}</p>
-                            <p className="text-xs text-gray-500">Nº Matrícula: {aluno.numero_matricula || "---"} | CPF: {aluno.cpf}</p>
-                            <p className="text-xs">Status: <span className={aluno.status === "ativo" ? "text-green-600" : "text-red-600"}>{aluno.status}</span></p>
-                          </div>
-                          <div className="flex gap-1">
-                            <button onClick={() => ativarInativarAluno(aluno)} className="text-xs bg-blue-500 text-white px-2 py-1 rounded">
-                              {aluno.status === "ativo" ? "Inativar" : "Ativar"}
-                            </button>
-                            <button onClick={() => excluirAluno(aluno.id)} className="text-xs bg-red-600 text-white px-2 py-1 rounded">Excluir</button>
-                          </div>
-                        </div>
+                <input type="text" placeholder="Buscar aluno..." className="w-full p-2 border rounded mb-3" value={buscaAluno} onChange={e => setBuscaAluno(e.target.value)} />
+                <div className="max-h-150 overflow-y-auto">
+                  {alunos.filter(a => a.nome?.toLowerCase().includes(buscaAluno.toLowerCase())).map(aluno => (
+                    <div key={aluno.id} className="border-b p-2 flex justify-between items-center">
+                      <div className="cursor-pointer" onClick={() => editarAluno(aluno)}>
+                        <p className="font-semibold">{aluno.nome}</p>
+                        <p className="text-xs text-gray-500">CPF: {aluno.cpf}</p>
                       </div>
-                    ))}
-                  {alunos.filter(aluno =>
-                    aluno.nome?.toLowerCase().includes(buscaAluno.toLowerCase()) ||
-                    aluno.cpf?.includes(buscaAluno) ||
-                    aluno.numero_matricula?.toString().includes(buscaAluno)
-                  ).length === 0 && <p className="text-gray-400 text-sm p-2">Nenhum aluno encontrado.</p>}
+                      <button onClick={() => excluirAluno(aluno.id)} className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Excluir</button>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               {alunoEditando && (
-                <div className="pl-4">
-                  <h2 className="font-bold mb-3">Editar Aluno</h2>
-                  <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                    <input className="w-full p-2 border rounded" placeholder="Nome" value={formAluno.nome} onChange={e => setFormAluno({...formAluno, nome: e.target.value})} />
-                    <input className="w-full p-2 border rounded" placeholder="CPF" value={formAluno.cpf} onChange={e => setFormAluno({...formAluno, cpf: e.target.value})} />
-                    <input className="w-full p-2 border rounded" placeholder="RG" value={formAluno.rg} onChange={e => setFormAluno({...formAluno, rg: e.target.value})} />
-                    <input type="date" className="w-full p-2 border rounded" value={formAluno.nascimento} onChange={e => setFormAluno({...formAluno, nascimento: e.target.value})} />
-                    <input className="w-full p-2 border rounded" placeholder="WhatsApp" value={formAluno.whatsapp} onChange={e => setFormAluno({...formAluno, whatsapp: e.target.value})} />
-                    <input className="w-full p-2 border rounded" placeholder="Email" value={formAluno.email} onChange={e => setFormAluno({...formAluno, email: e.target.value})} />
-                    <input className="w-full p-2 border rounded" placeholder="Endereço" value={formAluno.endereco} onChange={e => setFormAluno({...formAluno, endereco: e.target.value})} />
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={formAluno.menor} onChange={e => setFormAluno({...formAluno, menor: e.target.checked})} /> Menor</label>
-                    {formAluno.menor && (
-                      <>
-                        <input className="w-full p-2 border rounded" placeholder="Responsável" value={formAluno.responsavel_nome} onChange={e => setFormAluno({...formAluno, responsavel_nome: e.target.value})} />
-                        <input className="w-full p-2 border rounded" placeholder="CPF Responsável" value={formAluno.responsavel_cpf} onChange={e => setFormAluno({...formAluno, responsavel_cpf: e.target.value})} />
-                        <input className="w-full p-2 border rounded" placeholder="WhatsApp Responsável" value={formAluno.responsavel_whatsapp} onChange={e => setFormAluno({...formAluno, responsavel_whatsapp: e.target.value})} />
-                        <input className="w-full p-2 border rounded" placeholder="Email Responsável" value={formAluno.responsavel_email} onChange={e => setFormAluno({...formAluno, responsavel_email: e.target.value})} />
-                      </>
-                    )}
-                    <div className="border p-2 rounded">
-                      <label><input type="checkbox" checked={formAluno.problema_saude} onChange={e => setFormAluno({...formAluno, problema_saude: e.target.checked})} /> Problema de saúde</label>
-                      {formAluno.problema_saude && <textarea className="w-full border rounded mt-1" value={formAluno.saude_detalhes} onChange={e => setFormAluno({...formAluno, saude_detalhes: e.target.value})} />}
-                      <label className="mt-2 block"><input type="checkbox" checked={formAluno.usa_remedio} onChange={e => setFormAluno({...formAluno, usa_remedio: e.target.checked})} /> Uso de remédio</label>
-                      {formAluno.usa_remedio && <textarea className="w-full border rounded mt-1" value={formAluno.remedio_detalhes} onChange={e => setFormAluno({...formAluno, remedio_detalhes: e.target.value})} />}
+                <div className="pl-4 space-y-3 max-h-175 overflow-y-auto pr-2">
+                  <input className="w-full p-2 border rounded" placeholder="Nome" value={formAluno.nome} onChange={e => setFormAluno({...formAluno, nome: e.target.value})} />
+                  <input className="w-full p-2 border rounded" placeholder="WhatsApp" value={formAluno.whatsapp} onChange={e => setFormAluno({...formAluno, whatsapp: e.target.value})} />
+                  
+                  <h3 className="font-semibold mt-4 border-t pt-2 text-red-600 flex items-center gap-2"><Gift size={18}/> Desconto de Diretoria</h3>
+                  
+                  {descontoEspecial ? (
+                    <div className="bg-red-50 border border-red-200 p-3 rounded">
+                      <p className="text-sm font-semibold text-red-700">Desconto Ativo {descontoEspecial.recorrente && "(Recorrente)"}</p>
+                      <p className="text-xs text-gray-600 mb-2">{descontoEspecial.tipo === "fixo" ? `R$ ${descontoEspecial.valor}` : `${descontoEspecial.valor}%`}.</p>
+                      
+                      <div className="flex gap-2 mt-2">
+                        <input type="password" placeholder="Senha Diretor" className="w-1/2 p-1 border rounded text-sm" value={senhaDiretor} onChange={e => setSenhaDiretor(e.target.value)} />
+                        <button onClick={cancelarDescontoDiretoria} className="bg-red-600 text-white text-xs px-3 py-1 rounded">Cancelar Desconto</button>
+                      </div>
                     </div>
-                    <select className="w-full p-2 border rounded" value={formAluno.status} onChange={e => setFormAluno({...formAluno, status: e.target.value})}>
-                      <option value="ativo">Ativo</option><option value="inativo">Inativo</option><option value="bloqueado">Bloqueado</option>
-                    </select>
-                    <select className="w-full p-2 border rounded" value={formAluno.convenio_id} onChange={e => setFormAluno({...formAluno, convenio_id: e.target.value})}>
-                      <option value="">Nenhum convênio</option>
-                      {convenios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                    </select>
-
-                    <h3 className="font-semibold mt-4">Modalidades / Turmas</h3>
-                    {matriculasAluno.map(mat => {
-                      const turma = turmas.find(t => t.id === mat.turma_id)
-                      const modalidadeNome = turma?.modalidades?.nome || "?"
-                      return (
-                        <div key={mat.id} className="flex justify-between items-center border p-2 rounded mb-2">
-                          <span><strong>{modalidadeNome}</strong> - {turma?.nome}</span>
-                          <button onClick={() => removerTurmaAluno(mat.id, turma?.nome)} className="text-red-600 text-sm">Remover</button>
-                        </div>
-                      )
-                    })}
-
-                    <div className="flex gap-2 mt-2 items-center">
-                      <select className="flex-1 p-2 border rounded" onChange={async (e) => {
-                        const modalidadeId = e.target.value
-                        if (!modalidadeId) return
-                        const turmasFiltradas = turmas.filter(t => t.modalidade_id === modalidadeId && t.status === "ativo")
-                        if (turmasFiltradas.length === 0) {
-                          alert("Nenhuma turma ativa para esta modalidade.")
-                          return
-                        }
-                        let turmaEscolhida = null
-                        if (turmasFiltradas.length === 1) {
-                          turmaEscolhida = turmasFiltradas[0]
-                        } else {
-                          const nomeTurma = prompt("Turmas disponíveis: " + turmasFiltradas.map(t=>t.nome).join(", ") + "\nDigite o nome da turma:")
-                          if (nomeTurma) {
-                            turmaEscolhida = turmasFiltradas.find(t => t.nome.toLowerCase() === nomeTurma.toLowerCase())
-                          }
-                        }
-                        if (turmaEscolhida) {
-                          await adicionarTurmaAluno(turmaEscolhida.id)
-                        } else {
-                          alert("Turma não encontrada ou não selecionada.")
-                        }
-                        e.target.value = ""
-                      }} defaultValue="">
-                        <option value="">+ Adicionar modalidade...</option>
-                        {modalidades.map(mod => <option key={mod.id} value={mod.id}>{mod.nome}</option>)}
+                  ) : (
+                    <div className="border p-3 rounded bg-gray-50 space-y-2">
+                      <select className="w-full p-2 border rounded" value={formDesconto.tipo} onChange={e => setFormDesconto({...formDesconto, tipo: e.target.value})}>
+                        <option value="fixo">Desconto em R$ (Ex: 30)</option>
+                        <option value="percentual">Desconto em % (Ex: 20)</option>
                       </select>
-                    </div>
+                      <input type="number" className="w-full p-2 border rounded" placeholder="Valor do Desconto" value={formDesconto.valor} onChange={e => setFormDesconto({...formDesconto, valor: e.target.value})} />
+                      
+                      <label className="flex items-center gap-2 text-sm font-semibold text-blue-700">
+                        <input type="checkbox" checked={formDesconto.recorrente} onChange={e => setFormDesconto({...formDesconto, recorrente: e.target.checked, meses: e.target.checked ? "" : formDesconto.meses})} />
+                        Desconto Recorrente (Para Sempre)
+                      </label>
 
-                    <div className="flex gap-2 mt-4">
-                      <button onClick={salvarAluno} className="bg-red-600 text-white px-4 py-2 rounded">Salvar Alterações</button>
-                      <button onClick={() => setAlunoEditando(null)} className="bg-gray-300 px-4 py-2 rounded">Cancelar</button>
+                      {!formDesconto.recorrente && (
+                        <input type="number" className="w-full p-2 border rounded" placeholder="Meses de duração (Ex: 10)" value={formDesconto.meses} onChange={e => setFormDesconto({...formDesconto, meses: e.target.value})} />
+                      )}
+
+                      <div className="border-t pt-2 mt-2">
+                        <label className="text-xs font-bold text-gray-500 flex items-center gap-1 mb-1"><Lock size={12}/> Autorização da Diretoria</label>
+                        <input type="password" className="w-full p-2 border border-red-300 rounded" placeholder="Digite a senha" value={senhaDiretor} onChange={e => setSenhaDiretor(e.target.value)} />
+                      </div>
+
+                      <button onClick={aplicarDescontoDiretoria} disabled={aplicandoDesconto} className="w-full bg-gray-800 text-white p-2 rounded mt-2 hover:bg-black">Aplicar Desconto</button>
                     </div>
+                  )}
+
+                  <div className="flex gap-2 mt-4 border-t pt-4">
+                    <button onClick={salvarAluno} className="bg-red-600 text-white px-4 py-2 rounded">Salvar Alterações</button>
+                    <button onClick={() => setAlunoEditando(null)} className="bg-gray-300 px-4 py-2 rounded">Fechar</button>
                   </div>
                 </div>
               )}
@@ -361,34 +316,33 @@ export default function RegistrosPage() {
 
         {aba === "movimentacoes" && (
           <div className="bg-white rounded-xl shadow p-4">
-            <div className="grid md:grid-cols-5 gap-3 mb-4">
+            <div className="grid md:grid-cols-4 gap-3 mb-4">
               <select className="p-2 border rounded" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-                <option value="todos">Todos</option>
-                <option value="matricula">Matrícula</option>
-                <option value="mensalidade">Mensalidade</option>
-                <option value="venda">Venda</option>
+                <option value="todos">Todos</option><option value="matricula">Matrícula</option><option value="mensalidade">Mensalidade</option><option value="venda">Venda</option>
               </select>
               <select className="p-2 border rounded" value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)}>
                 <option value="">Todos os parceiros</option>
                 {parceiros.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
-              <input type="date" className="p-2 border rounded" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)} />
-              <input type="date" className="p-2 border rounded" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)} />
               <label className="flex items-center gap-2"><input type="checkbox" checked={mostrarCancelados} onChange={e => setMostrarCancelados(e.target.checked)} /> Mostrar cancelados</label>
             </div>
             <table className="w-full">
               <thead className="bg-gray-100">
-                <tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-left">Descrição</th><th className="p-2 text-left">Valor</th><th className="p-2 text-left">Parceiro</th><th className="p-2 text-left">Ação</th></tr>
+                <tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-left">Valor</th><th className="p-2 text-left">Ação</th></tr>
               </thead>
               <tbody>
                 {movFiltradas.map(mov => (
                   <tr key={mov.id} className="border-t">
                     <td className="p-2">{new Date(mov.data).toLocaleDateString()}</td>
                     <td className="p-2 capitalize">{mov.tipo}</td>
-                    <td className="p-2">{mov.descricao || mov.nome}</td>
                     <td className="p-2">R$ {Number(mov.valor).toFixed(2)}</td>
-                    <td className="p-2">{parceiros.find(p => p.id === mov.parceiro_id)?.nome || (mov.tipo === "venda" ? "CT" : "-")}</td>
-                    <td className="p-2">{!mov.cancelado && <button onClick={() => cancelarMovimentacao(mov)} className="bg-red-500 text-white px-2 py-1 rounded text-sm">Cancelar</button>}</td>
+                    <td className="p-2">
+                      {!mov.cancelado && (
+                        <button onClick={() => { setMovCancelar(mov); setSenhaCancelamento(""); }} className="bg-red-500 text-white px-2 py-1 rounded text-sm hover:bg-red-600">
+                          Cancelar
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -396,6 +350,33 @@ export default function RegistrosPage() {
           </div>
         )}
       </div>
+
+      {/* MODAL DE CANCELAMENTO COM SENHA E LOG */}
+      {movCancelar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-2 text-red-600 flex items-center gap-2">
+              <Trash2 size={20} /> Confirmar Cancelamento
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Você está cancelando <b>{movCancelar.tipo}</b> no valor de <b>R$ {Number(movCancelar.valor).toFixed(2)}</b>. 
+              Essa ação será registrada no log de auditoria.
+            </p>
+            <label className="block text-sm font-semibold mb-1">Senha da Diretoria</label>
+            <input 
+              type="password" 
+              placeholder="Digite a senha de 6 dígitos" 
+              className="w-full p-2 border rounded mb-4" 
+              value={senhaCancelamento} 
+              onChange={e => setSenhaCancelamento(e.target.value)} 
+            />
+            <div className="flex gap-2">
+              <button onClick={confirmarCancelamento} className="bg-red-600 text-white p-2 rounded flex-1 hover:bg-red-700">Confirmar Cancelamento</button>
+              <button onClick={() => setMovCancelar(null)} className="bg-gray-300 p-2 rounded hover:bg-gray-400">Voltar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminGuard>
   )
 }

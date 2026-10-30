@@ -1,75 +1,86 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
-
-type UserRole = "secretaria" | "admin" | "diretoria" | null
-
-const CREDENCIAIS: Record<string, UserRole> = {
-  "2006": "secretaria",
-  "2060": "admin",
-  "1702": "diretoria"
-}
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export default function LoginGuard({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const [autorizado, setAutorizado] = useState<boolean | null>(null)
-  const [senha, setSenha] = useState("")
-  const [erro, setErro] = useState("")
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
 
-  // Rotas públicas que não exigem login
-  const rotasPublicas = ["/presenca", "/parceiros/dashboard"]
-  const isRotaPublica = rotasPublicas.some(rota => pathname?.startsWith(rota))
+  // Rotas que NÃO exigem a senha do sistema (acesso público)
+  const publicRoutes = [
+    "/presenca", 
+    "/parceiros/dashboard", 
+    "/escola" // <--- ADICIONADO AQUI
+  ];
 
   useEffect(() => {
-    if (isRotaPublica) {
-      setAutorizado(true)
-      return
+    const auth = localStorage.getItem("auth_token");
+    if (auth === "true") {
+      setIsAuthenticated(true);
     }
-    const sessao = sessionStorage.getItem("auth_role")
-    if (sessao) {
-      setAutorizado(true)
-    } else {
-      setAutorizado(false)
-    }
-  }, [isRotaPublica, pathname])
+    setLoading(false);
+  }, []);
 
-  const fazerLogin = () => {
-    const role = CREDENCIAIS[senha]
-    if (role) {
-      sessionStorage.setItem("auth_role", role)
-      sessionStorage.setItem("auth_senha", senha) // opcional
-      setAutorizado(true)
-      setErro("")
-    } else {
-      setErro("Senha inválida")
-    }
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-600"></div>
+      </div>
+    );
   }
 
-  if (autorizado === null) return <div className="p-6 text-center">Carregando...</div>
-  if (autorizado) return <>{children}</>
+  // Se for rota pública, permite sem login
+  if (publicRoutes.some(route => pathname?.startsWith(route))) {
+    return <>{children}</>;
+  }
+
+  // Se não está autenticado, mostra a tela de login do sistema
+  if (!isAuthenticated) {
+    return <LoginScreen onAuth={() => setIsAuthenticated(true)} />;
+  }
+
+  return <>{children}</>;
+}
+
+function LoginScreen({ onAuth }: { onAuth: () => void }) {
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+
+  const handleLogin = () => {
+    if (senha === "170296@CTOk") {
+      localStorage.setItem("auth_token", "true");
+      onAuth();
+    } else {
+      setErro("Senha incorreta");
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center text-red-600 mb-2">CT OKINAWA</h1>
-        <p className="text-center text-gray-500 mb-6">Acesso restrito</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="bg-white p-8 rounded-2xl shadow-lg w-96 text-center">
+        <div className="mb-6">
+          <img src="/logo-color.png" alt="Logo" className="w-32 mx-auto" />
+          <h1 className="text-3xl font-bold text-red-600 mt-4">CT OKINAWA</h1>
+          <p className="text-gray-500 mt-2">Sistema de Gestão</p>
+        </div>
         <input
           type="password"
-          placeholder="Digite sua senha"
-          className="w-full p-3 border rounded-lg mb-3"
+          placeholder="Digite a senha de acesso"
+          className="w-full p-3 border border-gray-300 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-red-500"
           value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && fazerLogin()}
+          onChange={e => setSenha(e.target.value)}
+          onKeyPress={e => e.key === "Enter" && handleLogin()}
         />
         <button
-          onClick={fazerLogin}
-          className="w-full bg-red-600 text-white p-3 rounded-lg hover:bg-red-700"
+          onClick={handleLogin}
+          className="w-full bg-red-600 text-white p-3 rounded-xl font-semibold hover:bg-red-700 transition"
         >
           Entrar
         </button>
-        {erro && <p className="text-red-500 text-sm mt-3 text-center">{erro}</p>}
+        {erro && <p className="text-red-500 mt-3 text-sm">{erro}</p>}
       </div>
     </div>
-  )
+  );
 }

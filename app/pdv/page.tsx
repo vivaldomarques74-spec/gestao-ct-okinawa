@@ -9,30 +9,16 @@ export default function PDV() {
   const [formaPagamento, setFormaPagamento] = useState("Pix")
   const [tipoCartao, setTipoCartao] = useState("Crédito")
   const [parcelas, setParcelas] = useState("1x")
+  const [codigoPagamento, setCodigoPagamento] = useState("")
   const [salvando, setSalvando] = useState(false)
   const [caixaAberto, setCaixaAberto] = useState<any>(null)
 
-  // Taxas Ton (a partir da tabela)
   const taxasCartao: Record<string, number> = {
-    debito: 1.25,
-    credito1: 3.05,
-    credito2: 6.59,
-    credito3: 8.19,
-    credito4: 8.89,
-    credito5: 9.76,
-    credito6: 11.10,
-    credito7: 11.68,
-    credito8: 11.73,
-    credito9: 11.78,
-    credito10: 11.83,
-    credito11: 11.88,
-    credito12: 11.95,
-    credito13: 12.59,
-    credito14: 13.23,
-    credito15: 13.87,
-    credito16: 14.51,
-    credito17: 15.15,
-    credito18: 15.79,
+    debito: 1.25, credito1: 3.05, credito2: 6.59, credito3: 8.19,
+    credito4: 8.89, credito5: 9.76, credito6: 11.10, credito7: 11.68,
+    credito8: 11.73, credito9: 11.78, credito10: 11.83, credito11: 11.88,
+    credito12: 11.95, credito13: 12.59, credito14: 13.23, credito15: 13.87,
+    credito16: 14.51, credito17: 15.15, credito18: 15.79,
   }
 
   useEffect(() => {
@@ -83,20 +69,24 @@ export default function PDV() {
     if (carrinho.length === 0) return alert("Adicione produtos")
     if (!caixaAberto) return alert("Caixa não está aberto")
 
+    if ((formaPagamento === "Pix" || formaPagamento === "Cartão") && !codigoPagamento.trim()) {
+      return alert("⚠️ Por favor, insira o código de autorização da maquininha para finalizar.")
+    }
+
     setSalvando(true)
     const nomes = carrinho.map(p => p.nome).join(", ")
     const parceiroId = carrinho.find(p => p.tipo === "parceiro")?.parceiro_id || null
 
-    // Registrar venda no caixa
     const { error } = await supabase.from("caixa").insert([{
       caixa_turno_id: caixaAberto.id,
       tipo: "venda",
-      descricao: nomes,
+      nome: nomes,
       valor: totalFinal,
       valor_base: totalBase,
       forma_pagamento: formaPagamento,
       tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
       parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
+      codigo_pagamento: codigoPagamento || null,
       parceiro_id: parceiroId,
       data: new Date().toISOString(),
       cancelado: false,
@@ -108,7 +98,6 @@ export default function PDV() {
       return
     }
 
-    // Atualizar estoque
     for (const item of carrinho) {
       const novoEstoque = Number(item.estoque) - 1
       await supabase.from("produtos").update({ estoque: novoEstoque }).eq("id", item.id)
@@ -116,6 +105,7 @@ export default function PDV() {
 
     gerarRecibo()
     setCarrinho([])
+    setCodigoPagamento("")
     await carregarProdutos()
     alert("Venda finalizada!")
     setSalvando(false)
@@ -146,7 +136,7 @@ export default function PDV() {
         <div class="titulo">CT OKINAWA</div>
         <div class="center">Disciplina • Respeito • Evolução</div>
         <hr/>
-        <div><b>RECIBO DE VENDA - PDV</b></div>
+        <div class="center"><b>RECIBO DE VENDA - PDV</b></div>
         <hr/>
         ${itens}
         <hr/>
@@ -154,6 +144,7 @@ export default function PDV() {
         <div>Taxa: R$ ${taxa.toFixed(2)}</div>
         <div class="total"><b>TOTAL: R$ ${totalFinal.toFixed(2)}</b></div>
         <div>Pagamento: ${formaPagamento} ${formaPagamento === "Cartão" ? `- ${tipoCartao} ${parcelas}` : ""}</div>
+        ${codigoPagamento ? `<div><b>Cód. Autorização:</b> ${codigoPagamento}</div>` : ''}
         <hr/>
         <div>Data: ${new Date().toLocaleString()}</div>
         <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
@@ -169,6 +160,7 @@ export default function PDV() {
     <div className="max-w-md mx-auto p-6 bg-white rounded-xl shadow">
       <h1 className="text-2xl font-bold mb-4 text-center">PDV - Ponto de Venda</h1>
       {!caixaAberto && <div className="bg-red-100 p-2 mb-4 rounded text-center">⚠️ Caixa fechado. Abra o caixa antes de vender.</div>}
+      
       <div className="grid grid-cols-2 gap-2 mb-4">
         {produtos.map(p => (
           <button key={p.id} onClick={() => adicionar(p)} className="bg-gray-100 p-2 rounded border text-left">
@@ -178,6 +170,7 @@ export default function PDV() {
           </button>
         ))}
       </div>
+
       <div className="border p-3 rounded mb-3">
         <h3 className="font-bold">Carrinho</h3>
         {carrinho.map((item, i) => (
@@ -187,27 +180,46 @@ export default function PDV() {
           </div>
         ))}
       </div>
-      <div className="bg-gray-100 p-3 rounded">
+
+      <div className="bg-gray-100 p-3 rounded mb-3">
         <p>Base: R$ {totalBase.toFixed(2)}</p>
         <p className="font-bold text-lg">Total: R$ {totalFinal.toFixed(2)}</p>
       </div>
-      <select className="w-full p-2 border rounded mt-2" value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)}>
-        <option>Pix</option><option>Dinheiro</option><option>Cartão</option>
-      </select>
-      {formaPagamento === "Cartão" && (
-        <>
-          <select className="w-full p-2 border rounded mt-2" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}>
-            <option>Débito</option><option>Crédito</option>
-          </select>
-          {tipoCartao === "Crédito" && (
-            <select className="w-full p-2 border rounded mt-2" value={parcelas} onChange={e => setParcelas(e.target.value)}>
-              {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
-                <option key={n} value={`${n}x`}>{n}x</option>
-              ))}
+
+      <div className="p-3 bg-gray-50 rounded border mb-3">
+        <label className="block font-semibold mb-2">Forma de Pagamento</label>
+        <select className="w-full p-2 border rounded mb-2" value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)}>
+          <option>Pix</option><option>Dinheiro</option><option>Cartão</option>
+        </select>
+
+        {formaPagamento === "Cartão" && (
+          <>
+            <select className="w-full p-2 border rounded mb-2" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}>
+              <option>Débito</option><option>Crédito</option>
             </select>
-          )}
-        </>
-      )}
+            {tipoCartao === "Crédito" && (
+              <select className="w-full p-2 border rounded mb-2" value={parcelas} onChange={e => setParcelas(e.target.value)}>
+                {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={`${n}x`}>{n}x</option>
+                ))}
+              </select>
+            )}
+          </>
+        )}
+
+        {(formaPagamento === "Pix" || formaPagamento === "Cartão") && (
+          <div className="mt-2">
+            <label className="block text-sm font-semibold mb-1 text-red-600">Código de Autorização (Maquininha)</label>
+            <input 
+              className="w-full p-2 border border-red-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500" 
+              placeholder="Digite o código do comprovante" 
+              value={codigoPagamento} 
+              onChange={e => setCodigoPagamento(e.target.value)} 
+            />
+          </div>
+        )}
+      </div>
+
       <button onClick={finalizar} disabled={salvando || !caixaAberto} className="w-full bg-red-600 text-white p-2 rounded mt-3 disabled:opacity-50">
         {salvando ? "Finalizando..." : "Finalizar Venda"}
       </button>
