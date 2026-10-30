@@ -17,27 +17,27 @@ export default function Dashboard() {
   }, []);
 
   async function carregar() {
+    // 1. Alunos Ativos/Inativos
     const { data: alunos } = await supabase.from("alunos").select("status");
     const ativos = alunos?.filter((a: any) => a.status === "ativo").length || 0;
     const inativos = alunos?.filter((a: any) => a.status === "inativo").length || 0;
 
-    // Conta pendentes de escolas
-    const { count: pendentesCount } = await supabase
-      .from("alunos")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "pendente"); // Regra da escola
+    // 2. Alerta: Apenas mensalidades vencidas ou que vencem nos próximos 5 dias
+    const hoje = new Date();
+    const daqui5Dias = new Date();
+    daqui5Dias.setDate(hoje.getDate() + 5);
     
-    if (pendentesCount && pendentesCount > 0) {
-      setEscolasPendentes(pendentesCount);
-      // TOAST DE AVISO: Dispara o alerta no canto da tela
-      setTimeout(() => {
-        alert(`🔔 Você tem ${pendentesCount} nova(s) indicação(ões) de escolas parceiras aguardando aprovação!`);
-      }, 1000);
-    }
+    const dataLimite = daqui5Dias.toISOString().split('T')[0]; // Formato YYYY-MM-DD
 
-    const { data: mensalidades } = await supabase.from("mensalidades").select("id").eq("status", "pendente");
+    const { data: mensalidades } = await supabase
+      .from("mensalidades")
+      .select("id")
+      .eq("status", "pendente")
+      .lte("vencimento", dataLimite); // Pega as que vencem antes ou nos próximos 5 dias
+
+    // 3. Turmas totais
     const { data: turmas } = await supabase.from("turmas").select("id");
-
+    
     setStats({ 
       ativos, 
       inativos, 
@@ -45,15 +45,33 @@ export default function Dashboard() {
       turmas: turmas?.length || 0 
     });
 
-    // Gráficos
-    const { data: matriculas } = await supabase.from("matriculas").select("id, turmas(nome, modalidades(nome))");
+    // 4. Escolas Pendentes (Notificação)
+    // ⚠️ AQUI: Se no seu banco a regra for outra, mude o "pendente"
+    const { count: pendentesCount } = await supabase
+      .from("alunos")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pendente"); 
+    
+    setEscolasPendentes(pendentesCount || 0);
+
+    // 5. Gráficos (Busca Segura para não dar erro 400)
+    const { data: matriculas } = await supabase.from("matriculas").select("id, turma_id");
+    const { data: turmasData } = await supabase.from("turmas").select("id, nome, modalidade_id");
+    const { data: modalidadesData } = await supabase.from("modalidades").select("id, nome");
+
     const turmaCount: any = {};
     const modalidadeCount: any = {};
 
     matriculas?.forEach((m: any) => {
-      const nomeTurma = m.turmas?.nome || "Sem turma";
+      const turma = turmasData?.find(t => t.id === m.turma_id);
+      
+      // Contagem de Turma
+      const nomeTurma = turma?.nome || "Sem turma";
       turmaCount[nomeTurma] = (turmaCount[nomeTurma] || 0) + 1;
-      const nomeMod = m.turmas?.modalidades?.nome || "Sem modalidade";
+
+      // Contagem de Modalidade
+      const modalidade = modalidadesData?.find(mod => mod.id === turma?.modalidade_id);
+      const nomeMod = modalidade?.nome || "Sem modalidade";
       modalidadeCount[nomeMod] = (modalidadeCount[nomeMod] || 0) + 1;
     });
 
@@ -64,9 +82,12 @@ export default function Dashboard() {
   const cards = [
     { title: "Alunos Ativos", value: stats.ativos, icon: Users, color: "text-green-600" },
     { title: "Alunos Inativos", value: stats.inativos, icon: Users, color: "text-gray-500" },
-    { title: "Alertas", value: stats.alertas, icon: AlertTriangle, color: "text-red-500" },
+    { title: "Alertas (5 dias)", value: stats.alertas, icon: AlertTriangle, color: "text-red-500" },
     { title: "Turmas", value: stats.turmas, icon: Layers, color: "text-blue-500" },
   ];
+
+  const maxTurma = Math.max(...turmasList.map((t) => t.alunos), 1);
+  const maxModalidade = Math.max(...modalidadesList.map((m) => m.qtd), 1);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -78,8 +99,8 @@ export default function Dashboard() {
       {/* WIDGET DE INDICAÇÕES DE ESCOLAS */}
       {escolasPendentes > 0 && (
         <div 
-          onClick={() => router.push("/escolas")} // Redireciona para a tela de escolas
-          className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex justify-between items-center cursor-pointer hover:bg-blue-100 transition"
+          onClick={() => router.push("/escolas")} 
+          className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex justify-between items-center cursor-pointer hover:bg-blue-100 transition shadow-sm"
         >
           <div className="flex items-center gap-3">
             <div className="bg-blue-500 p-2 rounded-full text-white">
@@ -109,7 +130,49 @@ export default function Dashboard() {
 
       {/* Gráficos */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* ... (Mantém os gráficos que já estavam aqui) ... */}
+        {/* Alunos por Turma */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <TrendingUp size={18} className="text-red-500" /> Alunos por Turma
+          </h3>
+          {turmasList.length === 0 ? (
+            <p className="text-gray-400">Nenhum aluno matriculado em turma</p>
+          ) : (
+            turmasList.map((t, i) => (
+              <div key={i} className="mb-2">
+                <div className="flex justify-between text-sm">
+                  <span>{t.nome}</span>
+                  <span>{t.alunos}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(t.alunos / maxTurma) * 100}%` }} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Distribuição por Modalidade */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <Award size={18} className="text-red-500" /> Distribuição por Modalidade
+          </h3>
+          {modalidadesList.length === 0 ? (
+            <p className="text-gray-400">Nenhum aluno vinculado a modalidade</p>
+          ) : (
+            modalidadesList.map((m, i) => (
+              <div key={i} className="mb-2">
+                <div className="flex justify-between text-sm">
+                  <span>{m.nome}</span>
+                  <span>{m.qtd}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(m.qtd / maxModalidade) * 100}%` }} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

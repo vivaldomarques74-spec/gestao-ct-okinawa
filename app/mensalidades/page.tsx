@@ -31,22 +31,6 @@ export default function Mensalidades() {
     setAlunos(data || [])
   }
 
-  // Função auxiliar para buscar os detalhes da matrícula sem erro de relacionamento
-  async function buscarDetalhesMatricula(mat: any) {
-    let turma = null;
-    let modalidade = null;
-    
-    if (mat.turma_id) {
-      const { data: t } = await supabase.from("turmas").select("*").eq("id", mat.turma_id).single();
-      turma = t;
-      if (t?.modalidade_id) {
-        const { data: m } = await supabase.from("modalidades").select("*").eq("id", t.modalidade_id).single();
-        modalidade = m;
-      }
-    }
-    return { ...mat, turmas: { ...turma, modalidades: modalidade } };
-  }
-
   async function selecionarAluno(aluno: any) {
     setSelecionado(aluno)
     setAba("pendentes")
@@ -61,11 +45,20 @@ export default function Mensalidades() {
       .in("status", ["pendente", "pago", "isento"])
       .order("vencimento", { ascending: true })
 
-    // Busca detalhes de turma e modalidade para cada mensalidade
+    // Busca os detalhes da matrícula para cada mensalidade (se existir) de forma segura
     const todas = await Promise.all((mensalidadesData || []).map(async (m) => {
       const { data: mat } = await supabase.from("matriculas").select("*").eq("id", m.matricula_id).single();
-      const matComDetalhes = mat ? await buscarDetalhesMatricula(mat) : null;
-      return { ...m, matriculas: matComDetalhes };
+      let turma = null;
+      let modalidade = null;
+      if (mat?.turma_id) {
+        const { data: t } = await supabase.from("turmas").select("*").eq("id", mat.turma_id).single();
+        turma = t;
+        if (t?.modalidade_id) {
+          const { data: mod } = await supabase.from("modalidades").select("*").eq("id", t.modalidade_id).single();
+          modalidade = mod;
+        }
+      }
+      return { ...m, matriculas: { ...mat, turmas: { ...turma, modalidades: modalidade } } };
     }));
 
     const pend = todas.filter(m => m.status === "pendente" || m.status === "isento")
@@ -90,26 +83,29 @@ export default function Mensalidades() {
     const { data: mats, error } = await supabase.from("matriculas").select("*").eq("aluno_id", aluno.id).eq("status", "ativo")
     
     if (error || !mats || mats.length === 0) {
-      alert("⚠️ O aluno não possui matrícula ativa no banco. Verifique a aba de Registros.");
+      alert("⚠️ O aluno não possui matrícula ativa no banco. Verifique a aba de Registros e confirme se ele tem uma turma vinculada.");
       setLoading(false)
       return; 
     }
 
-    const hoje = new Date()
-    const diaVencimento = hoje.getDate()
     let novasMensalidades = []
 
     for (const mat of mats) {
-      const matComDetalhes = await buscarDetalhesMatricula(mat);
-      const modalidade = matComDetalhes.turmas?.modalidades;
+      // CORREÇÃO: Pega a data em que a matrícula foi criada no banco
+      const dataMatricula = mat.created_at ? new Date(mat.created_at) : new Date();
+      const diaVencimento = dataMatricula.getDate();
+      
+      // Busca a Turma e Modalidade
+      const { data: t } = await supabase.from("turmas").select("*").eq("id", mat.turma_id).single();
+      const { data: mod } = await supabase.from("modalidades").select("*").eq("id", t?.modalidade_id).single();
 
-      if (!modalidade) {
-        alert(`⚠️ A turma vinculada a este aluno não tem uma modalidade cadastrada. Vá em Registros e vincule a modalidade corretamente.`);
+      if (!mod) {
+        alert(`⚠️ Aviso: A turma "${t?.nome}" não tem uma modalidade vinculada.`);
         continue;
       }
 
-      let valorOriginal = modalidade?.valor_geral || 0
-      const valorBase = modalidade?.valor_base || 0
+      let valorOriginal = mod.valor_geral || 0
+      const valorBase = mod.valor_base || 0
 
       if (aluno.escola_id) {
         const { data: escola } = await supabase.from("escolas").select("*").eq("id", aluno.escola_id).single()
@@ -120,9 +116,20 @@ export default function Mensalidades() {
       }
 
       for (let i = 1; i <= 12; i++) {
-        const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento)
+        // CORREÇÃO: Calcula o mês baseado na data da matrícula
+        const vencimento = new Date(dataMatricula.getFullYear(), dataMatricula.getMonth() + i, diaVencimento)
         const vencimentoStr = vencimento.toLocaleDateString('en-CA') 
-        
+        const mesReferente = vencimento.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+
+        // Verifica duplicidade
+        const { data: existe } = await supabase.from("mensalidades")
+          .select("id")
+          .eq("matricula_id", mat.id)
+          .eq("mes_referente", mesReferente)
+          .maybeSingle();
+
+        if (existe) continue;
+
         const { valorFinal: valorComDesconto, isento } = await calcularDescontosMensalidade(aluno.id, valorOriginal)
 
         if (isento || valorComDesconto <= 0) continue;
@@ -134,7 +141,7 @@ export default function Mensalidades() {
           valor: valorComDesconto, 
           valor_base: valorBase, 
           status: "pendente",
-          mes_referente: vencimento.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+          mes_referente: mesReferente
         })
       }
     }
@@ -147,7 +154,7 @@ export default function Mensalidades() {
         await selecionarAluno(aluno) 
       }
     } else {
-      alert("⚠️ Nenhuma mensalidade gerada. O valor da modalidade pode ser R$ 0,00.");
+      alert("⚠️ As mensalidades deste período já estavam geradas ou o valor é R$ 0,00.");
     }
 
     setLoading(false)

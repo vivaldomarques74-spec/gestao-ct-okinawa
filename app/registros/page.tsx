@@ -63,13 +63,11 @@ export default function RegistrosPage() {
   }
 
   async function carregarModalidadesTurmas() {
-    // Removemos o filtro de status para garantir que tudo apareça
-    const { data: mods, error: errMods } = await supabase.from("modalidades").select("*")
-    if (errMods) console.error("Erro ao buscar modalidades:", errMods)
+    // Sem filtro de status para garantir que tudo apareça na lista
+    const { data: mods } = await supabase.from("modalidades").select("*")
     setModalidades(mods || [])
     
-    const { data: turmasData, error: errTurmas } = await supabase.from("turmas").select("*")
-    if (errTurmas) console.error("Erro ao buscar turmas:", errTurmas)
+    const { data: turmasData } = await supabase.from("turmas").select("*")
     setTurmas(turmasData || [])
   }
 
@@ -98,7 +96,7 @@ export default function RegistrosPage() {
       numero_matricula: aluno.numero_matricula || "",
     })
     
-    // Busca segura de matrículas (evita erro 400)
+    // Busca segura de matrículas para não dar erro 400
     const { data: rawMats } = await supabase.from("matriculas").select("*").eq("aluno_id", aluno.id).eq("status", "ativo")
     const matsCompletas = await Promise.all((rawMats || []).map(async (m) => {
       const { data: t } = await supabase.from("turmas").select("*").eq("id", m.turma_id).single()
@@ -271,7 +269,6 @@ export default function RegistrosPage() {
     const turma = turmas.find(t => t.id === turmaId)
     if (!turma) return
     
-    // Busca a modalidade para pegar o valor
     const { data: mod } = await supabase.from("modalidades").select("*").eq("id", turma.modalidade_id).single()
 
     const { data: novaMat, error: errMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoEditando.id, turma_id: turmaId, status: "ativo" }]).select().single()
@@ -281,12 +278,12 @@ export default function RegistrosPage() {
       return
     }
     
-    const hoje = new Date()
-    const diaVencimento = hoje.getDate()
+    // --- CORREÇÃO DA DATA DE VENCIMENTO ---
+    const dataMatricula = new Date();
+    const diaVencimento = dataMatricula.getDate();
 
-    // GERA AS 12 MENSALIDADES CORRIGIDAS (SEM BUG DE FUSO HORÁRIO)
     for (let i = 1; i <= 12; i++) {
-      const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento)
+      const vencimento = new Date(dataMatricula.getFullYear(), dataMatricula.getMonth() + i, diaVencimento)
       const vencimentoStr = vencimento.toLocaleDateString('en-CA')
       
       await supabase.from("mensalidades").insert([{ 
@@ -300,8 +297,7 @@ export default function RegistrosPage() {
       }])
     }
     
-    alert("Modalidade e 12 mensalidades geradas!")
-    // Recarrega as matrículas de forma segura
+    alert("Modalidade e 12 mensalidades geradas com sucesso!")
     const { data: rawMats } = await supabase.from("matriculas").select("*").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
     const matsCompletas = await Promise.all((rawMats || []).map(async (m) => {
       const { data: t } = await supabase.from("turmas").select("*").eq("id", m.turma_id).single()
