@@ -8,11 +8,10 @@ export default function LoginGuard({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
 
-  // Rotas que NÃO exigem a senha do sistema (acesso público)
   const publicRoutes = [
     "/presenca", 
     "/parceiros/dashboard", 
-    "/escola" // <--- ADICIONADO AQUI
+    "/escola"
   ];
 
   useEffect(() => {
@@ -31,12 +30,10 @@ export default function LoginGuard({ children }: { children: React.ReactNode }) 
     );
   }
 
-  // Se for rota pública, permite sem login
   if (publicRoutes.some(route => pathname?.startsWith(route))) {
     return <>{children}</>;
   }
 
-  // Se não está autenticado, mostra a tela de login do sistema
   if (!isAuthenticated) {
     return <LoginScreen onAuth={() => setIsAuthenticated(true)} />;
   }
@@ -49,7 +46,8 @@ function LoginScreen({ onAuth }: { onAuth: () => void }) {
   const [erro, setErro] = useState("");
 
   const handleLogin = () => {
-    if (senha === "170296@CTOk") {
+    // SENHA DO SISTEMA ALTERADA PARA 1702
+    if (senha === "1702") {
       localStorage.setItem("auth_token", "true");
       onAuth();
     } else {
