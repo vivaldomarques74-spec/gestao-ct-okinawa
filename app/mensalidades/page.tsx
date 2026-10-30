@@ -38,10 +38,15 @@ export default function Mensalidades() {
     setShowDescDiretoria(false)
     setSenhaDiretor("")
     
-    const { data } = await supabase.from("mensalidades").select("*, matriculas(turmas(*, modalidades(*)))").eq("aluno_id", aluno.id).in("status", ["pendente", "pago"]).order("vencimento", { ascending: true })
+    const { data } = await supabase
+      .from("mensalidades")
+      .select("*, matriculas(turmas(*, modalidades(*)))")
+      .eq("aluno_id", aluno.id)
+      .in("status", ["pendente", "pago", "isento"])
+      .order("vencimento", { ascending: true })
 
     const todas = data || []
-    const pend = todas.filter(m => m.status === "pendente")
+    const pend = todas.filter(m => m.status === "pendente" || m.status === "isento")
     const pg = todas.filter(m => m.status === "pago").reverse() 
 
     setPendentes(pend)
@@ -49,43 +54,35 @@ export default function Mensalidades() {
     
     if (pend.length > 0) setSelecionadasParaPagar([pend[0].id])
     else setSelecionadasParaPagar([])
+
+    // Se não existir NENHUMA mensalidade no banco para este aluno, gera automaticamente
+    if (todas.length === 0) {
+      await gerarMensalidadesAutomatico(aluno)
+    }
   }
 
-  async function gerarMensalidadesFaltantes() {
-    if (!selecionado) return
-
-    if (selecionado.status !== "ativo") {
-      return alert("❌ Este aluno está inativo. Reative ele no painel de Registros antes de gerar mensalidades.")
-    }
+  async function gerarMensalidadesAutomatico(aluno: any) {
+    if (aluno.status !== "ativo") return;
 
     setLoading(true)
-
-    const { data: mats, error } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", selecionado.id).eq("status", "ativo")
+    const { data: mats, error } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", aluno.id).eq("status", "ativo")
     
-    if (error) {
-      console.error(error)
-      alert("Erro ao buscar matrículas: " + error.message)
+    if (error || !mats || mats.length === 0) {
       setLoading(false)
-      return
-    }
-
-    if (!mats || mats.length === 0) {
-      alert("⚠️ Este aluno não possui matrícula ativa. Vá em 'Registros', clique em Editar Aluno e adicione uma Modalidade/Turma primeiro.")
-      setLoading(false)
-      return
+      return; 
     }
 
     const hoje = new Date()
     const diaVencimento = hoje.getDate()
-    let geradas = 0
+    let novasMensalidades = []
 
     for (const mat of mats) {
       const turma = mat.turmas
       let valorOriginal = turma?.modalidades?.valor_geral || 0
       const valorBase = turma?.modalidades?.valor_base || 0
 
-      if (selecionado.escola_id) {
-        const { data: escola } = await supabase.from("escolas").select("*").eq("id", selecionado.escola_id).single()
+      if (aluno.escola_id) {
+        const { data: escola } = await supabase.from("escolas").select("*").eq("id", aluno.escola_id).single()
         if (escola) {
           const descEscola = escola.tipo_desconto === "percentual" ? valorOriginal * (escola.valor_desconto / 100) : escola.valor_desconto;
           valorOriginal = Math.max(0, valorOriginal - descEscola);
@@ -94,29 +91,41 @@ export default function Mensalidades() {
 
       for (let i = 1; i <= 12; i++) {
         const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento)
-        const vencimentoStr = vencimento.toISOString().slice(0,10)
+        const vencimentoStr = vencimento.toLocaleDateString('en-CA') 
         
-        const { data: existe } = await supabase.from("mensalidades").select("id").eq("aluno_id", selecionado.id).eq("matricula_id", mat.id).eq("vencimento", vencimentoStr).maybeSingle()
-        if (existe) continue;
+        const { valorFinal: valorComDesconto, isento } = await calcularDescontosMensalidade(aluno.id, valorOriginal)
 
-        const { valorFinal: valorComDesconto, isento } = await calcularDescontosMensalidade(selecionado.id, valorOriginal)
+        // 👇 Ignora geração se for isento ou valor zerado
+        if (isento || valorComDesconto <= 0) continue;
 
-        await supabase.from("mensalidades").insert([{
-          aluno_id: selecionado.id, matricula_id: mat.id, vencimento: vencimentoStr,
-          valor: valorComDesconto, valor_base: valorBase, status: isento ? "isento" : "pendente",
+        novasMensalidades.push({
+          aluno_id: aluno.id, 
+          matricula_id: mat.id, 
+          vencimento: vencimentoStr,
+          valor: valorComDesconto, 
+          valor_base: valorBase, 
+          status: "pendente",
           mes_referente: vencimento.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-        }])
-        geradas++
+        })
       }
     }
 
-    if (geradas > 0) {
-      alert(`✅ ${geradas} mensalidades geradas com sucesso!`)
-    } else {
-      alert("Todas as mensalidades deste período já estavam geradas.")
+    if (novasMensalidades.length > 0) {
+      await supabase.from("mensalidades").insert(novasMensalidades)
+      
+      const { data } = await supabase
+        .from("mensalidades")
+        .select("*, matriculas(turmas(*, modalidades(*)))")
+        .eq("aluno_id", aluno.id)
+        .in("status", ["pendente", "pago", "isento"])
+        .order("vencimento", { ascending: true })
+      
+      const todas = data || []
+      setPendentes(todas.filter(m => m.status === "pendente" || m.status === "isento"))
+      setPagas(todas.filter(m => m.status === "pago").reverse())
+      if (todas.length > 0) setSelecionadasParaPagar([todas.find(m => m.status !== "pago")?.id].filter(Boolean))
     }
-    
-    await selecionarAluno(selecionado)
+
     setLoading(false)
   }
 
@@ -126,7 +135,7 @@ export default function Mensalidades() {
   }
 
   function calcularTotal() {
-    const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id))
+    const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id) && m.status === "pendente")
     let total = mensalidadesParaPagar.reduce((acc, m) => acc + Number(m.valor), 0)
     if ((formaPagamento === "Pix" || formaPagamento === "Dinheiro") && total > 0) total -= 10
     return total > 0 ? total : 0
@@ -166,49 +175,60 @@ export default function Mensalidades() {
     if (!caixaTurno) return alert("❌ Caixa não está aberto.")
 
     setLoading(true)
-    const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id))
+    const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id) && m.status === "pendente")
     const totalPago = calcularTotal()
     const valorBaseTotal = mensalidadesParaPagar.reduce((acc, m) => acc + Number(m.valor_base || m.valor), 0)
 
-    await supabase.from("caixa").insert([{
-      caixa_turno_id: caixaTurno.id, tipo: "mensalidade", nome: `Mensalidade ${selecionado.nome}`,
-      valor: totalPago, valor_base: valorBaseTotal, forma_pagamento: formaPagamento,
-      tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
-      parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
-      codigo_pagamento: codigoPagamento || null,
-      aluno_id: selecionado.id, data: new Date().toISOString(), cancelado: false,
-    }])
+    if (mensalidadesParaPagar.length > 0) {
+      await supabase.from("caixa").insert([{
+        caixa_turno_id: caixaTurno.id, tipo: "mensalidade", nome: `Mensalidade ${selecionado.nome}`,
+        valor: totalPago, valor_base: valorBaseTotal, forma_pagamento: formaPagamento,
+        tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
+        parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
+        codigo_pagamento: codigoPagamento || null,
+        aluno_id: selecionado.id, data: new Date().toISOString(), cancelado: false,
+      }])
 
-    for (const m of mensalidadesParaPagar) {
-      await supabase.from("mensalidades").update({ status: "pago", data_pagamento: new Date().toISOString() }).eq("id", m.id)
+      for (const m of mensalidadesParaPagar) {
+        await supabase.from("mensalidades").update({ status: "pago", data_pagamento: new Date().toISOString() }).eq("id", m.id)
 
-      const proxVenc = new Date(m.vencimento)
-      proxVenc.setMonth(proxVenc.getMonth() + 1)
-      const valorGeralModalidade = m.matriculas?.turmas?.modalidades?.valor_geral || m.valor
+        // Usamos T12:00:00 para evitar problemas de fuso horário ao virar o mês
+        const proxVenc = new Date(m.vencimento + "T12:00:00")
+        proxVenc.setMonth(proxVenc.getMonth() + 1)
+        const proxVencStr = proxVenc.toLocaleDateString('en-CA') 
+        
+        const valorGeralModalidade = m.matriculas?.turmas?.modalidades?.valor_geral || m.valor
 
-      let valorComDescontoEscola = valorGeralModalidade
-      if (selecionado.escolas) {
-        const descEscola = selecionado.escolas.tipo_desconto === 'percentual' ? valorGeralModalidade * (selecionado.escolas.valor_desconto / 100) : selecionado.escolas.valor_desconto;
-        valorComDescontoEscola = Math.max(0, valorGeralModalidade - descEscola);
+        let valorComDescontoEscola = valorGeralModalidade
+        if (selecionado.escolas) {
+          const descEscola = selecionado.escolas.tipo_desconto === 'percentual' ? valorGeralModalidade * (selecionado.escolas.valor_desconto / 100) : selecionado.escolas.valor_desconto;
+          valorComDescontoEscola = Math.max(0, valorGeralModalidade - descEscola);
+        }
+
+        const { valorFinal, isento } = await calcularDescontosMensalidade(selecionado.id, valorComDescontoEscola)
+
+        // 👇 Se o próximo mês for isento ou zero, não gera a próxima fatura
+        if (isento || valorFinal <= 0) continue; 
+
+        await supabase.from("mensalidades").insert([{
+          aluno_id: selecionado.id, matricula_id: m.matricula_id, vencimento: proxVencStr,
+          valor: valorFinal, valor_base: m.valor_base, status: "pendente",
+          mes_referente: proxVenc.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        }])
       }
 
-      const { valorFinal, isento } = await calcularDescontosMensalidade(selecionado.id, valorComDescontoEscola)
-
-      await supabase.from("mensalidades").insert([{
-        aluno_id: selecionado.id, matricula_id: m.matricula_id, vencimento: proxVenc.toISOString().slice(0,10),
-        valor: valorFinal, valor_base: m.valor_base, status: isento ? "isento" : "pendente",
-        mes_referente: proxVenc.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-      }])
+      gerarRecibo(selecionado, mensalidadesParaPagar, totalPago, formaPagamento, tipoCartao, parcelas)
+      alert("✅ Pagamento realizado!")
+    } else {
+      alert("Nenhuma mensalidade válida para pagamento foi selecionada.")
     }
-
-    gerarRecibo(selecionado, mensalidadesParaPagar, totalPago, formaPagamento, tipoCartao, parcelas)
-    alert("✅ Pagamento realizado!")
+    
     await selecionarAluno(selecionado)
     setLoading(false)
   }
 
   function formatarMesReferencia(dataVencimento: string | Date) {
-    return new Date(dataVencimento).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    return new Date(dataVencimento + "T12:00:00").toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
   }
 
   function gerarRecibo(aluno: any, mensalidades: any[], totalPago: number, pagamento: string, cartao: string, parcelas: string) {
@@ -256,7 +276,7 @@ export default function Mensalidades() {
     const totalGeralPago = pagas.reduce((acc, m) => acc + Number(m.valor), 0);
     
     const linhasTabela = pagas.map(m => {
-      const dataVenc = new Date(m.vencimento).toLocaleDateString('pt-BR');
+      const dataVenc = new Date(m.vencimento + "T12:00:00").toLocaleDateString('pt-BR');
       const dataPag = m.data_pagamento ? new Date(m.data_pagamento).toLocaleDateString('pt-BR') : "---";
       return `
         <tr>
@@ -376,21 +396,26 @@ export default function Mensalidades() {
                 {pendentes.length === 0 ? (
                   <div className="text-center py-6">
                     <p className="text-gray-500 mb-4">Nenhuma mensalidade pendente.</p>
-                    <button onClick={gerarMensalidadesFaltantes} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded flex items-center justify-center gap-2 mx-auto">
-                      <RefreshCw size={18} className={loading ? "animate-spin" : ""} /> Gerar Mensalidades Faltantes
-                    </button>
+                    {loading && <p className="text-sm text-blue-500"><RefreshCw size={16} className="animate-spin inline mr-2"/> Gerando mensalidades...</p>}
                   </div>
                 ) : (
                   <>
                     <div className="space-y-2 max-h-75 overflow-y-auto mb-4 pr-1">
                       {pendentes.map(m => {
                         const isSelected = selecionadasParaPagar.includes(m.id);
+                        const isIsento = m.status === "isento";
                         return (
                           <label key={m.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${isSelected ? 'bg-red-50 border-red-300' : 'bg-gray-50'}`}>
-                            <input type="checkbox" className="mt-1 w-4 h-4 text-red-600" checked={isSelected} onChange={() => toggleSelecionada(m.id)} />
+                            <input 
+                              type="checkbox" 
+                              className="mt-1 w-4 h-4 text-red-600" 
+                              checked={isSelected} 
+                              onChange={() => toggleSelecionada(m.id)} 
+                              disabled={isIsento} 
+                            />
                             <div>
-                              <p className="font-semibold">{formatarMesReferencia(m.vencimento)}</p>
-                              <p className="text-xs text-gray-500">Vencimento: {new Date(m.vencimento).toLocaleDateString()}</p>
+                              <p className="font-semibold">{formatarMesReferencia(m.vencimento)} {isIsento && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-2">Isento</span>}</p>
+                              <p className="text-xs text-gray-500">Vencimento: {new Date(m.vencimento + "T12:00:00").toLocaleDateString()}</p>
                               <p className="text-sm font-medium mt-1">Valor: R$ {Number(m.valor).toFixed(2)}</p>
                             </div>
                           </label>
