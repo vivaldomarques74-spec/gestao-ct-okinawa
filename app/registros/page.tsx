@@ -39,7 +39,6 @@ export default function RegistrosPage() {
   const [mostrarCancelados, setMostrarCancelados] = useState(false)
   const [buscaAluno, setBuscaAluno] = useState("")
 
-  // ESTADOS PARA CANCELAMENTO SEGURO
   const [movCancelar, setMovCancelar] = useState<any>(null)
   const [senhaCancelamento, setSenhaCancelamento] = useState("")
 
@@ -64,9 +63,13 @@ export default function RegistrosPage() {
   }
 
   async function carregarModalidadesTurmas() {
-    const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
+    // Removemos o filtro de status para garantir que tudo apareça
+    const { data: mods, error: errMods } = await supabase.from("modalidades").select("*")
+    if (errMods) console.error("Erro ao buscar modalidades:", errMods)
     setModalidades(mods || [])
-    const { data: turmasData } = await supabase.from("turmas").select("*, modalidades(*)").eq("status", "ativo")
+    
+    const { data: turmasData, error: errTurmas } = await supabase.from("turmas").select("*")
+    if (errTurmas) console.error("Erro ao buscar turmas:", errTurmas)
     setTurmas(turmasData || [])
   }
 
@@ -95,8 +98,13 @@ export default function RegistrosPage() {
       numero_matricula: aluno.numero_matricula || "",
     })
     
-    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", aluno.id).eq("status", "ativo")
-    setMatriculasAluno(mats || [])
+    // Busca segura de matrículas (evita erro 400)
+    const { data: rawMats } = await supabase.from("matriculas").select("*").eq("aluno_id", aluno.id).eq("status", "ativo")
+    const matsCompletas = await Promise.all((rawMats || []).map(async (m) => {
+      const { data: t } = await supabase.from("turmas").select("*").eq("id", m.turma_id).single()
+      return { ...m, turmas: t }
+    }))
+    setMatriculasAluno(matsCompletas)
 
     const { data: desc } = await supabase.from("descontos_especiais").select("*").eq("aluno_id", aluno.id).eq("status", "ativo").maybeSingle()
     setDescontoEspecial(desc || null)
@@ -262,35 +270,57 @@ export default function RegistrosPage() {
     if (!alunoEditando) return
     const turma = turmas.find(t => t.id === turmaId)
     if (!turma) return
-    const { data: novaMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoEditando.id, turma_id: turmaId, status: "ativo" }]).select().single()
+    
+    // Busca a modalidade para pegar o valor
+    const { data: mod } = await supabase.from("modalidades").select("*").eq("id", turma.modalidade_id).single()
+
+    const { data: novaMat, error: errMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoEditando.id, turma_id: turmaId, status: "ativo" }]).select().single()
+    
+    if (errMat) {
+      alert("Erro ao matricular: " + errMat.message)
+      return
+    }
     
     const hoje = new Date()
     const diaVencimento = hoje.getDate()
 
-    // GERA AS 12 MENSALIDADES
+    // GERA AS 12 MENSALIDADES CORRIGIDAS (SEM BUG DE FUSO HORÁRIO)
     for (let i = 1; i <= 12; i++) {
-      const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento).toISOString().slice(0, 10)
+      const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento)
+      const vencimentoStr = vencimento.toLocaleDateString('en-CA')
+      
       await supabase.from("mensalidades").insert([{ 
         aluno_id: alunoEditando.id, 
         matricula_id: novaMat.id, 
-        vencimento, 
-        valor: turma.modalidades?.valor_geral || 0, 
-        valor_base: turma.modalidades?.valor_base || 0, 
-        status: "pendente" 
+        vencimento: vencimentoStr, 
+        valor: mod?.valor_geral || 0, 
+        valor_base: mod?.valor_base || 0, 
+        status: "pendente",
+        mes_referente: vencimento.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
       }])
     }
     
     alert("Modalidade e 12 mensalidades geradas!")
-    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
-    setMatriculasAluno(mats || [])
+    // Recarrega as matrículas de forma segura
+    const { data: rawMats } = await supabase.from("matriculas").select("*").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
+    const matsCompletas = await Promise.all((rawMats || []).map(async (m) => {
+      const { data: t } = await supabase.from("turmas").select("*").eq("id", m.turma_id).single()
+      return { ...m, turmas: t }
+    }))
+    setMatriculasAluno(matsCompletas)
   }
 
   async function removerTurmaAluno(matriculaId: string) {
     if (!confirm(`Remover esta turma?`)) return
     await supabase.from("mensalidades").update({ status: "cancelado" }).eq("matricula_id", matriculaId).eq("status", "pendente")
     await supabase.from("matriculas").update({ status: "inativo" }).eq("id", matriculaId)
-    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
-    setMatriculasAluno(mats || [])
+    
+    const { data: rawMats } = await supabase.from("matriculas").select("*").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
+    const matsCompletas = await Promise.all((rawMats || []).map(async (m) => {
+      const { data: t } = await supabase.from("turmas").select("*").eq("id", m.turma_id).single()
+      return { ...m, turmas: t }
+    }))
+    setMatriculasAluno(matsCompletas)
   }
 
   async function confirmarCancelamentoMovimentacao() {
@@ -335,7 +365,6 @@ export default function RegistrosPage() {
                     <div key={aluno.id} className="border-b p-2 flex justify-between items-center">
                       <div className="cursor-pointer" onClick={() => editarAluno(aluno)}>
                         <p className="font-semibold">{aluno.nome}</p>
-                        {/* AQUI ESTÁ O NÚMERO DE MATRÍCULA DE VOLTA */}
                         <p className="text-xs text-gray-500">
                           Nº Matrícula: {aluno.numero_matricula || "---"} | CPF: {aluno.cpf || "---"}
                         </p>
@@ -351,7 +380,6 @@ export default function RegistrosPage() {
 
               {alunoEditando && (
                 <div className="pl-4 space-y-3 max-h-175 overflow-y-auto pr-2">
-                  {/* AQUI EXIBE O NÚMERO DE MATRÍCULA NO PAINEL DE EDIÇÃO */}
                   <div className="bg-gray-100 p-2 rounded">
                     <label className="text-xs font-semibold text-gray-500">Nº Matrícula</label>
                     <input className="w-full p-2 border rounded bg-transparent font-bold text-red-600" readOnly value={formAluno.numero_matricula || "---"} />
@@ -436,10 +464,10 @@ export default function RegistrosPage() {
                   <h3 className="font-semibold mt-4 border-t pt-2">Modalidades / Turmas</h3>
                   {matriculasAluno.map(mat => {
                     const turma = turmas.find(t => t.id === mat.turma_id)
-                    const modalidadeNome = turma?.modalidades?.nome || "?"
+                    const modalidade = modalidades.find(m => m.id === turma?.modalidade_id)
                     return (
                       <div key={mat.id} className="flex justify-between items-center border p-2 rounded mb-2">
-                        <span><strong>{modalidadeNome}</strong> - {turma?.nome}</span>
+                        <span><strong>{modalidade?.nome || "?"}</strong> - {turma?.nome || "?"}</span>
                         <button onClick={() => removerTurmaAluno(mat.id)} className="text-red-600 text-sm">Remover</button>
                       </div>
                     )
@@ -449,8 +477,8 @@ export default function RegistrosPage() {
                     <select className="flex-1 p-2 border rounded" onChange={async (e) => {
                       const modalidadeId = e.target.value
                       if (!modalidadeId) return
-                      const turmasFiltradas = turmas.filter(t => t.modalidade_id === modalidadeId && t.status === "ativo")
-                      if (turmasFiltradas.length === 0) { alert("Nenhuma turma ativa."); return }
+                      const turmasFiltradas = turmas.filter(t => t.modalidade_id === modalidadeId)
+                      if (turmasFiltradas.length === 0) { alert("Nenhuma turma cadastrada para esta modalidade."); return }
                       let turmaEscolhida = null
                       if (turmasFiltradas.length === 1) { turmaEscolhida = turmasFiltradas[0] } 
                       else {
