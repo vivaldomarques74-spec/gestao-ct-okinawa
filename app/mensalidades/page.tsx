@@ -62,12 +62,16 @@ export default function Mensalidades() {
   }
 
   async function gerarMensalidadesAutomatico(aluno: any) {
-    if (aluno.status !== "ativo") return;
+    if (aluno.status !== "ativo") {
+      alert(`⚠️ Geração cancelada: O status do aluno no banco é "${aluno.status}", e não "ativo".`);
+      return;
+    }
 
     setLoading(true)
     const { data: mats, error } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", aluno.id).eq("status", "ativo")
     
     if (error || !mats || mats.length === 0) {
+      alert("⚠️ Geração cancelada: Este aluno não possui nenhuma matrícula com o status 'ativo' na tabela de matrículas.");
       setLoading(false)
       return; 
     }
@@ -95,8 +99,11 @@ export default function Mensalidades() {
         
         const { valorFinal: valorComDesconto, isento } = await calcularDescontosMensalidade(aluno.id, valorOriginal)
 
-        // 👇 Ignora geração se for isento ou valor zerado
-        if (isento || valorComDesconto <= 0) continue;
+        // Se for isento ou R$ 0,00, ignora e não salva
+        if (isento || valorComDesconto <= 0) {
+          console.log(`Mês ${i} ignorado: Isento = ${isento}, Valor = ${valorComDesconto}`);
+          continue;
+        }
 
         novasMensalidades.push({
           aluno_id: aluno.id, 
@@ -111,7 +118,13 @@ export default function Mensalidades() {
     }
 
     if (novasMensalidades.length > 0) {
-      await supabase.from("mensalidades").insert(novasMensalidades)
+      const { error: insertError } = await supabase.from("mensalidades").insert(novasMensalidades)
+      
+      if (insertError) {
+        alert("❌ Erro ao salvar no Supabase: " + insertError.message)
+        setLoading(false)
+        return
+      }
       
       const { data } = await supabase
         .from("mensalidades")
@@ -124,6 +137,8 @@ export default function Mensalidades() {
       setPendentes(todas.filter(m => m.status === "pendente" || m.status === "isento"))
       setPagas(todas.filter(m => m.status === "pago").reverse())
       if (todas.length > 0) setSelecionadasParaPagar([todas.find(m => m.status !== "pago")?.id].filter(Boolean))
+    } else {
+      alert("⚠️ A conta deu R$ 0,00 para todos os meses (Isento ou sem valor na modalidade). Nada foi gerado.");
     }
 
     setLoading(false)
@@ -192,7 +207,6 @@ export default function Mensalidades() {
       for (const m of mensalidadesParaPagar) {
         await supabase.from("mensalidades").update({ status: "pago", data_pagamento: new Date().toISOString() }).eq("id", m.id)
 
-        // Usamos T12:00:00 para evitar problemas de fuso horário ao virar o mês
         const proxVenc = new Date(m.vencimento + "T12:00:00")
         proxVenc.setMonth(proxVenc.getMonth() + 1)
         const proxVencStr = proxVenc.toLocaleDateString('en-CA') 
@@ -207,7 +221,7 @@ export default function Mensalidades() {
 
         const { valorFinal, isento } = await calcularDescontosMensalidade(selecionado.id, valorComDescontoEscola)
 
-        // 👇 Se o próximo mês for isento ou zero, não gera a próxima fatura
+        // Se o próximo mês for isento ou zero, não gera a próxima fatura
         if (isento || valorFinal <= 0) continue; 
 
         await supabase.from("mensalidades").insert([{
