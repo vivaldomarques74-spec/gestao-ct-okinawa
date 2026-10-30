@@ -3,7 +3,7 @@
 import "./globals.css";
 import Sidebar from "@/components/sidebar";
 import { usePathname } from "next/navigation";
-import LoginGuard from "@/components/LoginGuard"; // <--- IMPORTANDO O NOME CORRETO
+import LoginGuard from "@/components/LoginGuard";
 
 export default function RootLayout({
   children,
@@ -12,11 +12,14 @@ export default function RootLayout({
 }) {
   const pathname = usePathname();
 
+  // Verifica se a URL tem algo depois de /escolas/ (ex: /escolas/ESC-TESTE)
+  const isRotaPublicaEscola = pathname?.startsWith("/escolas/") && pathname !== "/escolas" && pathname !== "/escolas/";
+
   // Rotas onde NÃO deve aparecer o menu lateral
   const semMenu =
     pathname === "/presenca" || 
     pathname?.startsWith("/parceiros/dashboard") || 
-    pathname?.startsWith("/escola"); // <--- ADICIONADO AQUI
+    isRotaPublicaEscola;
 
   return (
     <html lang="pt-br">

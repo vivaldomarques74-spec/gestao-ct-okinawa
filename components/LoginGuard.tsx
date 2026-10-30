@@ -8,12 +8,6 @@ export default function LoginGuard({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
 
-  const publicRoutes = [
-    "/presenca", 
-    "/parceiros/dashboard", 
-    "/escola"
-  ];
-
   useEffect(() => {
     const auth = localStorage.getItem("auth_token");
     if (auth === "true") {
@@ -30,10 +24,21 @@ export default function LoginGuard({ children }: { children: React.ReactNode }) 
     );
   }
 
-  if (publicRoutes.some(route => pathname?.startsWith(route))) {
+  // Verifica se a URL tem algo depois de /escolas/ (ex: /escolas/ESC-TESTE)
+  const isRotaPublicaEscola = pathname?.startsWith("/escolas/") && pathname !== "/escolas" && pathname !== "/escolas/";
+
+  // Rotas que NÃO exigem a senha do sistema
+  const isPublicRoute = 
+    pathname === "/presenca" || 
+    pathname?.startsWith("/parceiros/dashboard") || 
+    isRotaPublicaEscola;
+
+  // Se for uma rota pública, permite o acesso
+  if (isPublicRoute) {
     return <>{children}</>;
   }
 
+  // Se não for pública e não estiver logado, mostra a tela de senha do sistema
   if (!isAuthenticated) {
     return <LoginScreen onAuth={() => setIsAuthenticated(true)} />;
   }
@@ -46,8 +51,7 @@ function LoginScreen({ onAuth }: { onAuth: () => void }) {
   const [erro, setErro] = useState("");
 
   const handleLogin = () => {
-    // SENHA DO SISTEMA ALTERADA PARA 1702
-    if (senha === "1702") {
+    if (senha === "1702") { // Senha de entrada do sistema
       localStorage.setItem("auth_token", "true");
       onAuth();
     } else {
