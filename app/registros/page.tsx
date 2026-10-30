@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
-import { Gift, Lock, Trash2, X } from "lucide-react"
+import { Gift, Lock, FileText, Trash2 } from "lucide-react"
+import jsPDF from "jspdf"
 
 export default function RegistrosPage() {
   const [aba, setAba] = useState("alunos")
@@ -22,10 +23,6 @@ export default function RegistrosPage() {
   const [senhaDiretor, setSenhaDiretor] = useState("")
   const [aplicandoDesconto, setAplicandoDesconto] = useState(false)
 
-  // ESTADOS DE CANCELAMENTO E AUDITORIA
-  const [movCancelar, setMovCancelar] = useState<any>(null)
-  const [senhaCancelamento, setSenhaCancelamento] = useState("")
-
   const [formAluno, setFormAluno] = useState<any>({
     nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "",
     menor: false,
@@ -40,6 +37,10 @@ export default function RegistrosPage() {
   const [filtroParceiro, setFiltroParceiro] = useState("")
   const [mostrarCancelados, setMostrarCancelados] = useState(false)
   const [buscaAluno, setBuscaAluno] = useState("")
+
+  // ESTADOS PARA CANCELAMENTO SEGURO
+  const [movCancelar, setMovCancelar] = useState<any>(null)
+  const [senhaCancelamento, setSenhaCancelamento] = useState("")
 
   useEffect(() => { carregarTudo() }, [])
 
@@ -115,6 +116,67 @@ export default function RegistrosPage() {
     setAlunoEditando(null)
   }
 
+  function gerarTermoPDF() {
+    const doc = new jsPDF()
+    let y = 20
+
+    doc.setFontSize(14)
+    doc.text("TERMO DE CIÊNCIA, RESPONSABILIDADE E AUTORIZAÇÕES", 105, y, { align: "center" })
+    y += 8
+    doc.setFontSize(12)
+    doc.text("CT OKINAWA", 105, y, { align: "center" })
+    y += 15
+
+    doc.setFontSize(10)
+    const introText = `Eu, ${formAluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${formAluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
+    const splitIntro = doc.splitTextToSize(introText, 180)
+    doc.text(splitIntro, 15, y)
+    y += splitIntro.length * 6 + 5
+
+    const condicaoText = formAluno.menor 
+      ? `Na condição de: ( X ) Responsável legal pelo(a) aluno(a) menor ${formAluno.nome}` 
+      : `Na condição de: ( X ) Aluno(a) maior de idade`
+    doc.text(condicaoText, 15, y)
+    y += 10
+
+    const clausulas = [
+      `1. DA CIÊNCIA DO REGULAMENTO: Declaro que recebi, li, compreendi e tive acesso ao Regulamento Interno do CT OKINAWA, estando plenamente ciente de todas as normas de funcionamento, conduta, disciplina e organização do espaço.`,
+      `2. DA PRÁTICA DE ATIVIDADE FÍSICA E RISCOS: Declaro estar ciente de que a prática de artes marciais envolve riscos inerentes. Assumo integral responsabilidade pela participação, isentando o CT OKINAWA de acidentes que não sejam oriundos de dolo ou negligência direta.`,
+      `3. DAS CONDIÇÕES DE SAÚDE: Declaro que: ( X ) O aluno encontra-se apto à prática de atividades físicas. ${formAluno.problema_saude ? `( X ) Informei previamente a seguinte condição de saúde: ${formAluno.saude_detalhes}` : `( ) Informei previamente alguma condição de saúde relevante.`}`,
+      `4. DO USO DE IMAGEM, VOZ E IDENTIDADE: Autorizo o CT OKINAWA a captar e utilizar imagem, voz e nome do aluno para fins institucionais, promocionais e de divulgação, sem limitação territorial e por prazo indeterminado, sem qualquer remuneração.`,
+      `5. DAS RESPONSABILIDADES: O descumprimento das normas poderá resultar em medidas disciplinares. O CT não se responsabiliza por ocorrências fora de suas dependências ou por ações de terceiros.`,
+      `6. DAS OBRIGAÇÕES FINANCEIRAS: A mensalidade possui vencimento fixo. O não pagamento poderá acarretar restrição de acesso às atividades até a devida regularização.`,
+      `7. DECLARAÇÃO FINAL: Declaro que todas as informações prestadas são verdadeiras e que este termo possui validade jurídica, não podendo alegar desconhecimento.`
+    ]
+
+    clausulas.forEach(clausula => {
+      const splitText = doc.splitTextToSize(clausula, 180)
+      if (y + splitText.length * 6 > 260) { doc.addPage(); y = 20; }
+      doc.text(splitText, 15, y)
+      y += splitText.length * 6 + 4
+    })
+
+    if (y > 220) { doc.addPage(); y = 20; }
+    y += 10
+    
+    doc.text(`Nome: ${formAluno.nome || "_________________________________________"}`, 15, y); y += 6
+    doc.text(`CPF: ${formAluno.cpf || "____________________"}`, 15, y); y += 6
+    doc.text(`Telefone: ${formAluno.whatsapp || formAluno.responsavel_whatsapp || "____________________"}`, 15, y); y += 6
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 15, y); y += 15
+
+    doc.text(`( X ) Aluno maior de idade`, 15, y); y += 6
+    doc.text(`( X ) Responsável legal`, 15, y); y += 20
+
+    doc.setLineWidth(0.5)
+    doc.line(15, y, 100, y)
+    doc.line(110, y, 195, y)
+    y += 5
+    doc.text(`${formAluno.menor ? formAluno.responsavel_nome || "Assinatura do Responsável" : formAluno.nome || "Assinatura do Aluno"}`, 15, y)
+    doc.text(`CT OKINAWA`, 110, y)
+
+    doc.save(`Termo_Responsabilidade_${formAluno.nome || "Aluno"}.pdf`)
+  }
+
   async function aplicarDescontoDiretoria() {
     if (senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta. Operação negada.")
     if (!formDesconto.valor) return alert("Preencha o valor do desconto.")
@@ -163,7 +225,7 @@ export default function RegistrosPage() {
 
   async function cancelarDescontoDiretoria() {
     if (senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta. Operação negada.")
-    if (!confirm("Cancelar este desconto? As mensalidades pendentes voltarão ao valor normal.")) return
+    if (!confirm("Cancelar este desconto?")) return
     await supabase.from("descontos_especiais").update({ status: "cancelado" }).eq("id", descontoEspecial.id)
     setDescontoEspecial(null)
     alert("Desconto cancelado.")
@@ -206,22 +268,18 @@ export default function RegistrosPage() {
     setMatriculasAluno(mats || [])
   }
 
-  // CANCELAMENTO COM LOG E SENHA
-  async function confirmarCancelamento() {
-    if (senhaCancelamento !== "984215") return alert("❌ Senha incorreta. Cancelamento negado.")
-    if (!movCancelar) return
-
-    // 1. Cancela no caixa
+  async function confirmarCancelamentoMovimentacao() {
+    if (senhaCancelamento !== "984215") return alert("❌ Senha da Diretoria incorreta.")
     await supabase.from("caixa").update({ cancelado: true, valor: 0 }).eq("id", movCancelar.id)
     
-    // 2. Grava o log de auditoria
+    // Grava log de auditoria
     await supabase.from("logs_auditoria").insert([{
       operador: "Admin (Diretoria)",
       acao: "Cancelamento Financeiro",
-      detalhes: `Cancelou ${movCancelar.tipo} no valor de R$ ${movCancelar.valor} do aluno ${movCancelar.nome}. ID: ${movCancelar.id}`
+      detalhes: `Cancelou ${movCancelar.tipo} de R$ ${movCancelar.valor} do aluno ${movCancelar.nome}. ID: ${movCancelar.id}`
     }])
 
-    alert("✅ Cancelado com sucesso. Log registrado.")
+    alert("✅ Cancelado com sucesso.")
     setMovCancelar(null)
     setSenhaCancelamento("")
     carregarMovimentacoes()
@@ -255,7 +313,10 @@ export default function RegistrosPage() {
                         <p className="font-semibold">{aluno.nome}</p>
                         <p className="text-xs text-gray-500">CPF: {aluno.cpf}</p>
                       </div>
-                      <button onClick={() => excluirAluno(aluno.id)} className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Excluir</button>
+                      <div className="flex gap-1">
+                        <button onClick={() => ativarInativarAluno(aluno)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{aluno.status === "ativo" ? "Inativar" : "Ativar"}</button>
+                        <button onClick={() => excluirAluno(aluno.id)} className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Excluir</button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -264,15 +325,44 @@ export default function RegistrosPage() {
               {alunoEditando && (
                 <div className="pl-4 space-y-3 max-h-175 overflow-y-auto pr-2">
                   <input className="w-full p-2 border rounded" placeholder="Nome" value={formAluno.nome} onChange={e => setFormAluno({...formAluno, nome: e.target.value})} />
+                  <input className="w-full p-2 border rounded" placeholder="CPF" value={formAluno.cpf} onChange={e => setFormAluno({...formAluno, cpf: e.target.value})} />
+                  <input className="w-full p-2 border rounded" placeholder="RG" value={formAluno.rg} onChange={e => setFormAluno({...formAluno, rg: e.target.value})} />
+                  <input type="date" className="w-full p-2 border rounded" value={formAluno.nascimento} onChange={e => setFormAluno({...formAluno, nascimento: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="WhatsApp" value={formAluno.whatsapp} onChange={e => setFormAluno({...formAluno, whatsapp: e.target.value})} />
+                  <input className="w-full p-2 border rounded" placeholder="Email" value={formAluno.email} onChange={e => setFormAluno({...formAluno, email: e.target.value})} />
+                  <input className="w-full p-2 border rounded" placeholder="Endereço" value={formAluno.endereco} onChange={e => setFormAluno({...formAluno, endereco: e.target.value})} />
                   
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={formAluno.menor} onChange={e => setFormAluno({...formAluno, menor: e.target.checked})} /> Menor de idade</label>
+                  {formAluno.menor && (
+                    <div className="grid md:grid-cols-2 gap-3 pl-4">
+                      <input className="p-2 border rounded" placeholder="Responsável" value={formAluno.responsavel_nome} onChange={e => setFormAluno({...formAluno, responsavel_nome: e.target.value})} />
+                      <input className="p-2 border rounded" placeholder="CPF Responsável" value={formAluno.responsavel_cpf} onChange={e => setFormAluno({...formAluno, responsavel_cpf: e.target.value})} />
+                      <input className="p-2 border rounded" placeholder="WhatsApp Responsável" value={formAluno.responsavel_whatsapp} onChange={e => setFormAluno({...formAluno, responsavel_whatsapp: e.target.value})} />
+                      <input className="p-2 border rounded" placeholder="Email Responsável" value={formAluno.responsavel_email} onChange={e => setFormAluno({...formAluno, responsavel_email: e.target.value})} />
+                    </div>
+                  )}
+
+                  <div className="border p-2 rounded">
+                    <label><input type="checkbox" checked={formAluno.problema_saude} onChange={e => setFormAluno({...formAluno, problema_saude: e.target.checked})} /> Problema de saúde</label>
+                    {formAluno.problema_saude && <textarea className="w-full border rounded mt-1" value={formAluno.saude_detalhes} onChange={e => setFormAluno({...formAluno, saude_detalhes: e.target.value})} />}
+                    <label className="mt-2 block"><input type="checkbox" checked={formAluno.usa_remedio} onChange={e => setFormAluno({...formAluno, usa_remedio: e.target.checked})} /> Uso de remédio</label>
+                    {formAluno.usa_remedio && <textarea className="w-full border rounded mt-1" value={formAluno.remedio_detalhes} onChange={e => setFormAluno({...formAluno, remedio_detalhes: e.target.value})} />}
+                  </div>
+
+                  <select className="w-full p-2 border rounded" value={formAluno.status} onChange={e => setFormAluno({...formAluno, status: e.target.value})}>
+                    <option value="ativo">Ativo</option><option value="inativo">Inativo</option><option value="bloqueado">Bloqueado</option>
+                  </select>
+                  <select className="w-full p-2 border rounded" value={formAluno.convenio_id} onChange={e => setFormAluno({...formAluno, convenio_id: e.target.value})}>
+                    <option value="">Nenhum convênio</option>
+                    {convenios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+
                   <h3 className="font-semibold mt-4 border-t pt-2 text-red-600 flex items-center gap-2"><Gift size={18}/> Desconto de Diretoria</h3>
                   
                   {descontoEspecial ? (
                     <div className="bg-red-50 border border-red-200 p-3 rounded">
                       <p className="text-sm font-semibold text-red-700">Desconto Ativo {descontoEspecial.recorrente && "(Recorrente)"}</p>
                       <p className="text-xs text-gray-600 mb-2">{descontoEspecial.tipo === "fixo" ? `R$ ${descontoEspecial.valor}` : `${descontoEspecial.valor}%`}.</p>
-                      
                       <div className="flex gap-2 mt-2">
                         <input type="password" placeholder="Senha Diretor" className="w-1/2 p-1 border rounded text-sm" value={senhaDiretor} onChange={e => setSenhaDiretor(e.target.value)} />
                         <button onClick={cancelarDescontoDiretoria} className="bg-red-600 text-white text-xs px-3 py-1 rounded">Cancelar Desconto</button>
@@ -304,6 +394,44 @@ export default function RegistrosPage() {
                     </div>
                   )}
 
+                  <div className="border-t pt-4 mt-4">
+                    <button onClick={gerarTermoPDF} className="w-full bg-blue-600 text-white p-2 rounded flex items-center justify-center gap-2">
+                      <FileText size={18}/> Gerar e Imprimir Termo (PDF)
+                    </button>
+                  </div>
+
+                  <h3 className="font-semibold mt-4 border-t pt-2">Modalidades / Turmas</h3>
+                  {matriculasAluno.map(mat => {
+                    const turma = turmas.find(t => t.id === mat.turma_id)
+                    const modalidadeNome = turma?.modalidades?.nome || "?"
+                    return (
+                      <div key={mat.id} className="flex justify-between items-center border p-2 rounded mb-2">
+                        <span><strong>{modalidadeNome}</strong> - {turma?.nome}</span>
+                        <button onClick={() => removerTurmaAluno(mat.id)} className="text-red-600 text-sm">Remover</button>
+                      </div>
+                    )
+                  })}
+
+                  <div className="flex gap-2 mt-2 items-center">
+                    <select className="flex-1 p-2 border rounded" onChange={async (e) => {
+                      const modalidadeId = e.target.value
+                      if (!modalidadeId) return
+                      const turmasFiltradas = turmas.filter(t => t.modalidade_id === modalidadeId && t.status === "ativo")
+                      if (turmasFiltradas.length === 0) { alert("Nenhuma turma ativa."); return }
+                      let turmaEscolhida = null
+                      if (turmasFiltradas.length === 1) { turmaEscolhida = turmasFiltradas[0] } 
+                      else {
+                        const nomeTurma = prompt("Turmas: " + turmasFiltradas.map(t=>t.nome).join(", ") + "\nDigite o nome:")
+                        if (nomeTurma) turmaEscolhida = turmasFiltradas.find(t => t.nome.toLowerCase() === nomeTurma.toLowerCase())
+                      }
+                      if (turmaEscolhida) await adicionarTurmaAluno(turmaEscolhida.id)
+                      e.target.value = ""
+                    }} defaultValue="">
+                      <option value="">+ Adicionar modalidade...</option>
+                      {modalidades.map(mod => <option key={mod.id} value={mod.id}>{mod.nome}</option>)}
+                    </select>
+                  </div>
+
                   <div className="flex gap-2 mt-4 border-t pt-4">
                     <button onClick={salvarAluno} className="bg-red-600 text-white px-4 py-2 rounded">Salvar Alterações</button>
                     <button onClick={() => setAlunoEditando(null)} className="bg-gray-300 px-4 py-2 rounded">Fechar</button>
@@ -327,9 +455,7 @@ export default function RegistrosPage() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={mostrarCancelados} onChange={e => setMostrarCancelados(e.target.checked)} /> Mostrar cancelados</label>
             </div>
             <table className="w-full">
-              <thead className="bg-gray-100">
-                <tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-left">Valor</th><th className="p-2 text-left">Ação</th></tr>
-              </thead>
+              <thead className="bg-gray-100"><tr><th className="p-2 text-left">Data</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-left">Valor</th><th className="p-2 text-left">Ação</th></tr></thead>
               <tbody>
                 {movFiltradas.map(mov => (
                   <tr key={mov.id} className="border-t">
@@ -338,9 +464,7 @@ export default function RegistrosPage() {
                     <td className="p-2">R$ {Number(mov.valor).toFixed(2)}</td>
                     <td className="p-2">
                       {!mov.cancelado && (
-                        <button onClick={() => { setMovCancelar(mov); setSenhaCancelamento(""); }} className="bg-red-500 text-white px-2 py-1 rounded text-sm hover:bg-red-600">
-                          Cancelar
-                        </button>
+                        <button onClick={() => { setMovCancelar(mov); setSenhaCancelamento(""); }} className="bg-red-500 text-white px-2 py-1 rounded text-sm hover:bg-red-600">Cancelar</button>
                       )}
                     </td>
                   </tr>
@@ -351,28 +475,16 @@ export default function RegistrosPage() {
         )}
       </div>
 
-      {/* MODAL DE CANCELAMENTO COM SENHA E LOG */}
       {movCancelar && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-2 text-red-600 flex items-center gap-2">
-              <Trash2 size={20} /> Confirmar Cancelamento
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Você está cancelando <b>{movCancelar.tipo}</b> no valor de <b>R$ {Number(movCancelar.valor).toFixed(2)}</b>. 
-              Essa ação será registrada no log de auditoria.
-            </p>
+            <h2 className="text-xl font-bold mb-2 text-red-600 flex items-center gap-2"><Trash2 size={20}/> Confirmar Cancelamento</h2>
+            <p className="text-sm text-gray-600 mb-4">Cancelar <b>{movCancelar.tipo}</b> de R$ {Number(movCancelar.valor).toFixed(2)}?</p>
             <label className="block text-sm font-semibold mb-1">Senha da Diretoria</label>
-            <input 
-              type="password" 
-              placeholder="Digite a senha de 6 dígitos" 
-              className="w-full p-2 border rounded mb-4" 
-              value={senhaCancelamento} 
-              onChange={e => setSenhaCancelamento(e.target.value)} 
-            />
+            <input type="password" placeholder="Senha" className="w-full p-2 border rounded mb-4" value={senhaCancelamento} onChange={e => setSenhaCancelamento(e.target.value)} />
             <div className="flex gap-2">
-              <button onClick={confirmarCancelamento} className="bg-red-600 text-white p-2 rounded flex-1 hover:bg-red-700">Confirmar Cancelamento</button>
-              <button onClick={() => setMovCancelar(null)} className="bg-gray-300 p-2 rounded hover:bg-gray-400">Voltar</button>
+              <button onClick={confirmarCancelamentoMovimentacao} className="bg-red-600 text-white p-2 rounded flex-1">Confirmar</button>
+              <button onClick={() => setMovCancelar(null)} className="bg-gray-300 p-2 rounded">Voltar</button>
             </div>
           </div>
         </div>

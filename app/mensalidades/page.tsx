@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react"
 import { supabase } from "../../lib/supabase"
 import { calcularDescontosMensalidade } from "../../lib/descontos"
-import { Lock } from "lucide-react"
+import { Lock, RefreshCw } from "lucide-react"
 
 export default function Mensalidades() {
   const [busca, setBusca] = useState("")
   const [alunos, setAlunos] = useState<any[]>([])
   const [selecionado, setSelecionado] = useState<any>(null)
-  
   const [pendentes, setPendentes] = useState<any[]>([])
   const [pagas, setPagas] = useState<any[]>([])
   const [selecionadasParaPagar, setSelecionadasParaPagar] = useState<string[]>([])
@@ -21,7 +20,6 @@ export default function Mensalidades() {
   const [codigoPagamento, setCodigoPagamento] = useState("")
   const [loading, setLoading] = useState(false)
 
-  // Estados para Desconto Pontual de Diretoria
   const [showDescDiretoria, setShowDescDiretoria] = useState(false)
   const [senhaDiretor, setSenhaDiretor] = useState("")
   const [descValor, setDescValor] = useState("")
@@ -40,43 +38,79 @@ export default function Mensalidades() {
     setShowDescDiretoria(false)
     setSenhaDiretor("")
     
-    const { data } = await supabase
-      .from("mensalidades")
-      .select("*, matriculas(turmas(*, modalidades(*)))")
-      .eq("aluno_id", aluno.id)
-      .in("status", ["pendente", "pago"])
-      .order("vencimento", { ascending: true })
+    const { data } = await supabase.from("mensalidades").select("*, matriculas(turmas(*, modalidades(*)))").eq("aluno_id", aluno.id).in("status", ["pendente", "pago"]).order("vencimento", { ascending: true })
 
     const todas = data || []
-    
     const pend = todas.filter(m => m.status === "pendente")
     const pg = todas.filter(m => m.status === "pago").reverse() 
 
     setPendentes(pend)
     setPagas(pg)
     
-    if (pend.length > 0) {
-      setSelecionadasParaPagar([pend[0].id])
-    } else {
-      setSelecionadasParaPagar([])
+    if (pend.length > 0) setSelecionadasParaPagar([pend[0].id])
+    else setSelecionadasParaPagar([])
+  }
+
+  async function gerarMensalidadesFaltantes() {
+    if (!selecionado) return
+    setLoading(true)
+
+    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", selecionado.id).eq("status", "ativo")
+    if (!mats || mats.length === 0) {
+      alert("Aluno não possui matrículas ativas.")
+      setLoading(false)
+      return
     }
+
+    const hoje = new Date()
+    const diaVencimento = hoje.getDate()
+    let geradas = 0
+
+    for (const mat of mats) {
+      const turma = mat.turmas
+      let valorOriginal = turma?.modalidades?.valor_geral || 0
+      const valorBase = turma?.modalidades?.valor_base || 0
+
+      if (selecionado.escola_id) {
+        const { data: escola } = await supabase.from("escolas").select("*").eq("id", selecionado.escola_id).single()
+        if (escola) {
+          const descEscola = escola.tipo_desconto === "percentual" ? valorOriginal * (escola.valor_desconto / 100) : escola.valor_desconto;
+          valorOriginal = Math.max(0, valorOriginal - descEscola);
+        }
+      }
+
+      for (let i = 1; i <= 12; i++) {
+        const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento)
+        const vencimentoStr = vencimento.toISOString().slice(0,10)
+        
+        const { data: existe } = await supabase.from("mensalidades").select("id").eq("aluno_id", selecionado.id).eq("matricula_id", mat.id).eq("vencimento", vencimentoStr).maybeSingle()
+        if (existe) continue;
+
+        const { valorFinal: valorComDesconto, isento } = await calcularDescontosMensalidade(selecionado.id, valorOriginal)
+
+        await supabase.from("mensalidades").insert([{
+          aluno_id: selecionado.id, matricula_id: mat.id, vencimento: vencimentoStr,
+          valor: valorComDesconto, valor_base: valorBase, status: isento ? "isento" : "pendente",
+          mes_referente: vencimento.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        }])
+        geradas++
+      }
+    }
+
+    alert(`✅ ${geradas} mensalidades geradas com sucesso!`)
+    await selecionarAluno(selecionado)
+    setLoading(false)
   }
 
   function toggleSelecionada(id: string) {
-    if (selecionadasParaPagar.includes(id)) {
-      setSelecionadasParaPagar(selecionadasParaPagar.filter(i => i !== id))
-    } else {
-      setSelecionadasParaPagar([...selecionadasParaPagar, id])
-    }
+    if (selecionadasParaPagar.includes(id)) setSelecionadasParaPagar(selecionadasParaPagar.filter(i => i !== id))
+    else setSelecionadasParaPagar([...selecionadasParaPagar, id])
   }
 
   function calcularTotal() {
     const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id))
     let total = mensalidadesParaPagar.reduce((acc, m) => acc + Number(m.valor), 0)
-    
-    if ((formaPagamento === "Pix" || formaPagamento === "Dinheiro") && total > 0) {
-      total -= 10
-    }
+    if ((formaPagamento === "Pix" || formaPagamento === "Dinheiro") && total > 0) total -= 10
     return total > 0 ? total : 0
   }
 
@@ -98,7 +132,7 @@ export default function Mensalidades() {
       }).eq("id", mId)
     }
 
-    alert("✅ Desconto pontual aplicado nesta(s) mensalidade(s)!")
+    alert("✅ Desconto aplicado!")
     setShowDescDiretoria(false)
     setDescValor("")
     setSenhaDiretor("")
@@ -108,9 +142,7 @@ export default function Mensalidades() {
 
   async function pagar() {
     if (selecionadasParaPagar.length === 0) return alert("Selecione pelo menos uma mensalidade.")
-    if ((formaPagamento === "Pix" || formaPagamento === "Cartão") && !codigoPagamento.trim()) {
-      return alert("⚠️ Insira o código de autorização da maquininha.")
-    }
+    if ((formaPagamento === "Pix" || formaPagamento === "Cartão") && !codigoPagamento.trim()) return alert("⚠️ Insira o código de autorização da maquininha.")
     
     const { data: caixaTurno } = await supabase.from("caixa_turno").select("*").eq("status", "aberto").maybeSingle()
     if (!caixaTurno) return alert("❌ Caixa não está aberto.")
@@ -142,13 +174,12 @@ export default function Mensalidades() {
         valorComDescontoEscola = Math.max(0, valorGeralModalidade - descEscola);
       }
 
-      // Aplica os descontos contínuos (Diretoria recorrente ou Sorteios) na geração do mês seguinte
       const { valorFinal, isento } = await calcularDescontosMensalidade(selecionado.id, valorComDescontoEscola)
 
       await supabase.from("mensalidades").insert([{
         aluno_id: selecionado.id, matricula_id: m.matricula_id, vencimento: proxVenc.toISOString().slice(0,10),
         valor: valorFinal, valor_base: m.valor_base, status: isento ? "isento" : "pendente",
-        mes_referente: formatarMesReferencia(proxVenc)
+        mes_referente: proxVenc.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
       }])
     }
 
@@ -159,63 +190,36 @@ export default function Mensalidades() {
   }
 
   function formatarMesReferencia(dataVencimento: string | Date) {
-    const data = new Date(dataVencimento)
-    const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    return `${meses[data.getMonth()]} de ${data.getFullYear()}`
+    return new Date(dataVencimento).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
   }
 
   function gerarRecibo(aluno: any, mensalidades: any[], totalPago: number, pagamento: string, cartao: string, parcelas: string) {
     const totalBase = mensalidades.reduce((a,b)=>a+Number(b.valor),0)
     const desconto = totalBase - totalPago
-    const turmasTexto = mensalidades.map(m => {
-      const turma = m.matriculas?.turmas
-      return `${turma?.modalidades?.nome || "?"} - ${turma?.nome || "?"}`
-    }).join(", ")
+    const turmasTexto = mensalidades.map(m => `${m.matriculas?.turmas?.modalidades?.nome} - ${m.matriculas?.turmas?.nome}`).join(", ")
     const mesesReferentes = mensalidades.map(m => formatarMesReferencia(m.vencimento)).join(", ")
-    const nomeEscola = aluno.escolas?.nome;
 
     const w = window.open("", "", "width=400,height=650")
     w?.document.write(`
-      <html>
-      <head>
-        <title>Recibo de Mensalidade</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
-          .logo { text-align: center; margin-bottom: 4px; }
-          .logo img { max-width: 40mm; height: auto; }
-          .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
-          hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
-          .total { font-weight: bold; font-size: 11pt; }
-          .verse { text-align: center; margin-top: 8px; font-style: italic; }
-          .center { text-align: center; }
-        </style>
-      </head>
-      <body>
+      <html><head><title>Recibo de Mensalidade</title><style>
+      * { margin: 0; padding: 0; box-sizing: border-box; } body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
+      .logo { text-align: center; margin-bottom: 4px; } .logo img { max-width: 40mm; height: auto; } .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
+      hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } .total { font-weight: bold; font-size: 11pt; } .verse { text-align: center; margin-top: 8px; font-style: italic; } .center { text-align: center; }
+      </style></head><body>
         <div class="logo"><img src="${window.location.origin}/logo.png" /></div>
-        <div class="titulo">CT OKINAWA</div>
-        <div class="center">Disciplina • Respeito • Evolução</div>
-        <hr/>
-        <div class="center"><b>RECIBO DE MENSALIDADE</b></div>
-        <hr/>
-        <div><b>Aluno:</b> ${aluno.nome}</div>
-        <div><b>CPF:</b> ${aluno.cpf || '---'}</div>
-        ${nomeEscola ? `<div><b>Escola:</b> ${nomeEscola}</div>` : ''}
-        <div><b>Turmas:</b> ${turmasTexto}</div>
-        <div><b>Mês(es):</b> ${mesesReferentes}</div>
-        <hr/>
-        <div><b>Valor Base:</b> R$ ${totalBase.toFixed(2)}</div>
-        <div><b>Desconto(s):</b> R$ ${desconto.toFixed(2)}</div>
+        <div class="titulo">CT OKINAWA</div><div class="center">Disciplina • Respeito • Evolução</div><hr/>
+        <div class="center"><b>RECIBO DE MENSALIDADE</b></div><hr/>
+        <div><b>Aluno:</b> ${aluno.nome}</div><div><b>CPF:</b> ${aluno.cpf || '---'}</div>
+        <div><b>Turmas:</b> ${turmasTexto}</div><div><b>Mês(es):</b> ${mesesReferentes}</div><hr/>
+        <div><b>Valor Base:</b> R$ ${totalBase.toFixed(2)}</div><div><b>Desconto(s):</b> R$ ${desconto.toFixed(2)}</div>
         <div class="total"><b>Total pago:</b> R$ ${totalPago.toFixed(2)}</div>
         <div><b>Pagamento:</b> ${pagamento} ${pagamento === "Cartão" ? `- ${cartao} ${parcelas}` : ""}</div>
         ${codigoPagamento ? `<div><b>Cód. Autorização:</b> ${codigoPagamento}</div>` : ''}
-        <hr/>
-        <div>Data do pagamento: ${new Date().toLocaleString()}</div>
+        <hr/><div>Data do pagamento: ${new Date().toLocaleString()}</div>
         <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
         <div class="center">Obrigado! 🙏</div>
         <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200); }</script>
-      </body>
-      </html>
+      </body></html>
     `)
     w?.document.close()
   }
@@ -255,37 +259,29 @@ export default function Mensalidades() {
           @page { size: A4; margin: 20mm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; }
-          
           .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #cc0000; padding-bottom: 20px; margin-bottom: 30px; }
           .header img { height: 80px; }
           .header-info { text-align: right; }
           .header-info h1 { font-size: 24px; color: #cc0000; margin-bottom: 5px; }
           .header-info p { font-size: 14px; color: #666; }
-          
           .student-info { margin-bottom: 30px; background: #f9f9f9; padding: 15px; border-radius: 8px; border-left: 4px solid #cc0000;}
           .student-info p { margin-bottom: 5px; font-size: 16px; }
-          
           table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
           th { background: #cc0000; color: #fff; padding: 12px; text-align: left; font-size: 14px; }
           td { padding: 12px; border-bottom: 1px solid #ddd; font-size: 14px; }
           tr:nth-child(even) { background: #f9f9f9; }
-          
           .total-box { text-align: right; margin-bottom: 50px; }
           .total-box h2 { font-size: 22px; color: #333; }
           .total-box span { color: #cc0000; }
-          
           .footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 50px; border-top: 1px solid #ddd; padding-top: 20px; font-size: 12px; color: #888; }
           .signature { text-align: center; width: 300px; color: #333;}
           .signature-line { border-top: 1px solid #000; margin-bottom: 5px; margin-top: 40px;}
-          
-          @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          }
+          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
         </style>
       </head>
       <body>
         <div class="header">
-          <img src="${window.location.origin}/logo.png" alt="Logo CT Okinawa" />
+          <img src="${window.location.origin}/logo.png" alt="Logo" />
           <div class="header-info">
             <h1>Extrato de Pagamentos</h1>
             <p>CT OKINAWA - Disciplina e Respeito</p>
@@ -302,12 +298,7 @@ export default function Mensalidades() {
 
         <table>
           <thead>
-            <tr>
-              <th>Mês Referência</th>
-              <th>Vencimento</th>
-              <th>Data do Pagamento</th>
-              <th>Valor</th>
-            </tr>
+            <tr><th>Mês Referência</th><th>Vencimento</th><th>Data do Pagamento</th><th>Valor</th></tr>
           </thead>
           <tbody>
             ${linhasTabela}
@@ -319,24 +310,11 @@ export default function Mensalidades() {
         </div>
 
         <div class="footer">
-          <div>
-            "Confie no Senhor de todo o seu coração"<br/>Provérbios 3:5
-          </div>
-          <div class="signature">
-            <div class="signature-line"></div>
-            <b>${assinaturaNome}</b><br/>
-            ${assinaturaFuncao}
-          </div>
+          <div>"Confie no Senhor de todo o seu coração"<br/>Provérbios 3:5</div>
+          <div class="signature"><div class="signature-line"></div><b>${assinaturaNome}</b><br/>${assinaturaFuncao}</div>
         </div>
 
-        <script>
-          window.onload = () => { 
-            setTimeout(() => { 
-              window.print(); 
-              setTimeout(() => window.close(), 500); 
-            }, 300); 
-          }
-        </script>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
       </body>
       </html>
     `)
@@ -348,68 +326,41 @@ export default function Mensalidades() {
   return (
     <div className="max-w-5xl mx-auto p-6 bg-white rounded-xl shadow">
       <h1 className="text-2xl font-bold mb-6">Pagamento de Mensalidades</h1>
-      <input
-        type="text"
-        placeholder="Buscar aluno por nome..."
-        className="w-full p-3 border rounded mb-4"
-        value={busca}
-        onChange={e => setBusca(e.target.value)}
-      />
+      <input type="text" placeholder="Buscar aluno..." className="w-full p-3 border rounded mb-4" value={busca} onChange={e => setBusca(e.target.value)} />
       
       <div className="grid md:grid-cols-2 gap-6">
-        
-        {/* Lista de alunos */}
         <div className="border rounded-lg p-2 max-h-150 overflow-y-auto">
           {alunosFiltrados.map(aluno => (
-            <div
-              key={aluno.id}
-              className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${selecionado?.id === aluno.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`}
-              onClick={() => selecionarAluno(aluno)}
-            >
+            <div key={aluno.id} className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${selecionado?.id === aluno.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`} onClick={() => selecionarAluno(aluno)}>
               <p className="font-semibold">{aluno.nome}</p>
               <p className="text-xs text-gray-500">CPF: {aluno.cpf || "---"}</p>
-              {aluno.escolas && <span className="text-[10px] bg-blue-100 text-blue-800 px-1 py-0.5 rounded mt-1 inline-block">Escola: {aluno.escolas.nome}</span>}
             </div>
           ))}
         </div>
 
-        {/* Detalhes do aluno e mensalidades */}
         {selecionado && (
           <div className="border rounded-lg p-4">
             <h2 className="font-bold text-xl mb-4">{selecionado.nome}</h2>
             
-            {/* ABAS */}
             <div className="flex justify-between items-center border-b mb-4">
               <div className="flex gap-2">
-                <button 
-                  className={`pb-2 px-2 font-semibold ${aba === "pendentes" ? "text-red-600 border-b-2 border-red-600" : "text-gray-500"}`}
-                  onClick={() => setAba("pendentes")}
-                >
-                  A Vencer / Pendentes
-                </button>
-                <button 
-                  className={`pb-2 px-2 font-semibold ${aba === "pagas" ? "text-red-600 border-b-2 border-red-600" : "text-gray-500"}`}
-                  onClick={() => setAba("pagas")}
-                >
-                  Histórico (Pagas)
-                </button>
+                <button className={`pb-2 px-2 font-semibold ${aba === "pendentes" ? "text-red-600 border-b-2 border-red-600" : "text-gray-500"}`} onClick={() => setAba("pendentes")}>A Vencer / Pendentes</button>
+                <button className={`pb-2 px-2 font-semibold ${aba === "pagas" ? "text-red-600 border-b-2 border-red-600" : "text-gray-500"}`} onClick={() => setAba("pagas")}>Histórico (Pagas)</button>
               </div>
-              
               {aba === "pagas" && pagas.length > 0 && (
-                <button 
-                  onClick={imprimirInforme}
-                  className="mb-2 bg-gray-800 text-white px-3 py-1 rounded text-sm hover:bg-gray-900 transition-colors"
-                >
-                  Imprimir Informe A4
-                </button>
+                <button onClick={imprimirInforme} className="mb-2 bg-gray-800 text-white px-3 py-1 rounded text-sm hover:bg-gray-900">Imprimir Informe A4</button>
               )}
             </div>
 
-            {/* CONTEÚDO DA ABA PENDENTES */}
             {aba === "pendentes" && (
               <>
                 {pendentes.length === 0 ? (
-                  <p className="text-gray-500 py-4">Nenhuma mensalidade pendente.</p>
+                  <div className="text-center py-6">
+                    <p className="text-gray-500 mb-4">Nenhuma mensalidade pendente.</p>
+                    <button onClick={gerarMensalidadesFaltantes} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded flex items-center justify-center gap-2 mx-auto">
+                      <RefreshCw size={18} className={loading ? "animate-spin" : ""} /> Gerar Mensalidades Faltantes
+                    </button>
+                  </div>
                 ) : (
                   <>
                     <div className="space-y-2 max-h-75 overflow-y-auto mb-4 pr-1">
@@ -417,12 +368,7 @@ export default function Mensalidades() {
                         const isSelected = selecionadasParaPagar.includes(m.id);
                         return (
                           <label key={m.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${isSelected ? 'bg-red-50 border-red-300' : 'bg-gray-50'}`}>
-                            <input 
-                              type="checkbox" 
-                              className="mt-1 w-4 h-4 text-red-600"
-                              checked={isSelected}
-                              onChange={() => toggleSelecionada(m.id)}
-                            />
+                            <input type="checkbox" className="mt-1 w-4 h-4 text-red-600" checked={isSelected} onChange={() => toggleSelecionada(m.id)} />
                             <div>
                               <p className="font-semibold">{formatarMesReferencia(m.vencimento)}</p>
                               <p className="text-xs text-gray-500">Vencimento: {new Date(m.vencimento).toLocaleDateString()}</p>
@@ -433,35 +379,18 @@ export default function Mensalidades() {
                       })}
                     </div>
 
-                    {/* DESCONTO PONTUAL DIRETORIA */}
                     {!showDescDiretoria ? (
-                      <button 
-                        onClick={() => setShowDescDiretoria(true)} 
-                        className="w-full bg-gray-200 text-gray-700 font-bold p-2 rounded mb-4 flex items-center justify-center gap-2 hover:bg-gray-300"
-                      >
+                      <button onClick={() => setShowDescDiretoria(true)} className="w-full bg-gray-200 text-gray-700 font-bold p-2 rounded mb-4 flex items-center justify-center gap-2 hover:bg-gray-300">
                         <Lock size={16} /> Aplicar Desconto Pontual (Diretoria)
                       </button>
                     ) : (
                       <div className="bg-red-50 border border-red-200 p-3 rounded mb-4">
                         <label className="text-sm font-bold text-red-700 mb-2 block">Autorização da Diretoria</label>
-                        <input 
-                          type="password" 
-                          placeholder="Senha do Diretor" 
-                          className="w-full p-2 border rounded mb-2" 
-                          value={senhaDiretor} 
-                          onChange={e => setSenhaDiretor(e.target.value)} 
-                        />
-                        <input 
-                          type="number" 
-                          placeholder="Valor do Desconto (R$)" 
-                          className="w-full p-2 border rounded mb-2" 
-                          value={descValor} 
-                          onChange={e => setDescValor(e.target.value)} 
-                        />
-                        <p className="text-xs text-gray-500 mb-2">O desconto será aplicado apenas nas mensalidades selecionadas acima.</p>
+                        <input type="password" placeholder="Senha do Diretor" className="w-full p-2 border rounded mb-2" value={senhaDiretor} onChange={e => setSenhaDiretor(e.target.value)} />
+                        <input type="number" placeholder="Valor do Desconto (R$)" className="w-full p-2 border rounded mb-2" value={descValor} onChange={e => setDescValor(e.target.value)} />
                         <div className="flex gap-2">
-                          <button onClick={aplicarDescontoNaHora} className="bg-red-600 text-white p-2 rounded flex-1 hover:bg-red-700">Aplicar</button>
-                          <button onClick={() => { setShowDescDiretoria(false); setSenhaDiretor(""); setDescValor(""); }} className="bg-gray-300 p-2 rounded hover:bg-gray-400">Cancelar</button>
+                          <button onClick={aplicarDescontoNaHora} className="bg-red-600 text-white p-2 rounded flex-1">Aplicar</button>
+                          <button onClick={() => { setShowDescDiretoria(false); setSenhaDiretor(""); }} className="bg-gray-300 p-2 rounded">Cancelar</button>
                         </div>
                       </div>
                     )}
@@ -469,34 +398,16 @@ export default function Mensalidades() {
                     <div className="p-4 bg-gray-50 rounded border">
                       <label className="block font-semibold mb-2">Forma de Pagamento</label>
                       <select className="w-full p-2 border rounded mb-3" value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)}>
-                        <option>Pix</option>
-                        <option>Dinheiro</option>
-                        <option>Cartão</option>
+                        <option>Pix</option><option>Dinheiro</option><option>Cartão</option>
                       </select>
                       {formaPagamento === "Cartão" && (
                         <div className="grid grid-cols-2 gap-2 mb-3">
-                          <select className="w-full p-2 border rounded" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}>
-                            <option>Débito</option>
-                            <option>Crédito</option>
-                          </select>
-                          {tipoCartao === "Crédito" && (
-                            <select className="w-full p-2 border rounded" value={parcelas} onChange={e => setParcelas(e.target.value)}>
-                              <option>1x</option><option>2x</option><option>3x</option>
-                            </select>
-                          )}
+                          <select className="w-full p-2 border rounded" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}><option>Débito</option><option>Crédito</option></select>
+                          {tipoCartao === "Crédito" && <select className="w-full p-2 border rounded" value={parcelas} onChange={e => setParcelas(e.target.value)}><option>1x</option><option>2x</option><option>3x</option></select>}
                         </div>
                       )}
                       {(formaPagamento === "Pix" || formaPagamento === "Cartão") && (
-                        <div className="mt-2">
-                          <label className="block text-sm font-semibold mb-1 text-red-600">Código de Autorização (Maquininha)</label>
-                          <input 
-                            type="text" 
-                            className="w-full p-2 border border-red-300 rounded focus:outline-none focus:ring-2 focus:ring-red-500" 
-                            placeholder="Digite o código do comprovante" 
-                            value={codigoPagamento} 
-                            onChange={e => setCodigoPagamento(e.target.value)} 
-                          />
-                        </div>
+                        <input type="text" className="w-full p-2 border border-red-300 rounded" placeholder="Código da Maquininha" value={codigoPagamento} onChange={e => setCodigoPagamento(e.target.value)} />
                       )}
                     </div>
 
@@ -505,37 +416,24 @@ export default function Mensalidades() {
                       <p>Desconto (Pix/Dinheiro): R$ {(formaPagamento === "Pix" || formaPagamento === "Dinheiro") && selecionadasParaPagar.length > 0 ? 10 : 0}</p>
                       <p className="font-bold text-lg text-red-600">Total a pagar: R$ {calcularTotal().toFixed(2)}</p>
                     </div>
-                    
-                    <button 
-                      onClick={pagar} 
-                      disabled={loading || selecionadasParaPagar.length === 0} 
-                      className="w-full bg-red-600 text-white p-3 rounded mt-4 disabled:opacity-50 font-bold hover:bg-red-700"
-                    >
-                      {loading ? "Processando..." : "Confirmar Pagamento"}
-                    </button>
+                    <button onClick={pagar} disabled={loading || selecionadasParaPagar.length === 0} className="w-full bg-red-600 text-white p-3 rounded mt-4 disabled:opacity-50 font-bold">Confirmar Pagamento</button>
                   </>
                 )}
               </>
             )}
 
-            {/* CONTEÚDO DA ABA PAGAS */}
             {aba === "pagas" && (
               <div className="space-y-2 max-h-100 overflow-y-auto">
-                {pagas.length === 0 ? (
-                  <p className="text-gray-500 py-4">Nenhum pagamento realizado ainda.</p>
-                ) : (
-                  pagas.map(m => (
-                    <div key={m.id} className="p-3 rounded-lg border bg-white">
-                      <div className="flex justify-between items-center mb-1">
-                        <p className="font-semibold text-green-700">{formatarMesReferencia(m.vencimento)}</p>
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Pago</span>
-                      </div>
-                      <p className="text-xs text-gray-500">Vencimento: {new Date(m.vencimento).toLocaleDateString()}</p>
-                      <p className="text-xs text-gray-500">Pago em: {m.data_pagamento ? new Date(m.data_pagamento).toLocaleString() : "---"}</p>
-                      <p className="text-sm font-medium mt-1">Valor: R$ {Number(m.valor).toFixed(2)}</p>
+                {pagas.length === 0 ? <p className="text-gray-500 py-4">Nenhum pagamento realizado.</p> : pagas.map(m => (
+                  <div key={m.id} className="p-3 rounded-lg border bg-white">
+                    <div className="flex justify-between items-center mb-1">
+                      <p className="font-semibold text-green-700">{formatarMesReferencia(m.vencimento)}</p>
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Pago</span>
                     </div>
-                  ))
-                )}
+                    <p className="text-xs text-gray-500">Pago em: {m.data_pagamento ? new Date(m.data_pagamento).toLocaleString() : "---"}</p>
+                    <p className="text-sm font-medium mt-1">Valor: R$ {Number(m.valor).toFixed(2)}</p>
+                  </div>
+                ))}
               </div>
             )}
           </div>

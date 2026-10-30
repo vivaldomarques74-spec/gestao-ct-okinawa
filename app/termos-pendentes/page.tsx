@@ -16,12 +16,7 @@ export default function TermosPendentesPage() {
 
   async function carregarAlunos() {
     setLoading(true)
-    const { data } = await supabase
-      .from("alunos")
-      .select("*")
-      .eq("termo_assinado", false)
-      .order("nome")
-    
+    const { data } = await supabase.from("alunos").select("*").eq("termo_assinado", false).order("nome")
     setAlunos(data || [])
     setLoading(false)
   }
@@ -30,7 +25,6 @@ export default function TermosPendentesPage() {
     const doc = new jsPDF()
     let y = 20
 
-    // Cabeçalho
     doc.setFontSize(14)
     doc.text("TERMO DE CIÊNCIA, RESPONSABILIDADE E AUTORIZAÇÕES", 105, y, { align: "center" })
     y += 8
@@ -38,21 +32,18 @@ export default function TermosPendentesPage() {
     doc.text("CT OKINAWA", 105, y, { align: "center" })
     y += 15
 
-    // Introdução
     doc.setFontSize(10)
     const introText = `Eu, ${aluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
     const splitIntro = doc.splitTextToSize(introText, 180)
     doc.text(splitIntro, 15, y)
     y += splitIntro.length * 6 + 5
 
-    // Condição
     const condicaoText = aluno.menor 
       ? `Na condição de: ( X ) Responsável legal pelo(a) aluno(a) menor ${aluno.nome}` 
       : `Na condição de: ( X ) Aluno(a) maior de idade`
     doc.text(condicaoText, 15, y)
     y += 10
 
-    // Cláusulas
     const clausulas = [
       `1. DA CIÊNCIA DO REGULAMENTO: Declaro que recebi, li, compreendi e tive acesso ao Regulamento Interno do CT OKINAWA, estando plenamente ciente de todas as normas de funcionamento, conduta, disciplina e organização do espaço.`,
       `2. DA PRÁTICA DE ATIVIDADE FÍSICA E RISCOS: Declaro estar ciente de que a prática de artes marciais envolve riscos inerentes. Assumo integral responsabilidade pela participação, isentando o CT OKINAWA de acidentes que não sejam oriundos de dolo ou negligência direta.`,
@@ -70,7 +61,6 @@ export default function TermosPendentesPage() {
       y += splitText.length * 6 + 4
     })
 
-    // Rodapé (Dados já preenchidos)
     if (y > 220) { doc.addPage(); y = 20; }
     y += 10
     
@@ -82,7 +72,6 @@ export default function TermosPendentesPage() {
     doc.text(`( X ) Aluno maior de idade`, 15, y); y += 6
     doc.text(`( X ) Responsável legal`, 15, y); y += 20
 
-    // Linha de Assinatura
     doc.setLineWidth(0.5)
     doc.line(15, y, 100, y)
     doc.line(110, y, 195, y)
