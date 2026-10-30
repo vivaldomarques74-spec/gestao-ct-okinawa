@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from "react"
 import { supabase } from "../../lib/supabase"
 import { calcularDescontosMensalidade } from "../../lib/descontos"
+import { calcularPagamento } from "../../lib/pagamentos" // <-- NOVA IMPORTAÇÃO AQUI
 import { useSearchParams } from "next/navigation"
 import { Lock, FileText, CheckCircle } from "lucide-react"
 import jsPDF from "jspdf"
@@ -42,6 +43,9 @@ function MatriculaContent() {
 
   const [valorGeralTotal, setValorGeralTotal] = useState(0)
   const [valorFinal, setValorFinal] = useState(0)
+  
+  // NOVO ESTADO: Para guardar as informações de juros e parcelas calculadas
+  const [infoPagamento, setInfoPagamento] = useState({ valorParcela: 0, numParcelas: 1, taxaAplicada: 0 })
 
   useEffect(() => {
     const nome = searchParams.get("nome")
@@ -55,7 +59,9 @@ function MatriculaContent() {
   }, [searchParams])
 
   useEffect(() => { carregarDados(); verificarCaixa() }, [])
-  useEffect(() => { calcularValores() }, [itensMatricula, aluno.convenio_id, aluno.escola_id, formaPagamento, descTipo, descValor])
+  
+  // Adicionado parcelas e tipoCartao nas dependências para recalcular na hora
+  useEffect(() => { calcularValores() }, [itensMatricula, aluno.convenio_id, aluno.escola_id, formaPagamento, tipoCartao, parcelas, descTipo, descValor])
 
   async function verificarCaixa() {
     const { data } = await supabase.from("caixa_turno").select("*").eq("status", "aberto").maybeSingle()
@@ -97,9 +103,19 @@ function MatriculaContent() {
       else desconto += Number(descValor)
     }
 
-    if (formaPagamento === "Pix" || formaPagamento === "Dinheiro") desconto += 10
+    // Removeu-se a linha "if (formaPagamento === Pix) desconto += 10" daqui, 
+    // pois agora a função calcularPagamento cuida disso de forma centralizada.
+
+    // AQUI APLICAMOS A REGRA CENTRALIZADA
+    const baseComDescontos = Math.max(0, totalGeral - desconto)
+    const resultado = calcularPagamento(baseComDescontos, formaPagamento, tipoCartao, parcelas, 10)
     
-    setValorFinal(Math.max(0, totalGeral - desconto))
+    setValorFinal(resultado.valorFinal)
+    setInfoPagamento({
+      valorParcela: resultado.valorParcela,
+      numParcelas: resultado.numParcelas,
+      taxaAplicada: resultado.taxaAplicada
+    })
   }
 
   function adicionarModalidade() { setItensMatricula([...itensMatricula, { modalidadeId: "", turmaId: "" }]) }
@@ -119,12 +135,10 @@ function MatriculaContent() {
     return `${meses[dataVencimento.getMonth()]} de ${dataVencimento.getFullYear()}`
   }
 
-  // --- GERAÇÃO DO TERMO AUTOPREENCHIDO ---
   function gerarTermoPDF() {
     const doc = new jsPDF()
     let y = 20
 
-    // Cabeçalho
     doc.setFontSize(14)
     doc.text("TERMO DE CIÊNCIA, RESPONSABILIDADE E AUTORIZAÇÕES", 105, y, { align: "center" })
     y += 8
@@ -132,21 +146,18 @@ function MatriculaContent() {
     doc.text("CT OKINAWA", 105, y, { align: "center" })
     y += 15
 
-    // Introdução
     doc.setFontSize(10)
     const introText = `Eu, ${aluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
     const splitIntro = doc.splitTextToSize(introText, 180)
     doc.text(splitIntro, 15, y)
     y += splitIntro.length * 6 + 5
 
-    // Condição
     const condicaoText = aluno.menor 
       ? `Na condição de: ( X ) Responsável legal pelo(a) aluno(a) menor ${aluno.nome}` 
       : `Na condição de: ( X ) Aluno(a) maior de idade`
     doc.text(condicaoText, 15, y)
     y += 10
 
-    // Cláusulas
     const clausulas = [
       `1. DA CIÊNCIA DO REGULAMENTO: Declaro que recebi, li, compreendi e tive acesso ao Regulamento Interno do CT OKINAWA, estando plenamente ciente de todas as normas de funcionamento, conduta, disciplina e organização do espaço.`,
       `2. DA PRÁTICA DE ATIVIDADE FÍSICA E RISCOS: Declaro estar ciente de que a prática de artes marciais envolve riscos inerentes. Assumo integral responsabilidade pela participação, isentando o CT OKINAWA de acidentes que não sejam oriundos de dolo ou negligência direta.`,
@@ -164,7 +175,6 @@ function MatriculaContent() {
       y += splitText.length * 6 + 4
     })
 
-    // Rodapé (Dados já preenchidos)
     if (y > 220) { doc.addPage(); y = 20; }
     y += 10
     
@@ -176,7 +186,6 @@ function MatriculaContent() {
     doc.text(`( X ) Aluno maior de idade`, 15, y); y += 6
     doc.text(`( X ) Responsável legal`, 15, y); y += 20
 
-    // Linha de Assinatura
     doc.setLineWidth(0.5)
     doc.line(15, y, 100, y)
     doc.line(110, y, 195, y)
@@ -298,7 +307,8 @@ function MatriculaContent() {
       const turma = todasTurmas.find(t => t.id === item.turmaId)
       return `${turma?.modalidades?.nome} - ${turma?.nome}`
     }).join(", ")
-    const desconto = valorGeralTotal - valorFinal
+    const desconto = valorGeralTotal - (valorFinal - (valorFinal * (infoPagamento.taxaAplicada/100)))
+    const juros = valorFinal * (infoPagamento.taxaAplicada/100)
     const nomeEscola = aluno.escola_id ? escolas.find(e => e.id === aluno.escola_id)?.nome : null;
 
     const w = window.open("", "", "width=400,height=650")
@@ -315,10 +325,12 @@ function MatriculaContent() {
         ${aluno.menor ? `<div><b>Responsável:</b> ${aluno.responsavel_nome}</div>` : ''}
         ${nomeEscola ? `<div><b>Escola Parceira:</b> ${nomeEscola}</div>` : ''}
         <hr/><div><b>Modalidades/Turmas:</b></div><div>${detalhes}</div><hr/>
-        <div><b>1ª mensalidade (${mesReferente}):</b> R$ ${valorGeralTotal.toFixed(2)}</div>
+        <div><b>Valor Geral:</b> R$ ${valorGeralTotal.toFixed(2)}</div>
         <div><b>Desconto Aplicado:</b> R$ ${desconto.toFixed(2)}</div>
+        ${juros > 0 ? `<div><b>Juros Parcelamento:</b> R$ ${juros.toFixed(2)}</div>` : ''}
         <div class="total"><b>Total pago:</b> R$ ${valorFinal.toFixed(2)}</div>
         <div><b>Pagamento:</b> ${formaPagamento}${formaPagamento === "Cartão" ? ` - ${tipoCartao} ${parcelas}` : ""}</div>
+        ${infoPagamento.numParcelas > 1 ? `<div><b>Parcelas:</b> ${infoPagamento.numParcelas}x de R$ ${infoPagamento.valorParcela.toFixed(2)}</div>` : ''}
         ${codigoPagamento ? `<div><b>Cód. Autorização:</b> ${codigoPagamento}</div>` : ''}
         <hr/><div><b>Data:</b> ${new Date().toLocaleString()}</div>
         <div class="verse">"Confie no Senhor de todo o seu coração"<br/>Provérbios 3:5</div>
@@ -435,7 +447,9 @@ function MatriculaContent() {
               </select>
               {tipoCartao === "Crédito" && (
                 <select className="w-full p-2 border rounded" value={parcelas} onChange={e => setParcelas(e.target.value)}>
-                  <option>1x</option><option>2x</option><option>3x</option>
+                  {Array.from({ length: 21 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={`${n}x`}>{n}x</option>
+                  ))}
                 </select>
               )}
             </div>
@@ -475,8 +489,14 @@ function MatriculaContent() {
 
         <div className="bg-gray-100 p-4 rounded">
           <p>Valor geral: R$ {valorGeralTotal.toFixed(2)}</p>
-          <p>Desconto Total: R$ {(valorGeralTotal - valorFinal).toFixed(2)}</p>
+          <p>Desconto Total: R$ {(valorGeralTotal - (valorFinal - (valorFinal * (infoPagamento.taxaAplicada/100)))).toFixed(2)}</p>
+          {infoPagamento.taxaAplicada > 0 && (
+            <p className="text-red-600">Juros de Cartão: R$ {(valorFinal * (infoPagamento.taxaAplicada/100)).toFixed(2)}</p>
+          )}
           <p className="font-bold text-lg">Total a pagar: R$ {valorFinal.toFixed(2)}</p>
+          {infoPagamento.numParcelas > 1 && (
+            <p className="font-bold text-blue-600">Parcelas: {infoPagamento.numParcelas}x de R$ {infoPagamento.valorParcela.toFixed(2)}</p>
+          )}
         </div>
 
         <button onClick={salvarMatricula} disabled={loading || !caixaAberto || !termoAceito} className="w-full bg-red-600 text-white p-3 rounded disabled:opacity-50">

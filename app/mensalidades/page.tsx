@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { supabase } from "../../lib/supabase"
 import { calcularDescontosMensalidade } from "../../lib/descontos"
+import { calcularPagamento } from "../../lib/pagamentos"
 import { Lock, RefreshCw } from "lucide-react"
 
 export default function Mensalidades() {
@@ -90,8 +91,6 @@ export default function Mensalidades() {
     let novasMensalidades = []
 
     for (const mat of mats) {
-      // --- CORREÇÃO DEFINITIVA DO VENCIMENTO ---
-      // 1. Tenta pegar da matrícula. 2. Se não tiver, pega do aluno. 3. Se não tiver, usa hoje.
       let dataBaseStr = mat.created_at || aluno.created_at;
       let dataBase = dataBaseStr ? new Date(dataBaseStr) : new Date();
       const diaVencimento = dataBase.getDate();
@@ -163,12 +162,12 @@ export default function Mensalidades() {
     else setSelecionadasParaPagar([...selecionadasParaPagar, id])
   }
 
-  function calcularTotal() {
-    const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id) && m.status === "pendente")
-    let total = mensalidadesParaPagar.reduce((acc, m) => acc + Number(m.valor), 0)
-    if ((formaPagamento === "Pix" || formaPagamento === "Dinheiro") && total > 0) total -= 10
-    return total > 0 ? total : 0
-  }
+  const totalBaseSelecionado = pendentes
+    .filter(m => selecionadasParaPagar.includes(m.id) && m.status === "pendente")
+    .reduce((acc, m) => acc + Number(m.valor), 0)
+
+  // REGRA APLICADA AQUI (10 reais de desconto no Pix/Dinheiro)
+  const resultadoPagamento = calcularPagamento(totalBaseSelecionado, formaPagamento, tipoCartao, parcelas, 10)
 
   async function aplicarDescontoNaHora() {
     if (senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta.")
@@ -205,13 +204,15 @@ export default function Mensalidades() {
 
     setLoading(true)
     const mensalidadesParaPagar = pendentes.filter(m => selecionadasParaPagar.includes(m.id) && m.status === "pendente")
-    const totalPago = calcularTotal()
+    const totalPago = resultadoPagamento.valorFinal
     const valorBaseTotal = mensalidadesParaPagar.reduce((acc, m) => acc + Number(m.valor_base || m.valor), 0)
 
     if (mensalidadesParaPagar.length > 0) {
       await supabase.from("caixa").insert([{
         caixa_turno_id: caixaTurno.id, tipo: "mensalidade", nome: `Mensalidade ${selecionado.nome}`,
-        valor: totalPago, valor_base: valorBaseTotal, forma_pagamento: formaPagamento,
+        valor: totalPago, 
+        valor_base: valorBaseTotal, 
+        forma_pagamento: formaPagamento,
         tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
         parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
         codigo_pagamento: codigoPagamento || null,
@@ -244,7 +245,7 @@ export default function Mensalidades() {
         }])
       }
 
-      gerarRecibo(selecionado, mensalidadesParaPagar, totalPago, formaPagamento, tipoCartao, parcelas)
+      gerarRecibo(selecionado, mensalidadesParaPagar, resultadoPagamento)
       alert("✅ Pagamento realizado!")
     } else {
       alert("Nenhuma mensalidade válida para pagamento foi selecionada.")
@@ -258,9 +259,9 @@ export default function Mensalidades() {
     return new Date(dataVencimento + "T12:00:00").toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
   }
 
-  function gerarRecibo(aluno: any, mensalidades: any[], totalPago: number, pagamento: string, cartao: string, parcelas: string) {
+  function gerarRecibo(aluno: any, mensalidades: any[], pagamentoInfo: any) {
     const totalBase = mensalidades.reduce((a,b)=>a+Number(b.valor),0)
-    const desconto = totalBase - totalPago
+    const descontoOuJuros = pagamentoInfo.valorFinal - totalBase
     const turmasTexto = mensalidades.map(m => `${m.matriculas?.turmas?.modalidades?.nome} - ${m.matriculas?.turmas?.nome}`).join(", ")
     const mesesReferentes = mensalidades.map(m => formatarMesReferencia(m.vencimento)).join(", ")
 
@@ -276,9 +277,11 @@ export default function Mensalidades() {
         <div class="center"><b>RECIBO DE MENSALIDADE</b></div><hr/>
         <div><b>Aluno:</b> ${aluno.nome}</div><div><b>CPF:</b> ${aluno.cpf || '---'}</div>
         <div><b>Turmas:</b> ${turmasTexto}</div><div><b>Mês(es):</b> ${mesesReferentes}</div><hr/>
-        <div><b>Valor Base:</b> R$ ${totalBase.toFixed(2)}</div><div><b>Desconto(s):</b> R$ ${desconto.toFixed(2)}</div>
-        <div class="total"><b>Total pago:</b> R$ ${totalPago.toFixed(2)}</div>
-        <div><b>Pagamento:</b> ${pagamento} ${pagamento === "Cartão" ? `- ${cartao} ${parcelas}` : ""}</div>
+        <div><b>Valor Base:</b> R$ ${totalBase.toFixed(2)}</div>
+        ${descontoOuJuros !== 0 ? `<div><b>${descontoOuJuros > 0 ? 'Juros' : 'Desconto'}:</b> R$ ${Math.abs(descontoOuJuros).toFixed(2)}</div>` : ''}
+        <div class="total"><b>Total pago:</b> R$ ${pagamentoInfo.valorFinal.toFixed(2)}</div>
+        <div><b>Pagamento:</b> ${formaPagamento} ${formaPagamento === "Cartão" ? `- ${tipoCartao} ${parcelas}` : ""}</div>
+        ${pagamentoInfo.numParcelas > 1 ? `<div><b>Parcelas:</b> ${pagamentoInfo.numParcelas}x de R$ ${pagamentoInfo.valorParcela.toFixed(2)}</div>` : ''}
         ${codigoPagamento ? `<div><b>Cód. Autorização:</b> ${codigoPagamento}</div>` : ''}
         <hr/><div>Data do pagamento: ${new Date().toLocaleString()}</div>
         <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
@@ -291,7 +294,6 @@ export default function Mensalidades() {
 
   function imprimirInforme() {
     if (pagas.length === 0) return alert("Nenhum pagamento registrado para este aluno.");
-    
     const nomeEmissor = prompt("Digite seu nome para a assinatura:", "");
     if (nomeEmissor === null) return; 
     const funcaoEmissor = prompt("Digite sua função (ex: Secretária, Diretor):", "Secretaria");
@@ -353,14 +355,12 @@ export default function Mensalidades() {
             <p>Emitido em: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
           </div>
         </div>
-
         <div class="student-info">
           <p><b>Aluno:</b> ${selecionado.nome}</p>
           <p><b>CPF:</b> ${selecionado.cpf || '---'}</p>
           <p><b>Nº Matrícula:</b> ${selecionado.numero_matricula || '---'}</p>
           ${selecionado.escolas ? `<p><b>Escola Parceira:</b> ${selecionado.escolas.nome}</p>` : ''}
         </div>
-
         <table>
           <thead>
             <tr><th>Mês Referência</th><th>Vencimento</th><th>Data do Pagamento</th><th>Valor</th></tr>
@@ -369,16 +369,13 @@ export default function Mensalidades() {
             ${linhasTabela}
           </tbody>
         </table>
-
         <div class="total-box">
           <h2>Total Pago: <span>R$ ${totalGeralPago.toFixed(2)}</span></h2>
         </div>
-
         <div class="footer">
           <div>"Confie no Senhor de todo o seu coração"<br/>Provérbios 3:5</div>
           <div class="signature"><div class="signature-line"></div><b>${assinaturaNome}</b><br/>${assinaturaFuncao}</div>
         </div>
-
         <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
       </body>
       </html>
@@ -474,7 +471,13 @@ export default function Mensalidades() {
                       {formaPagamento === "Cartão" && (
                         <div className="grid grid-cols-2 gap-2 mb-3">
                           <select className="w-full p-2 border rounded" value={tipoCartao} onChange={e => setTipoCartao(e.target.value)}><option>Débito</option><option>Crédito</option></select>
-                          {tipoCartao === "Crédito" && <select className="w-full p-2 border rounded" value={parcelas} onChange={e => setParcelas(e.target.value)}><option>1x</option><option>2x</option><option>3x</option></select>}
+                          {tipoCartao === "Crédito" && (
+                            <select className="w-full p-2 border rounded" value={parcelas} onChange={e => setParcelas(e.target.value)}>
+                              {Array.from({ length: 21 }, (_, i) => i + 1).map(n => (
+                                <option key={n} value={`${n}x`}>{n}x</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       )}
                       {(formaPagamento === "Pix" || formaPagamento === "Cartão") && (
@@ -483,9 +486,14 @@ export default function Mensalidades() {
                     </div>
 
                     <div className="bg-gray-100 p-3 rounded mt-4">
-                      <p>Total selecionado: R$ {pendentes.filter(m => selecionadasParaPagar.includes(m.id)).reduce((a,b)=>a+Number(b.valor),0).toFixed(2)}</p>
-                      <p>Desconto (Pix/Dinheiro): R$ {(formaPagamento === "Pix" || formaPagamento === "Dinheiro") && selecionadasParaPagar.length > 0 ? 10 : 0}</p>
-                      <p className="font-bold text-lg text-red-600">Total a pagar: R$ {calcularTotal().toFixed(2)}</p>
+                      <p>Total base selecionado: R$ {totalBaseSelecionado.toFixed(2)}</p>
+                      <p className={resultadoPagamento.valorFinal < totalBaseSelecionado ? "text-green-600" : "text-red-600"}>
+                        {resultadoPagamento.valorFinal < totalBaseSelecionado ? 'Desconto' : 'Juros/Taxa'}: R$ {Math.abs(resultadoPagamento.valorFinal - totalBaseSelecionado).toFixed(2)}
+                      </p>
+                      <p className="font-bold text-lg text-red-600">Total a pagar: R$ {resultadoPagamento.valorFinal.toFixed(2)}</p>
+                      {resultadoPagamento.numParcelas > 1 && (
+                        <p className="font-bold text-blue-600">Parcelas: {resultadoPagamento.numParcelas}x de R$ {resultadoPagamento.valorParcela.toFixed(2)}</p>
+                      )}
                     </div>
                     <button onClick={pagar} disabled={loading || selecionadasParaPagar.length === 0} className="w-full bg-red-600 text-white p-3 rounded mt-4 disabled:opacity-50 font-bold">Confirmar Pagamento</button>
                   </>

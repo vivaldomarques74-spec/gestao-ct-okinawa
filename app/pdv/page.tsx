@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
+import { calcularPagamento } from "../../lib/pagamentos" // Importando a regra centralizada
 
 export default function PDV() {
   const [produtos, setProdutos] = useState<any[]>([])
@@ -12,14 +13,6 @@ export default function PDV() {
   const [codigoPagamento, setCodigoPagamento] = useState("")
   const [salvando, setSalvando] = useState(false)
   const [caixaAberto, setCaixaAberto] = useState<any>(null)
-
-  const taxasCartao: Record<string, number> = {
-    debito: 1.25, credito1: 3.05, credito2: 6.59, credito3: 8.19,
-    credito4: 8.89, credito5: 9.76, credito6: 11.10, credito7: 11.68,
-    credito8: 11.73, credito9: 11.78, credito10: 11.83, credito11: 11.88,
-    credito12: 11.95, credito13: 12.59, credito14: 13.23, credito15: 13.87,
-    credito16: 14.51, credito17: 15.15, credito18: 15.79,
-  }
 
   useEffect(() => {
     carregarProdutos()
@@ -48,22 +41,17 @@ export default function PDV() {
 
   const totalBase = carrinho.reduce((acc, item) => acc + Number(item.preco || 0), 0)
 
-  function calcularTotal() {
-    let total = totalBase
-    if (formaPagamento === "Cartão") {
-      if (tipoCartao === "Débito") {
-        total = totalBase * (1 + taxasCartao.debito / 100)
-      } else if (tipoCartao === "Crédito") {
-        const num = parseInt(parcelas.replace("x", ""))
-        const chave = `credito${num}` as keyof typeof taxasCartao
-        const taxa = taxasCartao[chave] || 0
-        total = totalBase * (1 + taxa / 100)
-      }
-    }
-    return Number(total.toFixed(2))
-  }
+  // Usa a função centralizada para calcular
+  const resultadoPagamento = calcularPagamento(
+    totalBase,
+    formaPagamento,
+    tipoCartao,
+    parcelas,
+    formaPagamento === "Pix" || formaPagamento === "Dinheiro" ? 0 : 0 // No PDV o desconto de R$10 é apenas para mensalidades
+  )
 
-  const totalFinal = calcularTotal()
+  const totalFinal = resultadoPagamento.valorFinal
+  const taxaCobrada = totalFinal - totalBase
 
   async function finalizar() {
     if (carrinho.length === 0) return alert("Adicione produtos")
@@ -81,8 +69,8 @@ export default function PDV() {
       caixa_turno_id: caixaAberto.id,
       tipo: "venda",
       nome: nomes,
-      valor: totalFinal,
-      valor_base: totalBase,
+      valor: totalFinal, // Valor final com juros
+      valor_base: totalBase, // Valor original sem juros
       forma_pagamento: formaPagamento,
       tipo_cartao: formaPagamento === "Cartão" ? tipoCartao : null,
       parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
@@ -113,7 +101,6 @@ export default function PDV() {
 
   function gerarRecibo() {
     const itens = carrinho.map(item => `${item.nome} .... R$ ${Number(item.preco).toFixed(2)}`).join("<br/>")
-    const taxa = totalFinal - totalBase
     const w = window.open("", "", "width=400,height=600")
     w?.document.write(`
       <html>
@@ -141,9 +128,10 @@ export default function PDV() {
         ${itens}
         <hr/>
         <div>Subtotal: R$ ${totalBase.toFixed(2)}</div>
-        <div>Taxa: R$ ${taxa.toFixed(2)}</div>
+        ${taxaCobrada > 0 ? `<div>Juros Parcelamento: R$ ${taxaCobrada.toFixed(2)}</div>` : ''}
         <div class="total"><b>TOTAL: R$ ${totalFinal.toFixed(2)}</b></div>
         <div>Pagamento: ${formaPagamento} ${formaPagamento === "Cartão" ? `- ${tipoCartao} ${parcelas}` : ""}</div>
+        ${resultadoPagamento.numParcelas > 1 ? `<div>Parcelas: ${resultadoPagamento.numParcelas}x de R$ ${resultadoPagamento.valorParcela.toFixed(2)}</div>` : ''}
         ${codigoPagamento ? `<div><b>Cód. Autorização:</b> ${codigoPagamento}</div>` : ''}
         <hr/>
         <div>Data: ${new Date().toLocaleString()}</div>
@@ -183,7 +171,11 @@ export default function PDV() {
 
       <div className="bg-gray-100 p-3 rounded mb-3">
         <p>Base: R$ {totalBase.toFixed(2)}</p>
+        {taxaCobrada > 0 && <p className="text-sm text-red-600">Juros: R$ {taxaCobrada.toFixed(2)}</p>}
         <p className="font-bold text-lg">Total: R$ {totalFinal.toFixed(2)}</p>
+        {resultadoPagamento.numParcelas > 1 && (
+          <p className="text-sm text-gray-600 font-semibold">ou {resultadoPagamento.numParcelas}x de R$ {resultadoPagamento.valorParcela.toFixed(2)}</p>
+        )}
       </div>
 
       <div className="p-3 bg-gray-50 rounded border mb-3">
@@ -199,7 +191,7 @@ export default function PDV() {
             </select>
             {tipoCartao === "Crédito" && (
               <select className="w-full p-2 border rounded mb-2" value={parcelas} onChange={e => setParcelas(e.target.value)}>
-                {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
+                {Array.from({ length: 21 }, (_, i) => i + 1).map(n => (
                   <option key={n} value={`${n}x`}>{n}x</option>
                 ))}
               </select>
