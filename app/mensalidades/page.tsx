@@ -31,6 +31,22 @@ export default function Mensalidades() {
     setAlunos(data || [])
   }
 
+  // Função auxiliar para buscar os detalhes da matrícula sem erro de relacionamento
+  async function buscarDetalhesMatricula(mat: any) {
+    let turma = null;
+    let modalidade = null;
+    
+    if (mat.turma_id) {
+      const { data: t } = await supabase.from("turmas").select("*").eq("id", mat.turma_id).single();
+      turma = t;
+      if (t?.modalidade_id) {
+        const { data: m } = await supabase.from("modalidades").select("*").eq("id", t.modalidade_id).single();
+        modalidade = m;
+      }
+    }
+    return { ...mat, turmas: { ...turma, modalidades: modalidade } };
+  }
+
   async function selecionarAluno(aluno: any) {
     setSelecionado(aluno)
     setAba("pendentes")
@@ -38,14 +54,20 @@ export default function Mensalidades() {
     setShowDescDiretoria(false)
     setSenhaDiretor("")
     
-    const { data } = await supabase
+    const { data: mensalidadesData } = await supabase
       .from("mensalidades")
-      .select("*, matriculas(turmas(*, modalidades(*)))")
+      .select("*")
       .eq("aluno_id", aluno.id)
       .in("status", ["pendente", "pago", "isento"])
       .order("vencimento", { ascending: true })
 
-    const todas = data || []
+    // Busca detalhes de turma e modalidade para cada mensalidade
+    const todas = await Promise.all((mensalidadesData || []).map(async (m) => {
+      const { data: mat } = await supabase.from("matriculas").select("*").eq("id", m.matricula_id).single();
+      const matComDetalhes = mat ? await buscarDetalhesMatricula(mat) : null;
+      return { ...m, matriculas: matComDetalhes };
+    }));
+
     const pend = todas.filter(m => m.status === "pendente" || m.status === "isento")
     const pg = todas.filter(m => m.status === "pago").reverse() 
 
@@ -55,23 +77,20 @@ export default function Mensalidades() {
     if (pend.length > 0) setSelecionadasParaPagar([pend[0].id])
     else setSelecionadasParaPagar([])
 
-    // Se não existir NENHUMA mensalidade no banco para este aluno, gera automaticamente
     if (todas.length === 0) {
       await gerarMensalidadesAutomatico(aluno)
     }
   }
 
   async function gerarMensalidadesAutomatico(aluno: any) {
-    if (aluno.status !== "ativo") {
-      alert(`⚠️ Geração cancelada: O status do aluno no banco é "${aluno.status}", e não "ativo".`);
-      return;
-    }
+    if (aluno.status !== "ativo") return;
 
     setLoading(true)
-    const { data: mats, error } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", aluno.id).eq("status", "ativo")
+    
+    const { data: mats, error } = await supabase.from("matriculas").select("*").eq("aluno_id", aluno.id).eq("status", "ativo")
     
     if (error || !mats || mats.length === 0) {
-      alert("⚠️ Geração cancelada: Este aluno não possui nenhuma matrícula com o status 'ativo' na tabela de matrículas.");
+      alert("⚠️ O aluno não possui matrícula ativa no banco. Verifique a aba de Registros.");
       setLoading(false)
       return; 
     }
@@ -81,9 +100,16 @@ export default function Mensalidades() {
     let novasMensalidades = []
 
     for (const mat of mats) {
-      const turma = mat.turmas
-      let valorOriginal = turma?.modalidades?.valor_geral || 0
-      const valorBase = turma?.modalidades?.valor_base || 0
+      const matComDetalhes = await buscarDetalhesMatricula(mat);
+      const modalidade = matComDetalhes.turmas?.modalidades;
+
+      if (!modalidade) {
+        alert(`⚠️ A turma vinculada a este aluno não tem uma modalidade cadastrada. Vá em Registros e vincule a modalidade corretamente.`);
+        continue;
+      }
+
+      let valorOriginal = modalidade?.valor_geral || 0
+      const valorBase = modalidade?.valor_base || 0
 
       if (aluno.escola_id) {
         const { data: escola } = await supabase.from("escolas").select("*").eq("id", aluno.escola_id).single()
@@ -99,11 +125,7 @@ export default function Mensalidades() {
         
         const { valorFinal: valorComDesconto, isento } = await calcularDescontosMensalidade(aluno.id, valorOriginal)
 
-        // Se for isento ou R$ 0,00, ignora e não salva
-        if (isento || valorComDesconto <= 0) {
-          console.log(`Mês ${i} ignorado: Isento = ${isento}, Valor = ${valorComDesconto}`);
-          continue;
-        }
+        if (isento || valorComDesconto <= 0) continue;
 
         novasMensalidades.push({
           aluno_id: aluno.id, 
@@ -119,26 +141,13 @@ export default function Mensalidades() {
 
     if (novasMensalidades.length > 0) {
       const { error: insertError } = await supabase.from("mensalidades").insert(novasMensalidades)
-      
       if (insertError) {
-        alert("❌ Erro ao salvar no Supabase: " + insertError.message)
-        setLoading(false)
-        return
+        alert("❌ Erro ao salvar: " + insertError.message)
+      } else {
+        await selecionarAluno(aluno) 
       }
-      
-      const { data } = await supabase
-        .from("mensalidades")
-        .select("*, matriculas(turmas(*, modalidades(*)))")
-        .eq("aluno_id", aluno.id)
-        .in("status", ["pendente", "pago", "isento"])
-        .order("vencimento", { ascending: true })
-      
-      const todas = data || []
-      setPendentes(todas.filter(m => m.status === "pendente" || m.status === "isento"))
-      setPagas(todas.filter(m => m.status === "pago").reverse())
-      if (todas.length > 0) setSelecionadasParaPagar([todas.find(m => m.status !== "pago")?.id].filter(Boolean))
     } else {
-      alert("⚠️ A conta deu R$ 0,00 para todos os meses (Isento ou sem valor na modalidade). Nada foi gerado.");
+      alert("⚠️ Nenhuma mensalidade gerada. O valor da modalidade pode ser R$ 0,00.");
     }
 
     setLoading(false)
@@ -221,7 +230,6 @@ export default function Mensalidades() {
 
         const { valorFinal, isento } = await calcularDescontosMensalidade(selecionado.id, valorComDescontoEscola)
 
-        // Se o próximo mês for isento ou zero, não gera a próxima fatura
         if (isento || valorFinal <= 0) continue; 
 
         await supabase.from("mensalidades").insert([{

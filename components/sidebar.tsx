@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "../lib/supabase"; // Ajuste o caminho se necessário
 import {
   Home,
   DollarSign,
@@ -43,7 +44,7 @@ const menuAdmin = [
   { href: "/relatorios", icon: Users, label: "Central de Relatórios" },
   { href: "/operadores", icon: Key, label: "Operadores" },
   { href: "/convenios", icon: Handshake, label: "Convênios" },
-  { href: "/escolas", icon: School, label: "Escolas Parceiras" }, // <-- Rota correta em plural
+  { href: "/escolas", icon: School, label: "Escolas Parceiras" },
   { href: "/parceiros", icon: Package, label: "Gestão de Parceiros" },
   { href: "/produtos", icon: Boxes, label: "Catálogo de Produtos" },
   { href: "/estoque", icon: Package, label: "Entrada de Estoque" },
@@ -57,13 +58,26 @@ const menuAdmin = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [escolasPendentes, setEscolasPendentes] = useState(0);
+
+  useEffect(() => {
+    async function checkPendentes() {
+      // Busca alunos com status "pendente" (Ajuste a regra se necessário)
+      const { count } = await supabase
+        .from("alunos")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pendente");
+      
+      setEscolasPendentes(count || 0);
+    }
+    checkPendentes();
+  }, [pathname]); // Recarrega a contagem a cada troca de página
 
   const toggleSidebar = () => setIsCollapsed(!isCollapsed);
   const isActive = (href: string) => pathname === href;
 
   return (
     <>
-      {/* Botão para mobile */}
       <button
         onClick={toggleSidebar}
         className="fixed top-4 left-4 z-50 md:hidden bg-red-700 text-white p-2 rounded-lg shadow-lg hover:bg-red-800 transition"
@@ -71,12 +85,10 @@ export default function Sidebar() {
         <Menu size={20} />
       </button>
 
-      {/* Sidebar */}
       <aside
         className={`fixed top-0 left-0 h-screen bg-black text-white shadow-2xl border-r border-red-900 transition-all duration-300 z-40
         ${isCollapsed ? "w-20" : "w-72"} md:w-72 md:translate-x-0 -translate-x-full md:relative`}
       >
-        {/* Logo e título */}
         <div className="flex justify-between items-center p-5 border-b border-red-900">
           <div className="flex items-center gap-3">
             <div className="bg-red-700 p-2 rounded-xl">
@@ -97,9 +109,7 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Menu de navegação */}
         <div className="flex-1 py-6 overflow-y-auto h-[calc(100vh-80px)]">
-          {/* Atendimento */}
           <div className="px-4 mb-3 text-xs font-semibold text-red-500 uppercase tracking-wider">
             {!isCollapsed ? "Atendimento" : "A"}
           </div>
@@ -120,7 +130,6 @@ export default function Sidebar() {
             ))}
           </div>
 
-          {/* Administrativo */}
           <div className="px-4 mt-6 mb-3 text-xs font-semibold text-red-500 uppercase tracking-wider">
             {!isCollapsed ? "Administrativo" : "A"}
           </div>
@@ -129,20 +138,27 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                className={`flex items-center justify-between mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                   isActive(item.href)
                     ? "bg-red-700 text-white shadow-md"
                     : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"
                 }`}
               >
-                <item.icon size={18} />
-                {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+                <div className="flex items-center gap-3">
+                  <item.icon size={18} />
+                  {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+                </div>
+                {/* BADGE VERMELHO AQUI */}
+                {item.href === "/escolas" && escolasPendentes > 0 && (
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {escolasPendentes}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
         </div>
 
-        {/* Footer da sidebar */}
         <div className="p-4 border-t border-red-900 text-center text-xs text-gray-500">
           {!isCollapsed && (
             <>
@@ -153,7 +169,6 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Overlay para mobile quando sidebar está aberta */}
       {!isCollapsed && (
         <div
           className="fixed inset-0 bg-black/70 z-30 md:hidden"
