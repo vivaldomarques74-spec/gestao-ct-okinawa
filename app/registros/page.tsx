@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
-import { Gift, Lock, FileText, Trash2 } from "lucide-react"
+import { Gift, Lock, FileText, Trash2, CalendarDays } from "lucide-react"
 import jsPDF from "jspdf"
 
 export default function RegistrosPage() {
@@ -19,6 +19,10 @@ export default function RegistrosPage() {
   const [matriculasAluno, setMatriculasAluno] = useState<any[]>([])
   const [descontoEspecial, setDescontoEspecial] = useState<any>(null)
   
+  // ESTADO PARA O NOVO DIA DE VENCIMENTO
+  const [diaVencimento, setDiaVencimento] = useState("")
+  const [atualizandoVencimento, setAtualizandoVencimento] = useState(false)
+
   const [formDesconto, setFormDesconto] = useState({ tipo: "fixo", valor: "", meses: "", recorrente: false })
   const [senhaDiretor, setSenhaDiretor] = useState("")
   const [aplicandoDesconto, setAplicandoDesconto] = useState(false)
@@ -63,7 +67,6 @@ export default function RegistrosPage() {
   }
 
   async function carregarModalidadesTurmas() {
-    // Sem filtro de status para garantir que tudo apareça na lista
     const { data: mods } = await supabase.from("modalidades").select("*")
     setModalidades(mods || [])
     
@@ -84,6 +87,8 @@ export default function RegistrosPage() {
   async function editarAluno(aluno: any) {
     setAlunoEditando(aluno)
     setSenhaDiretor("")
+    setDiaVencimento("") // Limpa o campo ao trocar de aluno
+    
     setFormAluno({
       nome: aluno.nome || "", cpf: aluno.cpf || "", rg: aluno.rg || "", nascimento: aluno.nascimento || "",
       whatsapp: aluno.whatsapp || "", email: aluno.email || "", endereco: aluno.endereco || "",
@@ -96,7 +101,6 @@ export default function RegistrosPage() {
       numero_matricula: aluno.numero_matricula || "",
     })
     
-    // Busca segura de matrículas para não dar erro 400
     const { data: rawMats } = await supabase.from("matriculas").select("*").eq("aluno_id", aluno.id).eq("status", "ativo")
     const matsCompletas = await Promise.all((rawMats || []).map(async (m) => {
       const { data: t } = await supabase.from("turmas").select("*").eq("id", m.turma_id).single()
@@ -106,6 +110,68 @@ export default function RegistrosPage() {
 
     const { data: desc } = await supabase.from("descontos_especiais").select("*").eq("aluno_id", aluno.id).eq("status", "ativo").maybeSingle()
     setDescontoEspecial(desc || null)
+
+    // Busca a primeira mensalidade pendente para mostrar o dia atual de vencimento como dica
+    const { data: pendente } = await supabase.from("mensalidades").select("vencimento").eq("aluno_id", aluno.id).eq("status", "pendente").limit(1).maybeSingle()
+    if (pendente) {
+      const dia = new Date(pendente.vencimento + "T12:00:00").getDate()
+      setDiaVencimento(dia.toString())
+    }
+  }
+
+  // FUNÇÃO QUE ATUALIZA O VENCIMENTO DE TODAS AS MENSALIDADES PENDENTES
+  async function atualizarVencimentoMensalidades() {
+    const novoDia = Number(diaVencimento)
+    if (!novoDia || novoDia < 1 || novoDia > 31) {
+      return alert("Digite um dia válido (entre 1 e 31).")
+    }
+
+    if (!confirm(`Deseja alterar o vencimento de TODAS as mensalidades pendentes deste aluno para o dia ${novoDia}?`)) return
+
+    setAtualizandoVencimento(true)
+
+    const { data: pendentes, error } = await supabase
+      .from("mensalidades")
+      .select("*")
+      .eq("aluno_id", alunoEditando.id)
+      .eq("status", "pendente")
+
+    if (error) {
+      alert("Erro ao buscar mensalidades: " + error.message)
+      setAtualizandoVencimento(false)
+      return
+    }
+
+    if (!pendentes || pendentes.length === 0) {
+      alert("Este aluno não possui mensalidades pendentes para alterar.")
+      setAtualizandoVencimento(false)
+      return
+    }
+
+    let atualizadas = 0
+
+    for (const m of pendentes) {
+      // Pega o ano e o mês original
+      const dataOriginal = new Date(m.vencimento + "T12:00:00")
+      const ano = dataOriginal.getFullYear()
+      const mes = dataOriginal.getMonth()
+
+      // Cria a nova data com o novo dia
+      let novaData = new Date(ano, mes, novoDia)
+
+      // Se o mês não tiver o dia (ex: dia 31 em fevereiro), ajusta para o último dia do mês
+      if (novaData.getMonth() !== mes) {
+        novaData = new Date(ano, mes + 1, 0) 
+      }
+
+      const novaDataStr = novaData.toLocaleDateString('en-CA') // YYYY-MM-DD
+
+      await supabase.from("mensalidades").update({ vencimento: novaDataStr }).eq("id", m.id)
+      atualizadas++
+    }
+
+    alert(`✅ ${atualizadas} mensalidades atualizadas para o dia ${novoDia}!`)
+    setAtualizandoVencimento(false)
   }
 
   async function salvarAluno() {
@@ -278,12 +344,11 @@ export default function RegistrosPage() {
       return
     }
     
-    // --- CORREÇÃO DA DATA DE VENCIMENTO ---
     const dataMatricula = new Date();
-    const diaVencimento = dataMatricula.getDate();
+    const diaVenc = diaVencimento ? Number(diaVencimento) : dataMatricula.getDate();
 
     for (let i = 1; i <= 12; i++) {
-      const vencimento = new Date(dataMatricula.getFullYear(), dataMatricula.getMonth() + i, diaVencimento)
+      const vencimento = new Date(dataMatricula.getFullYear(), dataMatricula.getMonth() + i, diaVenc)
       const vencimentoStr = vencimento.toLocaleDateString('en-CA')
       
       await supabase.from("mensalidades").insert([{ 
@@ -413,6 +478,21 @@ export default function RegistrosPage() {
                     <option value="">Nenhum convênio</option>
                     {convenios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
+
+                  {/* NOVO BLOCO: ALTERAR VENCIMENTO */}
+                  <div className="border p-3 rounded bg-blue-50 border-blue-200 mt-4">
+                    <h3 className="font-semibold text-blue-800 flex items-center gap-2 mb-2"><CalendarDays size={18}/> Alterar Vencimento</h3>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-xs text-gray-500 font-semibold">Novo Dia (1 a 31)</label>
+                        <input type="number" min="1" max="31" className="w-full p-2 border rounded" value={diaVencimento} onChange={e => setDiaVencimento(e.target.value)} />
+                      </div>
+                      <button onClick={atualizarVencimentoMensalidades} disabled={atualizandoVencimento} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-bold text-sm disabled:opacity-50">
+                        {atualizandoVencimento ? "Atualizando..." : "Atualizar Meses Pendentes"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">Isso atualizará o dia do vencimento de todas as mensalidades pendentes deste aluno.</p>
+                  </div>
 
                   <h3 className="font-semibold mt-4 border-t pt-2 text-red-600 flex items-center gap-2"><Gift size={18}/> Desconto de Diretoria</h3>
                   

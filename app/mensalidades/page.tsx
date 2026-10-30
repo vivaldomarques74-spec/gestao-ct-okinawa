@@ -45,7 +45,6 @@ export default function Mensalidades() {
       .in("status", ["pendente", "pago", "isento"])
       .order("vencimento", { ascending: true })
 
-    // Busca os detalhes da matrícula para cada mensalidade (se existir) de forma segura
     const todas = await Promise.all((mensalidadesData || []).map(async (m) => {
       const { data: mat } = await supabase.from("matriculas").select("*").eq("id", m.matricula_id).single();
       let turma = null;
@@ -91,11 +90,12 @@ export default function Mensalidades() {
     let novasMensalidades = []
 
     for (const mat of mats) {
-      // CORREÇÃO: Pega a data em que a matrícula foi criada no banco
-      const dataMatricula = mat.created_at ? new Date(mat.created_at) : new Date();
-      const diaVencimento = dataMatricula.getDate();
+      // --- CORREÇÃO DEFINITIVA DO VENCIMENTO ---
+      // 1. Tenta pegar da matrícula. 2. Se não tiver, pega do aluno. 3. Se não tiver, usa hoje.
+      let dataBaseStr = mat.created_at || aluno.created_at;
+      let dataBase = dataBaseStr ? new Date(dataBaseStr) : new Date();
+      const diaVencimento = dataBase.getDate();
       
-      // Busca a Turma e Modalidade
       const { data: t } = await supabase.from("turmas").select("*").eq("id", mat.turma_id).single();
       const { data: mod } = await supabase.from("modalidades").select("*").eq("id", t?.modalidade_id).single();
 
@@ -116,12 +116,10 @@ export default function Mensalidades() {
       }
 
       for (let i = 1; i <= 12; i++) {
-        // CORREÇÃO: Calcula o mês baseado na data da matrícula
-        const vencimento = new Date(dataMatricula.getFullYear(), dataMatricula.getMonth() + i, diaVencimento)
+        const vencimento = new Date(dataBase.getFullYear(), dataBase.getMonth() + i, diaVencimento)
         const vencimentoStr = vencimento.toLocaleDateString('en-CA') 
         const mesReferente = vencimento.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
-        // Verifica duplicidade
         const { data: existe } = await supabase.from("mensalidades")
           .select("id")
           .eq("matricula_id", mat.id)

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Users, AlertTriangle, Layers, TrendingUp, Award, School } from "lucide-react";
+import { Users, AlertTriangle, Layers, TrendingUp, Award, School, CheckCircle, Clock, Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
@@ -11,6 +11,15 @@ export default function Dashboard() {
   const [turmasList, setTurmasList] = useState<any[]>([]);
   const [modalidadesList, setModalidadesList] = useState<any[]>([]);
   const [escolasPendentes, setEscolasPendentes] = useState(0);
+  
+  // Estados para o painel de alertas granular
+  const [alertas, setAlertas] = useState({
+    atraso5: 0,
+    atraso2: 0,
+    venceHoje: 0,
+    vence2: 0,
+    vence5: 0
+  });
 
   useEffect(() => {
     carregar();
@@ -22,22 +31,41 @@ export default function Dashboard() {
     const ativos = alunos?.filter((a: any) => a.status === "ativo").length || 0;
     const inativos = alunos?.filter((a: any) => a.status === "inativo").length || 0;
 
-    // 2. Alerta: Apenas mensalidades vencidas ou que vencem nos próximos 5 dias
-    const hoje = new Date();
-    const daqui5Dias = new Date();
-    daqui5Dias.setDate(hoje.getDate() + 5);
-    
-    const dataLimite = daqui5Dias.toISOString().split('T')[0]; // Formato YYYY-MM-DD
-
-    const { data: mensalidades } = await supabase
-      .from("mensalidades")
-      .select("id")
-      .eq("status", "pendente")
-      .lte("vencimento", dataLimite); // Pega as que vencem antes ou nos próximos 5 dias
-
-    // 3. Turmas totais
+    // 2. Turmas totais
     const { data: turmas } = await supabase.from("turmas").select("id");
     
+    // 3. Escolas Pendentes
+    const { count: pendentesCount } = await supabase
+      .from("alunos")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pendente"); 
+    setEscolasPendentes(pendentesCount || 0);
+
+    // 4. Buscar TODAS as mensalidades pendentes para calcular os alertas
+    const { data: mensalidades } = await supabase.from("mensalidades").select("*").eq("status", "pendente");
+    
+    let atraso5 = 0, atraso2 = 0, venceHoje = 0, vence2 = 0, vence5 = 0;
+    
+    // Data de hoje (Zerada para comparação)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    mensalidades?.forEach(m => {
+      const venc = new Date(m.vencimento + "T12:00:00");
+      venc.setHours(0, 0, 0, 0);
+      
+      const diffTime = venc.getTime() - hoje.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)); // Dias de diferença
+
+      if (diffDays <= -5) atraso5++;
+      else if (diffDays <= -2) atraso2++;
+      else if (diffDays === 0) venceHoje++;
+      else if (diffDays >= 2 && diffDays <= 3) vence2++;
+      else if (diffDays >= 4 && diffDays <= 5) vence5++;
+    });
+
+    setAlertas({ atraso5, atraso2, venceHoje, vence2, vence5 });
+
     setStats({ 
       ativos, 
       inativos, 
@@ -45,16 +73,7 @@ export default function Dashboard() {
       turmas: turmas?.length || 0 
     });
 
-    // 4. Escolas Pendentes (Notificação)
-    // ⚠️ AQUI: Se no seu banco a regra for outra, mude o "pendente"
-    const { count: pendentesCount } = await supabase
-      .from("alunos")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "pendente"); 
-    
-    setEscolasPendentes(pendentesCount || 0);
-
-    // 5. Gráficos (Busca Segura para não dar erro 400)
+    // 5. Gráficos
     const { data: matriculas } = await supabase.from("matriculas").select("id, turma_id");
     const { data: turmasData } = await supabase.from("turmas").select("id, nome, modalidade_id");
     const { data: modalidadesData } = await supabase.from("modalidades").select("id, nome");
@@ -64,12 +83,9 @@ export default function Dashboard() {
 
     matriculas?.forEach((m: any) => {
       const turma = turmasData?.find(t => t.id === m.turma_id);
-      
-      // Contagem de Turma
       const nomeTurma = turma?.nome || "Sem turma";
       turmaCount[nomeTurma] = (turmaCount[nomeTurma] || 0) + 1;
 
-      // Contagem de Modalidade
       const modalidade = modalidadesData?.find(mod => mod.id === turma?.modalidade_id);
       const nomeMod = modalidade?.nome || "Sem modalidade";
       modalidadeCount[nomeMod] = (modalidadeCount[nomeMod] || 0) + 1;
@@ -82,7 +98,7 @@ export default function Dashboard() {
   const cards = [
     { title: "Alunos Ativos", value: stats.ativos, icon: Users, color: "text-green-600" },
     { title: "Alunos Inativos", value: stats.inativos, icon: Users, color: "text-gray-500" },
-    { title: "Alertas (5 dias)", value: stats.alertas, icon: AlertTriangle, color: "text-red-500" },
+    { title: "Total Pendências", value: stats.alertas, icon: AlertTriangle, color: "text-red-500" },
     { title: "Turmas", value: stats.turmas, icon: Layers, color: "text-blue-500" },
   ];
 
@@ -97,23 +113,27 @@ export default function Dashboard() {
       </div>
 
       {/* WIDGET DE INDICAÇÕES DE ESCOLAS */}
-      {escolasPendentes > 0 && (
-        <div 
-          onClick={() => router.push("/escolas")} 
-          className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex justify-between items-center cursor-pointer hover:bg-blue-100 transition shadow-sm"
-        >
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-500 p-2 rounded-full text-white">
-              <School size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-blue-900">Indicações de Escolas</h3>
-              <p className="text-sm text-blue-700">{escolasPendentes} aluno(s) aguardando aprovação.</p>
-            </div>
+      <div 
+        onClick={() => escolasPendentes > 0 ? router.push("/escolas") : null} 
+        className={`border p-4 rounded-xl mb-6 flex justify-between items-center transition shadow-sm
+          ${escolasPendentes > 0 ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100" : "bg-white border-gray-200"}
+        `}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-full text-white ${escolasPendentes > 0 ? "bg-blue-500" : "bg-green-500"}`}>
+            {escolasPendentes > 0 ? <School size={24} /> : <CheckCircle size={24} />}
           </div>
-          <span className="text-blue-600 font-semibold text-sm">Clique aqui para revisar &rarr;</span>
+          <div>
+            <h3 className={`font-bold ${escolasPendentes > 0 ? "text-blue-900" : "text-gray-800"}`}>Indicações de Escolas</h3>
+            <p className={`text-sm ${escolasPendentes > 0 ? "text-blue-700" : "text-gray-500"}`}>
+              {escolasPendentes > 0 ? `${escolasPendentes} aluno(s) aguardando aprovação.` : "Nenhuma pendência de escola parceira."}
+            </p>
+          </div>
         </div>
-      )}
+        {escolasPendentes > 0 && (
+          <span className="text-blue-600 font-semibold text-sm">Clique aqui para revisar &rarr;</span>
+        )}
+      </div>
 
       {/* Cards */}
       <div className="grid md:grid-cols-4 gap-4 mb-8">
@@ -128,9 +148,43 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* PAINEL DE ALERTAS GRANULAR */}
+      <div className="mb-8 bg-white rounded-xl shadow p-4 border border-gray-100">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <Bell size={20} className="text-red-500" /> Painel de Alertas (Vencimentos)
+          </h3>
+          <button onClick={() => router.push('/alertas')} className="text-sm text-blue-600 hover:underline">
+            Ir para Central de Alertas
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="bg-red-100 border border-red-200 rounded-lg p-3 text-center">
+            <p className="text-xs font-semibold text-red-800">+ de 5 dias atrasado</p>
+            <p className="text-2xl font-bold text-red-600">{alertas.atraso5}</p>
+          </div>
+          <div className="bg-orange-100 border border-orange-200 rounded-lg p-3 text-center">
+            <p className="text-xs font-semibold text-orange-800">2 a 4 dias atrasado</p>
+            <p className="text-2xl font-bold text-orange-600">{alertas.atraso2}</p>
+          </div>
+          <div className="bg-yellow-100 border border-yellow-200 rounded-lg p-3 text-center">
+            <p className="text-xs font-semibold text-yellow-800">Vence Hoje</p>
+            <p className="text-2xl font-bold text-yellow-600">{alertas.venceHoje}</p>
+          </div>
+          <div className="bg-blue-100 border border-blue-200 rounded-lg p-3 text-center">
+            <p className="text-xs font-semibold text-blue-800">Vence em 2 a 3 dias</p>
+            <p className="text-2xl font-bold text-blue-600">{alertas.vence2}</p>
+          </div>
+          <div className="bg-green-100 border border-green-200 rounded-lg p-3 text-center">
+            <p className="text-xs font-semibold text-green-800">Vence em 4 a 5 dias</p>
+            <p className="text-2xl font-bold text-green-600">{alertas.vence5}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Gráficos */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Alunos por Turma */}
         <div className="bg-white rounded-xl shadow p-4">
           <h3 className="font-semibold mb-3 flex items-center gap-2">
             <TrendingUp size={18} className="text-red-500" /> Alunos por Turma
@@ -152,7 +206,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Distribuição por Modalidade */}
         <div className="bg-white rounded-xl shadow p-4">
           <h3 className="font-semibold mb-3 flex items-center gap-2">
             <Award size={18} className="text-red-500" /> Distribuição por Modalidade
