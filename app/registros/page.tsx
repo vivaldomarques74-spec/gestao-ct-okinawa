@@ -31,6 +31,7 @@ export default function RegistrosPage() {
     usa_remedio: false, remedio_detalhes: "",
     status: "ativo",
     convenio_id: "",
+    numero_matricula: "",
   })
 
   const [filtroTipo, setFiltroTipo] = useState("todos")
@@ -91,6 +92,7 @@ export default function RegistrosPage() {
       problema_saude: aluno.problema_saude || false, saude_detalhes: aluno.saude_detalhes || "",
       usa_remedio: aluno.usa_remedio || false, remedio_detalhes: aluno.remedio_detalhes || "",
       status: aluno.status || "ativo", convenio_id: aluno.convenio_id || "",
+      numero_matricula: aluno.numero_matricula || "",
     })
     
     const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", aluno.id).eq("status", "ativo")
@@ -243,7 +245,16 @@ export default function RegistrosPage() {
   }
 
   async function ativarInativarAluno(aluno: any) {
-    await supabase.from("alunos").update({ status: aluno.status === "ativo" ? "inativo" : "ativo" }).eq("id", aluno.id)
+    const novoStatus = aluno.status === "ativo" ? "inativo" : "ativo"
+
+    await supabase.from("alunos").update({ status: novoStatus }).eq("id", aluno.id)
+    await supabase.from("matriculas").update({ status: novoStatus }).eq("aluno_id", aluno.id)
+
+    if (novoStatus === "inativo") {
+      await supabase.from("mensalidades").update({ status: "cancelado" }).eq("aluno_id", aluno.id).eq("status", "pendente")
+    }
+
+    alert(`Aluno ${novoStatus === "ativo" ? "ativado" : "inativado"} com sucesso!`)
     carregarAlunos()
   }
 
@@ -252,10 +263,24 @@ export default function RegistrosPage() {
     const turma = turmas.find(t => t.id === turmaId)
     if (!turma) return
     const { data: novaMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoEditando.id, turma_id: turmaId, status: "ativo" }]).select().single()
+    
     const hoje = new Date()
-    const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + 1, hoje.getDate()).toISOString().slice(0, 10)
-    await supabase.from("mensalidades").insert([{ aluno_id: alunoEditando.id, matricula_id: novaMat.id, vencimento, valor: turma.modalidades?.valor_geral || 0, valor_base: turma.modalidades?.valor_base || 0, status: "pendente" }])
-    alert("Modalidade adicionada")
+    const diaVencimento = hoje.getDate()
+
+    // GERA AS 12 MENSALIDADES
+    for (let i = 1; i <= 12; i++) {
+      const vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVencimento).toISOString().slice(0, 10)
+      await supabase.from("mensalidades").insert([{ 
+        aluno_id: alunoEditando.id, 
+        matricula_id: novaMat.id, 
+        vencimento, 
+        valor: turma.modalidades?.valor_geral || 0, 
+        valor_base: turma.modalidades?.valor_base || 0, 
+        status: "pendente" 
+      }])
+    }
+    
+    alert("Modalidade e 12 mensalidades geradas!")
     const { data: mats } = await supabase.from("matriculas").select("*, turmas(*)").eq("aluno_id", alunoEditando.id).eq("status", "ativo")
     setMatriculasAluno(mats || [])
   }
@@ -272,7 +297,6 @@ export default function RegistrosPage() {
     if (senhaCancelamento !== "984215") return alert("❌ Senha da Diretoria incorreta.")
     await supabase.from("caixa").update({ cancelado: true, valor: 0 }).eq("id", movCancelar.id)
     
-    // Grava log de auditoria
     await supabase.from("logs_auditoria").insert([{
       operador: "Admin (Diretoria)",
       acao: "Cancelamento Financeiro",
@@ -311,7 +335,10 @@ export default function RegistrosPage() {
                     <div key={aluno.id} className="border-b p-2 flex justify-between items-center">
                       <div className="cursor-pointer" onClick={() => editarAluno(aluno)}>
                         <p className="font-semibold">{aluno.nome}</p>
-                        <p className="text-xs text-gray-500">CPF: {aluno.cpf}</p>
+                        {/* AQUI ESTÁ O NÚMERO DE MATRÍCULA DE VOLTA */}
+                        <p className="text-xs text-gray-500">
+                          Nº Matrícula: {aluno.numero_matricula || "---"} | CPF: {aluno.cpf || "---"}
+                        </p>
                       </div>
                       <div className="flex gap-1">
                         <button onClick={() => ativarInativarAluno(aluno)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{aluno.status === "ativo" ? "Inativar" : "Ativar"}</button>
@@ -324,6 +351,12 @@ export default function RegistrosPage() {
 
               {alunoEditando && (
                 <div className="pl-4 space-y-3 max-h-175 overflow-y-auto pr-2">
+                  {/* AQUI EXIBE O NÚMERO DE MATRÍCULA NO PAINEL DE EDIÇÃO */}
+                  <div className="bg-gray-100 p-2 rounded">
+                    <label className="text-xs font-semibold text-gray-500">Nº Matrícula</label>
+                    <input className="w-full p-2 border rounded bg-transparent font-bold text-red-600" readOnly value={formAluno.numero_matricula || "---"} />
+                  </div>
+
                   <input className="w-full p-2 border rounded" placeholder="Nome" value={formAluno.nome} onChange={e => setFormAluno({...formAluno, nome: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="CPF" value={formAluno.cpf} onChange={e => setFormAluno({...formAluno, cpf: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="RG" value={formAluno.rg} onChange={e => setFormAluno({...formAluno, rg: e.target.value})} />

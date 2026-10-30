@@ -53,11 +53,24 @@ export default function Mensalidades() {
 
   async function gerarMensalidadesFaltantes() {
     if (!selecionado) return
+
+    if (selecionado.status !== "ativo") {
+      return alert("❌ Este aluno está inativo. Reative ele no painel de Registros antes de gerar mensalidades.")
+    }
+
     setLoading(true)
 
-    const { data: mats } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", selecionado.id).eq("status", "ativo")
+    const { data: mats, error } = await supabase.from("matriculas").select("*, turmas(*, modalidades(*))").eq("aluno_id", selecionado.id).eq("status", "ativo")
+    
+    if (error) {
+      console.error(error)
+      alert("Erro ao buscar matrículas: " + error.message)
+      setLoading(false)
+      return
+    }
+
     if (!mats || mats.length === 0) {
-      alert("Aluno não possui matrículas ativas.")
+      alert("⚠️ Este aluno não possui matrícula ativa. Vá em 'Registros', clique em Editar Aluno e adicione uma Modalidade/Turma primeiro.")
       setLoading(false)
       return
     }
@@ -97,7 +110,12 @@ export default function Mensalidades() {
       }
     }
 
-    alert(`✅ ${geradas} mensalidades geradas com sucesso!`)
+    if (geradas > 0) {
+      alert(`✅ ${geradas} mensalidades geradas com sucesso!`)
+    } else {
+      alert("Todas as mensalidades deste período já estavam geradas.")
+    }
+    
     await selecionarAluno(selecionado)
     setLoading(false)
   }
@@ -333,6 +351,7 @@ export default function Mensalidades() {
           {alunosFiltrados.map(aluno => (
             <div key={aluno.id} className={`p-3 border-b cursor-pointer hover:bg-gray-100 ${selecionado?.id === aluno.id ? 'bg-red-50 border-l-4 border-red-500' : ''}`} onClick={() => selecionarAluno(aluno)}>
               <p className="font-semibold">{aluno.nome}</p>
+              <p className="text-xs text-gray-500">Nº Matrícula: {aluno.numero_matricula || "---"}</p>
               <p className="text-xs text-gray-500">CPF: {aluno.cpf || "---"}</p>
             </div>
           ))}
