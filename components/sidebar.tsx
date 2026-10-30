@@ -4,9 +4,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  Home, DollarSign, UserPlus, ShoppingBag, Calendar, Bell, Receipt,
-  BarChart3, Database, Users, Key, Handshake, Package, Boxes,
-  GraduationCap, School, UserCog, Menu, X, Gift, FileText
+  Home,
+  DollarSign,
+  UserPlus,
+  ShoppingBag,
+  Calendar,
+  Bell,
+  Receipt,
+  BarChart3,
+  Database,
+  Users,
+  Key,
+  Handshake,
+  Package,
+  Boxes,
+  GraduationCap,
+  School,
+  UserCog,
+  Menu,
+  X,
+  Gift,
+  FileText,
 } from "lucide-react";
 
 const menuAtendimento = [
@@ -25,7 +43,7 @@ const menuAdmin = [
   { href: "/relatorios", icon: Users, label: "Central de Relatórios" },
   { href: "/operadores", icon: Key, label: "Operadores" },
   { href: "/convenios", icon: Handshake, label: "Convênios" },
-  { href: "/escolas", icon: School, label: "Escolas Parceiras" },
+  { href: "/escolas", icon: School, label: "Escolas Parceiras" }, // <-- Rota correta em plural
   { href: "/parceiros", icon: Package, label: "Gestão de Parceiros" },
   { href: "/produtos", icon: Boxes, label: "Catálogo de Produtos" },
   { href: "/estoque", icon: Package, label: "Entrada de Estoque" },
@@ -45,56 +63,103 @@ export default function Sidebar() {
 
   return (
     <>
-      <button onClick={toggleSidebar} className="fixed top-4 left-4 z-50 md:hidden bg-red-700 text-white p-2 rounded-lg shadow-lg">
+      {/* Botão para mobile */}
+      <button
+        onClick={toggleSidebar}
+        className="fixed top-4 left-4 z-50 md:hidden bg-red-700 text-white p-2 rounded-lg shadow-lg hover:bg-red-800 transition"
+      >
         <Menu size={20} />
       </button>
 
-      <aside className={`fixed top-0 left-0 h-screen bg-black text-white shadow-2xl border-r border-red-900 transition-all duration-300 z-40 ${isCollapsed ? "w-20" : "w-72"} md:w-72 md:translate-x-0 -translate-x-full md:relative`}>
+      {/* Sidebar */}
+      <aside
+        className={`fixed top-0 left-0 h-screen bg-black text-white shadow-2xl border-r border-red-900 transition-all duration-300 z-40
+        ${isCollapsed ? "w-20" : "w-72"} md:w-72 md:translate-x-0 -translate-x-full md:relative`}
+      >
+        {/* Logo e título */}
         <div className="flex justify-between items-center p-5 border-b border-red-900">
           <div className="flex items-center gap-3">
             <div className="bg-red-700 p-2 rounded-xl">
-              <img src="/logo-color.png" alt="Logo" className="h-8 w-auto" />
+              <img src="/logo-color.png" alt="Logo CT Okinawa" className="h-8 w-auto" />
             </div>
             {!isCollapsed && (
               <div>
-                <h1 className="text-xl font-bold tracking-wide">CT OKINAWA</h1>
+                <h1 className="text-xl font-bold tracking-wide text-white">CT OKINAWA</h1>
                 <p className="text-xs text-red-400">Disciplina e Respeito</p>
               </div>
             )}
           </div>
-          <button onClick={toggleSidebar} className="text-gray-400 hover:text-red-400">
+          <button
+            onClick={toggleSidebar}
+            className="text-gray-400 hover:text-red-400 transition cursor-pointer"
+          >
             {isCollapsed ? <Menu size={18} /> : <X size={18} />}
           </button>
         </div>
 
+        {/* Menu de navegação */}
         <div className="flex-1 py-6 overflow-y-auto h-[calc(100vh-80px)]">
+          {/* Atendimento */}
           <div className="px-4 mb-3 text-xs font-semibold text-red-500 uppercase tracking-wider">
             {!isCollapsed ? "Atendimento" : "A"}
           </div>
           <div className="space-y-1">
             {menuAtendimento.map((item) => (
-              <Link key={item.href} href={item.href} className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all ${isActive(item.href) ? "bg-red-700 text-white shadow-md" : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"}`}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isActive(item.href)
+                    ? "bg-red-700 text-white shadow-md"
+                    : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"
+                }`}
+              >
                 <item.icon size={18} />
                 {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
               </Link>
             ))}
           </div>
 
+          {/* Administrativo */}
           <div className="px-4 mt-6 mb-3 text-xs font-semibold text-red-500 uppercase tracking-wider">
             {!isCollapsed ? "Administrativo" : "A"}
           </div>
           <div className="space-y-1">
             {menuAdmin.map((item) => (
-              <Link key={item.href} href={item.href} className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all ${isActive(item.href) ? "bg-red-700 text-white shadow-md" : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"}`}>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                  isActive(item.href)
+                    ? "bg-red-700 text-white shadow-md"
+                    : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"
+                }`}
+              >
                 <item.icon size={18} />
                 {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
               </Link>
             ))}
           </div>
         </div>
+
+        {/* Footer da sidebar */}
+        <div className="p-4 border-t border-red-900 text-center text-xs text-gray-500">
+          {!isCollapsed && (
+            <>
+              {new Date().getFullYear()} © CT Okinawa<br />
+              Versão 2.0
+            </>
+          )}
+        </div>
       </aside>
 
-      {!isCollapsed && <div className="fixed inset-0 bg-black/70 z-30 md:hidden" onClick={toggleSidebar} />}
+      {/* Overlay para mobile quando sidebar está aberta */}
+      {!isCollapsed && (
+        <div
+          className="fixed inset-0 bg-black/70 z-30 md:hidden"
+          onClick={toggleSidebar}
+        />
+      )}
     </>
   );
 }

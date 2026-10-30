@@ -107,7 +107,8 @@ export default function EscolasPage() {
   }
 
   function copiarLink(codigo: string) {
-    const url = `${window.location.origin}/escola/${codigo}`
+    // CORRIGIDO PARA PLURAL
+    const url = `${window.location.origin}/escolas/${codigo}`
     navigator.clipboard.writeText(url)
     alert("Link copiado! Envie para a escola.")
   }
