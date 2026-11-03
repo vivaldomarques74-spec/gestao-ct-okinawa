@@ -22,12 +22,15 @@ export default function AulaExperimentalPage() {
   useEffect(() => { carregarDados() }, [])
 
   async function carregarDados() {
+    // Busca modalidades ativas
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
     
-    const { data: turs } = await supabase.from("turmas").select("*, modalidades(nome)").eq("status", "ativo")
+    // CORREÇÃO: Removemos o filtro de status para garantir que todas as turmas apareçam
+    const { data: turs } = await supabase.from("turmas").select("*, modalidades(nome)")
     setTurmas(turs || [])
     
+    // Busca agendamentos
     const { data: ags } = await supabase.from("aulas_experimentais").select("*, modalidades(nome), turmas(nome, horario)").order("data_aula")
     setAgendamentos(ags || [])
   }
@@ -45,21 +48,19 @@ export default function AulaExperimentalPage() {
       alert("Erro ao agendar: " + error.message)
     } else {
       alert("✅ Aula experimental agendada! O comprovante será baixado.")
-      gerarComprovantePDF(novoAgendamento) // Gera o PDF logo após agendar
+      gerarComprovantePDF(novoAgendamento) 
       setForm({ nome: "", responsavel: "", telefone: "", modalidade_id: "", turma_id: "", data_aula: new Date().toISOString().split('T')[0] })
       carregarDados()
     }
     setLoading(false)
   }
 
-  // --- GERAR PDF DO COMPROVANTE ---
   function gerarComprovantePDF(ag: any) {
     const doc = new jsPDF()
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
     const horario = ag.turmas?.horario || "A confirmar"
 
-    // Cabeçalho
-    doc.setFillColor(128, 0, 128) // Cor roxa
+    doc.setFillColor(128, 0, 128)
     doc.rect(0, 0, 210, 30, "F")
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(22)
@@ -68,7 +69,6 @@ export default function AulaExperimentalPage() {
     doc.setFontSize(12)
     doc.text("Comprovante de Agendamento - Aula Experimental", 105, 23, { align: "center" })
 
-    // Corpo
     doc.setTextColor(0, 0, 0)
     doc.setFontSize(12)
     doc.text("DADOS DO ALUNO", 20, 50)
@@ -101,7 +101,6 @@ export default function AulaExperimentalPage() {
     doc.setFont("helvetica", "normal")
     doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 155)
 
-    // Avisos Importantes
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.text("INSTRUÇÕES IMPORTANTES", 20, 175)
@@ -120,7 +119,6 @@ export default function AulaExperimentalPage() {
       y += 6
     })
 
-    // Rodapé
     doc.setFontSize(10)
     doc.setTextColor(150, 150, 150)
     doc.text("Este documento é um comprovante de agendamento. Apresente no dia da aula.", 105, 280, { align: "center" })
