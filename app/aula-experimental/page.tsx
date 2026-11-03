@@ -22,17 +22,41 @@ export default function AulaExperimentalPage() {
   useEffect(() => { carregarDados() }, [])
 
   async function carregarDados() {
-    // Busca modalidades ativas
+    // 1. Busca Modalidades
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
     
-    // CORREÇÃO: Removemos o filtro de status para garantir que todas as turmas apareçam
-    const { data: turs } = await supabase.from("turmas").select("*, modalidades(nome)")
+    // 2. Busca Turmas (SEM JOIN para não dar erro 400 no Supabase)
+    const { data: turs, error: errTurmas } = await supabase.from("turmas").select("*")
+    if (errTurmas) console.error("Erro ao buscar turmas:", errTurmas)
     setTurmas(turs || [])
     
-    // Busca agendamentos
-    const { data: ags } = await supabase.from("aulas_experimentais").select("*, modalidades(nome), turmas(nome, horario)").order("data_aula")
-    setAgendamentos(ags || [])
+    // 3. Busca Agendamentos (SEM JOIN)
+    const { data: ags, error: errAgs } = await supabase.from("aulas_experimentais").select("*").order("data_aula")
+    if (errAgs) console.error("Erro ao buscar agendamentos:", errAgs)
+
+    // 4. Cruza os dados no Javascript (Garante que nada fique em branco)
+    const agendamentosCruzados = (ags || []).map(ag => {
+      const turma = turs?.find(t => t.id === ag.turma_id)
+      const mod = mods?.find(m => m.id === ag.modalidade_id)
+      
+      // Junta a hora de início e fim
+      let horario = "s/ horário"
+      if (turma?.hora_inicio && turma?.hora_fim) {
+        horario = `${turma.hora_inicio} às ${turma.hora_fim}`
+      } else if (turma?.horario) {
+        horario = turma.horario
+      }
+
+      return {
+        ...ag,
+        modalidade_nome: mod?.nome || "?",
+        turma_nome: turma?.nome || "?",
+        turma_horario: horario
+      }
+    })
+
+    setAgendamentos(agendamentosCruzados)
   }
 
   async function agendar(e: any) {
@@ -42,13 +66,27 @@ export default function AulaExperimentalPage() {
     }
     setLoading(true)
     
-    const { data: novoAgendamento, error } = await supabase.from("aulas_experimentais").insert([form]).select("*, modalidades(nome), turmas(nome, horario)").single()
+    const { data: novoAgendamento, error } = await supabase.from("aulas_experimentais").insert([form]).select().single()
     
     if (error) {
       alert("Erro ao agendar: " + error.message)
     } else {
       alert("✅ Aula experimental agendada! O comprovante será baixado.")
-      gerarComprovantePDF(novoAgendamento) 
+      
+      // Prepara os dados para o PDF
+      const turma = turmas.find(t => t.id === form.turma_id)
+      const mod = modalidades.find(m => m.id === form.modalidade_id)
+      let horario = "A confirmar"
+      if (turma?.hora_inicio && turma?.hora_fim) horario = `${turma.hora_inicio} às ${turma.hora_fim}`
+      else if (turma?.horario) horario = turma.horario
+
+      const agParaPDF = {
+        ...novoAgendamento,
+        modalidades: { nome: mod?.nome },
+        turmas: { nome: turma?.nome, horario: horario }
+      }
+
+      gerarComprovantePDF(agParaPDF) 
       setForm({ nome: "", responsavel: "", telefone: "", modalidade_id: "", turma_id: "", data_aula: new Date().toISOString().split('T')[0] })
       carregarDados()
     }
@@ -144,13 +182,13 @@ export default function AulaExperimentalPage() {
     if (!numero.startsWith("55")) numero = "55" + numero
 
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
-    const horario = ag.turmas?.horario || "horário a confirmar"
+    const horario = ag.turma_horario || "horário a confirmar"
 
     let mensagem = ""
     if (tipo === "comprovante") {
-      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidades?.nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante de agendamento.* Chegue com 10 minutinhos de antecedência!\n\nQualquer dúvida, estamos à disposição. Até lá! OSS!`
+      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidade_nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante de agendamento.* Chegue com 10 minutinhos de antecedência!\n\nQualquer dúvida, estamos à disposição. Até lá! OSS!`
     } else {
-      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidades?.nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! Se precisar reagendar, nos avise. OSS! 🥋`
+      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidade_nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! Se precisar reagendar, nos avise. OSS! 🥋`
     }
 
     const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
@@ -178,8 +216,12 @@ export default function AulaExperimentalPage() {
 
             <select className="input" value={form.turma_id} onChange={e => setForm({...form, turma_id: e.target.value})} disabled={!form.modalidade_id} required>
               <option value="">Selecione a Turma *</option>
-              {turmas.filter(t => t.modalidade_id === form.modalidade_id).map(t => (
-                <option key={t.id} value={t.id}>{t.nome} ({t.horario || "s/ horário"})</option>
+              {turmas
+                .filter(t => String(t.modalidade_id) === String(form.modalidade_id)) // Garante que os IDs batem
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome} {t.hora_inicio ? `(${t.hora_inicio} - ${t.hora_fim})` : ''}
+                  </option>
               ))}
             </select>
 
@@ -210,18 +252,18 @@ export default function AulaExperimentalPage() {
                   <div>
                     <p className="font-bold text-lg">{ag.nome}</p>
                     <p className="text-xs text-gray-600 font-medium">WhatsApp: {ag.telefone}</p>
-                    <p className="text-xs text-gray-600">Mod: {ag.modalidades?.nome} | Turma: {ag.turmas?.nome} {ag.turmas?.horario ? `(${ag.turmas.horario})` : ''}</p>
+                    <p className="text-xs text-gray-600">Mod: {ag.modalidade_nome} | Turma: {ag.turma_nome} ({ag.turma_horario})</p>
                     <p className="text-xs text-blue-600 font-bold mt-1">Data da Aula: {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')}</p>
                   </div>
                   
                   <div className="mt-2 grid grid-cols-3 gap-1">
-                    <button onClick={() => gerarComprovantePDF(ag)} className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Baixar PDF">
+                    <button onClick={() => gerarComprovantePDF({...ag, modalidades: {nome: ag.modalidade_nome}, turmas: {nome: ag.turma_nome, horario: ag.turma_horario}})} className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Baixar PDF">
                       <Download size={14}/> PDF
                     </button>
-                    <button onClick={() => enviarWhatsApp(ag, "comprovante")} className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Comprovante no WhatsApp">
+                    <button onClick={() => enviarWhatsApp(ag, "comprovante")} className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Comprovante">
                       <FileText size={14}/> Enviar Comp.
                     </button>
-                    <button onClick={() => enviarWhatsApp(ag, "lembrete")} className="bg-green-100 text-green-700 hover:bg-green-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Lembrete no WhatsApp">
+                    <button onClick={() => enviarWhatsApp(ag, "lembrete")} className="bg-green-100 text-green-700 hover:bg-green-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Lembrete">
                       <MessageCircle size={14}/> Lembrete
                     </button>
                   </div>
