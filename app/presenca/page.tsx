@@ -64,70 +64,48 @@ export default function PresencaPage() {
     setAlunos([]);
     setPresentesIds(new Set());
 
+    const hojeStr = new Date().toISOString().slice(0, 10);
+
     const { data: matriculas, error: errMat } = await supabase
       .from("matriculas")
       .select("aluno_id, alunos(id, nome, cpf, status)")
       .eq("turma_id", turma.id)
       .eq("status", "ativo");
 
-    if (errMat) {
-      console.error("Erro ao buscar matriculas:", errMat);
-      alert("Erro ao carregar alunos");
-      return;
-    }
-
-    const listaAlunos = (matriculas || []).map((item: any) => {
+    const listaRegulares = (matriculas || []).map((item: any) => {
       const alunoData = item.alunos;
       return {
         id: item.aluno_id,
         nome: alunoData?.nome || "?",
         cpf: alunoData?.cpf || "",
-        status: alunoData?.status || "ativo"
+        status: alunoData?.status || "ativo",
+        isExperimental: false
       };
     }).filter(a => a.nome !== "?");
 
-    setAlunos(listaAlunos);
+    const { data: experimentais } = await supabase
+      .from("aulas_experimentais")
+      .select("*")
+      .eq("turma_id", turma.id)
+      .eq("data_aula", hojeStr)
+      .eq("status", "pendente"); // Só mostra se ainda não compareceu
 
-    const hoje = new Date().toISOString().slice(0, 10);
+    const listaExperimental = (experimentais || []).map((exp: any) => ({
+      id: exp.id,
+      nome: exp.nome,
+      cpf: exp.telefone || "", 
+      status: "experimental",
+      isExperimental: true
+    }));
+
+    setAlunos([...listaRegulares, ...listaExperimental]);
+
     const { data: presencasHoje } = await supabase
       .from("presencas")
       .select("aluno_id")
       .eq("turma_id", turma.id)
-      .eq("data", hoje);
+      .eq("data", hojeStr);
     setPresentesIds(new Set(presencasHoje?.map((p: any) => p.aluno_id) || []));
-  }
-
-  async function marcarPresenca(alunoId: string, alunoNome: string) {
-    if (presentesIds.has(alunoId)) {
-      alert("Presença já registrada hoje");
-      return;
-    }
-
-    // Verificar bloqueio financeiro
-    const bloqueado = await verificarBloqueioFinanceiro(alunoId);
-    if (bloqueado) {
-      alert(`❌ ALUNO BLOQUEADO!\n\n${alunoNome} está com pendências financeiras.\nProcure a secretaria para regularizar.`);
-      return;
-    }
-
-    const hoje = new Date().toISOString().slice(0, 10);
-    const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-    const { error } = await supabase.from("presencas").insert([{
-      aluno_id: alunoId,
-      turma_id: turmaSelecionada.id,
-      professor_id: professor.id,
-      data: hoje,
-      hora: hora,
-      status: "presente"
-    }]);
-
-    if (error) {
-      alert("Erro ao registrar: " + error.message);
-    } else {
-      setPresentesIds(new Set([...presentesIds, alunoId]));
-      alert(`✅ Presença registrada para ${alunoNome}`);
-    }
   }
 
   async function salvarMultiplasPresencas() {
@@ -138,17 +116,31 @@ export default function PresencaPage() {
     const hoje = new Date().toISOString().slice(0, 10);
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-    for (const alunoId of presentesIds) {
-      const { error } = await supabase.from("presencas").upsert({
-        aluno_id: alunoId,
-        turma_id: turmaSelecionada.id,
-        professor_id: professor.id,
-        data: hoje,
-        hora: hora,
-        status: "presente"
-      }, { onConflict: "aluno_id, turma_id, data" });
-      if (error) console.error("Erro ao salvar presença:", error);
+    for (const item of presentesIds) {
+      const alunoObj = alunos.find(a => a.id === item);
+      if (!alunoObj) continue;
+
+      if (alunoObj.isExperimental) {
+        // Atualiza o status para "compareceu" (Ele vai pra aba de cobrança no sistema)
+        await supabase.from("aulas_experimentais").update({ status: "compareceu" }).eq("id", item);
+      } else {
+        const bloqueado = await verificarBloqueioFinanceiro(item);
+        if (bloqueado) {
+          alert(`❌ ALUNO BLOQUEADO!\n\n${alunoObj.nome} está com pendências financeiras.`);
+          continue;
+        }
+
+        await supabase.from("presencas").upsert({
+          aluno_id: item,
+          turma_id: turmaSelecionada.id,
+          professor_id: professor.id,
+          data: hoje,
+          hora: hora,
+          status: "presente"
+        }, { onConflict: "aluno_id, turma_id, data" });
+      }
     }
+    
     alert("Presenças salvas com sucesso!");
     setSalvando(false);
     await abrirTurma(turmaSelecionada);
@@ -222,15 +214,19 @@ export default function PresencaPage() {
               value={busca}
               onChange={e => setBusca(e.target.value)}
             />
-            <div className="space-y-2 max-h-[500px] overflow-y-auto mb-4">
+            <div className="space-y-2 max-h-125 overflow-y-auto mb-4">
               {alunosFiltrados.map(aluno => {
                 const isPresente = presentesIds.has(aluno.id);
+                
+                let bgClass = "bg-white hover:bg-gray-50 border-gray-200";
+                if (isPresente && aluno.isExperimental) bgClass = "bg-purple-100 border-purple-500";
+                else if (isPresente) bgClass = "bg-green-100 border-green-500";
+                else if (aluno.isExperimental) bgClass = "bg-purple-50 border-purple-200";
+
                 return (
                   <label
                     key={aluno.id}
-                    className={`flex items-center p-3 rounded-xl border cursor-pointer transition ${
-                      isPresente ? "bg-green-100 border-green-500" : "bg-white hover:bg-gray-50"
-                    }`}
+                    className={`flex items-center p-3 rounded-xl border cursor-pointer transition ${bgClass}`}
                   >
                     <input
                       type="checkbox"
@@ -238,14 +234,23 @@ export default function PresencaPage() {
                       onChange={() => toggleAluno(aluno.id)}
                       className="mr-3 w-5 h-5"
                     />
-                    <div>
-                      <p className="font-bold">{aluno.nome}</p>
-                      <p className="text-xs text-gray-500">CPF: {aluno.cpf || "---"}</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold">{aluno.nome}</p>
+                        {aluno.isExperimental && (
+                          <span className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded-full font-bold">
+                            AULA EXPERIMENTAL
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {aluno.isExperimental ? `WhatsApp: ${aluno.cpf}` : `CPF: ${aluno.cpf || "---"}`}
+                      </p>
                     </div>
                   </label>
                 );
               })}
-              {alunos.length === 0 && <p className="text-gray-500 text-center py-4">Nenhum aluno matriculado nesta turma.</p>}
+              {alunos.length === 0 && <p className="text-gray-500 text-center py-4">Nenhum aluno matriculado ou agendado para esta turma hoje.</p>}
             </div>
             <button
               onClick={salvarMultiplasPresencas}

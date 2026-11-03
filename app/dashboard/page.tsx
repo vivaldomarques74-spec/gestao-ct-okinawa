@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Users, AlertTriangle, Layers, TrendingUp, Award, School, CheckCircle, Clock, Bell } from "lucide-react";
+import { Users, AlertTriangle, Layers, TrendingUp, Award, School, CheckCircle, FlaskConical } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
@@ -11,8 +11,8 @@ export default function Dashboard() {
   const [turmasList, setTurmasList] = useState<any[]>([]);
   const [modalidadesList, setModalidadesList] = useState<any[]>([]);
   const [escolasPendentes, setEscolasPendentes] = useState(0);
+  const [aulasExp, setAulasExp] = useState<any[]>([]); 
   
-  // Estados para o painel de alertas granular
   const [alertas, setAlertas] = useState({
     atraso5: 0,
     atraso2: 0,
@@ -41,12 +41,19 @@ export default function Dashboard() {
       .eq("status", "pendente"); 
     setEscolasPendentes(pendentesCount || 0);
 
-    // 4. Buscar TODAS as mensalidades pendentes para calcular os alertas
+    // 4. NOVO: Buscar TODAS as Aulas Experimentais que NÃO foram convertidas em matrícula
+    const { data: exp } = await supabase
+      .from("aulas_experimentais")
+      .select("*")
+      .neq("status", "matriculado") // Pega quem tá pendente E quem já fez mas não matriculou
+      .order("data_aula");
+    setAulasExp(exp || []);
+
+    // 5. Buscar TODAS as mensalidades pendentes para calcular os alertas
     const { data: mensalidades } = await supabase.from("mensalidades").select("*").eq("status", "pendente");
     
     let atraso5 = 0, atraso2 = 0, venceHoje = 0, vence2 = 0, vence5 = 0;
     
-    // Data de hoje (Zerada para comparação)
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
@@ -55,7 +62,7 @@ export default function Dashboard() {
       venc.setHours(0, 0, 0, 0);
       
       const diffTime = venc.getTime() - hoje.getTime();
-      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)); // Dias de diferença
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
       if (diffDays <= -5) atraso5++;
       else if (diffDays <= -2) atraso2++;
@@ -73,7 +80,7 @@ export default function Dashboard() {
       turmas: turmas?.length || 0 
     });
 
-    // 5. Gráficos
+    // 6. Gráficos
     const { data: matriculas } = await supabase.from("matriculas").select("id, turma_id");
     const { data: turmasData } = await supabase.from("turmas").select("id, nome, modalidade_id");
     const { data: modalidadesData } = await supabase.from("modalidades").select("id, nome");
@@ -135,6 +142,25 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* WIDGET DE AULAS EXPERIMENTAIS (Acompanhamento) */}
+      {aulasExp.length > 0 && (
+        <div 
+          onClick={() => router.push("/aula-experimental")} 
+          className="bg-purple-50 border border-purple-200 p-4 rounded-xl mb-6 flex justify-between items-center cursor-pointer hover:bg-purple-100 transition shadow-sm"
+        >
+          <div className="flex items-center gap-3">
+            <div className="bg-purple-600 p-2 rounded-full text-white">
+              <FlaskConical size={24} />
+            </div>
+            <div>
+              <h3 className="font-bold text-purple-900">Funil de Aulas Experimentais</h3>
+              <p className="text-sm text-purple-700">{aulasExp.length} pessoa(s) no funil aguardando conversão.</p>
+            </div>
+          </div>
+          <span className="text-purple-600 font-semibold text-sm">Gerenciar &rarr;</span>
+        </div>
+      )}
+
       {/* Cards */}
       <div className="grid md:grid-cols-4 gap-4 mb-8">
         {cards.map((card, i) => (
@@ -152,7 +178,7 @@ export default function Dashboard() {
       <div className="mb-8 bg-white rounded-xl shadow p-4 border border-gray-100">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <Bell size={20} className="text-red-500" /> Painel de Alertas (Vencimentos)
+            <AlertTriangle size={20} className="text-red-500" /> Painel de Alertas (Vencimentos)
           </h3>
           <button onClick={() => router.push('/alertas')} className="text-sm text-blue-600 hover:underline">
             Ir para Central de Alertas

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase"; // Ajuste o caminho se necessário
+import { supabase } from "../lib/supabase";
 import {
   Home,
   DollarSign,
@@ -26,12 +26,14 @@ import {
   X,
   Gift,
   FileText,
+  FlaskConical, // Ícone para Aula Experimental
 } from "lucide-react";
 
 const menuAtendimento = [
   { href: "/dashboard", icon: Home, label: "Visão Geral" },
   { href: "/caixa", icon: DollarSign, label: "Controle de Caixa" },
   { href: "/matricula", icon: UserPlus, label: "Matrícula" },
+  { href: "/aula-experimental", icon: FlaskConical, label: "Aula Experimental" },
   { href: "/pdv", icon: ShoppingBag, label: "PDV" },
   { href: "/mensalidades", icon: Calendar, label: "Mensalidades" },
   { href: "/alertas", icon: Bell, label: "Central de Alertas" },
@@ -62,7 +64,6 @@ export default function Sidebar() {
 
   useEffect(() => {
     async function checkPendentes() {
-      // Busca alunos com status "pendente" (Ajuste a regra se necessário)
       const { count } = await supabase
         .from("alunos")
         .select("*", { count: "exact", head: true })
@@ -71,7 +72,7 @@ export default function Sidebar() {
       setEscolasPendentes(count || 0);
     }
     checkPendentes();
-  }, [pathname]); // Recarrega a contagem a cada troca de página
+  }, [pathname]);
 
   const toggleSidebar = () => setIsCollapsed(!isCollapsed);
   const isActive = (href: string) => pathname === href;
@@ -148,7 +149,6 @@ export default function Sidebar() {
                   <item.icon size={18} />
                   {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
                 </div>
-                {/* BADGE VERMELHO AQUI */}
                 {item.href === "/escolas" && escolasPendentes > 0 && (
                   <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                     {escolasPendentes}
