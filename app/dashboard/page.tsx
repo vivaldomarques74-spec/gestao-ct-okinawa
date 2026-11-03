@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Users, AlertTriangle, Layers, TrendingUp, Award, School, CheckCircle, FlaskConical } from "lucide-react";
+import { Users, AlertTriangle, Layers, TrendingUp, Award, School, CheckCircle, FlaskConical, MessageCircle, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
@@ -14,11 +14,7 @@ export default function Dashboard() {
   const [aulasExp, setAulasExp] = useState<any[]>([]); 
   
   const [alertas, setAlertas] = useState({
-    atraso5: 0,
-    atraso2: 0,
-    venceHoje: 0,
-    vence2: 0,
-    vence5: 0
+    atraso5: 0, atraso2: 0, venceHoje: 0, vence2: 0, vence5: 0
   });
 
   useEffect(() => {
@@ -26,44 +22,31 @@ export default function Dashboard() {
   }, []);
 
   async function carregar() {
-    // 1. Alunos Ativos/Inativos
     const { data: alunos } = await supabase.from("alunos").select("status");
     const ativos = alunos?.filter((a: any) => a.status === "ativo").length || 0;
     const inativos = alunos?.filter((a: any) => a.status === "inativo").length || 0;
 
-    // 2. Turmas totais
     const { data: turmas } = await supabase.from("turmas").select("id");
     
-    // 3. Escolas Pendentes
     const { count: pendentesCount } = await supabase
-      .from("alunos")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "pendente"); 
+      .from("alunos").select("*", { count: "exact", head: true }).eq("status", "pendente"); 
     setEscolasPendentes(pendentesCount || 0);
 
-    // 4. NOVO: Buscar TODAS as Aulas Experimentais que NÃO foram convertidas em matrícula
     const { data: exp } = await supabase
       .from("aulas_experimentais")
-      .select("*")
-      .neq("status", "matriculado") // Pega quem tá pendente E quem já fez mas não matriculou
+      .select("*, modalidades(nome), turmas(nome, horario)")
+      .neq("status", "matriculado")
       .order("data_aula");
     setAulasExp(exp || []);
 
-    // 5. Buscar TODAS as mensalidades pendentes para calcular os alertas
     const { data: mensalidades } = await supabase.from("mensalidades").select("*").eq("status", "pendente");
     
     let atraso5 = 0, atraso2 = 0, venceHoje = 0, vence2 = 0, vence5 = 0;
-    
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
 
     mensalidades?.forEach(m => {
-      const venc = new Date(m.vencimento + "T12:00:00");
-      venc.setHours(0, 0, 0, 0);
-      
-      const diffTime = venc.getTime() - hoje.getTime();
-      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
+      const venc = new Date(m.vencimento + "T12:00:00"); venc.setHours(0, 0, 0, 0);
+      const diffDays = Math.round((venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
       if (diffDays <= -5) atraso5++;
       else if (diffDays <= -2) atraso2++;
       else if (diffDays === 0) venceHoje++;
@@ -72,21 +55,13 @@ export default function Dashboard() {
     });
 
     setAlertas({ atraso5, atraso2, venceHoje, vence2, vence5 });
+    setStats({ ativos, inativos, alertas: mensalidades?.length || 0, turmas: turmas?.length || 0 });
 
-    setStats({ 
-      ativos, 
-      inativos, 
-      alertas: mensalidades?.length || 0, 
-      turmas: turmas?.length || 0 
-    });
-
-    // 6. Gráficos
     const { data: matriculas } = await supabase.from("matriculas").select("id, turma_id");
     const { data: turmasData } = await supabase.from("turmas").select("id, nome, modalidade_id");
     const { data: modalidadesData } = await supabase.from("modalidades").select("id, nome");
 
-    const turmaCount: any = {};
-    const modalidadeCount: any = {};
+    const turmaCount: any = {}; const modalidadeCount: any = {};
 
     matriculas?.forEach((m: any) => {
       const turma = turmasData?.find(t => t.id === m.turma_id);
@@ -100,6 +75,23 @@ export default function Dashboard() {
 
     setTurmasList(Object.keys(turmaCount).map((nome) => ({ nome, alunos: turmaCount[nome] })));
     setModalidadesList(Object.keys(modalidadeCount).map((nome) => ({ nome, qtd: modalidadeCount[nome] })));
+  }
+
+  function enviarWhatsApp(ag: any, tipo: "comprovante" | "lembrete") {
+    let numero = ag.telefone.replace(/\D/g, "")
+    if (!numero.startsWith("55")) numero = "55" + numero
+
+    const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
+    const horario = ag.turmas?.horario || "horário a confirmar"
+
+    let mensagem = ""
+    if (tipo === "comprovante") {
+      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidades?.nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante de agendamento.* Chegue com 10 minutinhos de antecedência!\n\nQualquer dúvida, estamos à disposição. Até lá! OSS!`
+    } else {
+      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidades?.nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! Se precisar reagendar, nos avise. OSS! 🥋`
+    }
+
+    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, "_blank")
   }
 
   const cards = [
@@ -119,13 +111,7 @@ export default function Dashboard() {
         <p className="text-gray-500">Acompanhe os indicadores da sua academia</p>
       </div>
 
-      {/* WIDGET DE INDICAÇÕES DE ESCOLAS */}
-      <div 
-        onClick={() => escolasPendentes > 0 ? router.push("/escolas") : null} 
-        className={`border p-4 rounded-xl mb-6 flex justify-between items-center transition shadow-sm
-          ${escolasPendentes > 0 ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100" : "bg-white border-gray-200"}
-        `}
-      >
+      <div onClick={() => escolasPendentes > 0 ? router.push("/escolas") : null} className={`border p-4 rounded-xl mb-4 flex justify-between items-center transition shadow-sm ${escolasPendentes > 0 ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100" : "bg-white border-gray-200"}`}>
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-full text-white ${escolasPendentes > 0 ? "bg-blue-500" : "bg-green-500"}`}>
             {escolasPendentes > 0 ? <School size={24} /> : <CheckCircle size={24} />}
@@ -137,31 +123,52 @@ export default function Dashboard() {
             </p>
           </div>
         </div>
-        {escolasPendentes > 0 && (
-          <span className="text-blue-600 font-semibold text-sm">Clique aqui para revisar &rarr;</span>
-        )}
+        {escolasPendentes > 0 && <span className="text-blue-600 font-semibold text-sm">Clique aqui para revisar &rarr;</span>}
       </div>
 
-      {/* WIDGET DE AULAS EXPERIMENTAIS (Acompanhamento) */}
-      {aulasExp.length > 0 && (
-        <div 
-          onClick={() => router.push("/aula-experimental")} 
-          className="bg-purple-50 border border-purple-200 p-4 rounded-xl mb-6 flex justify-between items-center cursor-pointer hover:bg-purple-100 transition shadow-sm"
-        >
+      {/* WIDGET DE AULAS EXPERIMENTAIS (COM BOTÕES DIRETOS) */}
+      <div className="bg-purple-50 border border-purple-200 p-4 rounded-xl mb-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-3">
             <div className="bg-purple-600 p-2 rounded-full text-white">
               <FlaskConical size={24} />
             </div>
             <div>
               <h3 className="font-bold text-purple-900">Funil de Aulas Experimentais</h3>
-              <p className="text-sm text-purple-700">{aulasExp.length} pessoa(s) no funil aguardando conversão.</p>
+              <p className="text-sm text-purple-700">
+                {aulasExp.length > 0 ? `${aulasExp.length} pessoa(s) no funil.` : "Nenhum aluno no funil no momento."}
+              </p>
             </div>
           </div>
-          <span className="text-purple-600 font-semibold text-sm">Gerenciar &rarr;</span>
+          <button onClick={() => router.push("/aula-experimental")} className="text-purple-600 font-semibold text-sm hover:underline">Gerenciar Funil Completo &rarr;</button>
         </div>
-      )}
 
-      {/* Cards */}
+        {/* LISTA RÁPIDA COM BOTÕES */}
+        {aulasExp.length > 0 && (
+          <div className="bg-white rounded-lg p-3 border border-purple-100 max-h-75 overflow-y-auto">
+            <p className="text-xs font-bold text-purple-800 mb-2 uppercase tracking-wider">Próximos Agendamentos</p>
+            <div className="grid md:grid-cols-2 gap-2">
+              {aulasExp.map(ag => (
+                <div key={ag.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                  <div>
+                    <p className="font-bold text-sm text-gray-800">{ag.nome}</p>
+                    <p className="text-xs text-gray-600">{ag.modalidades?.nome} - {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')} às {ag.turmas?.horario || "S/ hora"}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => enviarWhatsApp(ag, "comprovante")} className="bg-blue-100 text-blue-700 p-2 rounded shadow transition hover:bg-blue-200" title="Enviar Comprovante">
+                      <FileText size={16} />
+                    </button>
+                    <button onClick={() => enviarWhatsApp(ag, "lembrete")} className="bg-green-100 text-green-700 p-2 rounded shadow transition hover:bg-green-200" title="Enviar Lembrete">
+                      <MessageCircle size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid md:grid-cols-4 gap-4 mb-8">
         {cards.map((card, i) => (
           <div key={i} className="bg-white rounded-xl shadow p-4 flex justify-between items-center border border-gray-100">
@@ -174,83 +181,42 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* PAINEL DE ALERTAS GRANULAR */}
       <div className="mb-8 bg-white rounded-xl shadow p-4 border border-gray-100">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold flex items-center gap-2 text-lg">
             <AlertTriangle size={20} className="text-red-500" /> Painel de Alertas (Vencimentos)
           </h3>
-          <button onClick={() => router.push('/alertas')} className="text-sm text-blue-600 hover:underline">
-            Ir para Central de Alertas
-          </button>
+          <button onClick={() => router.push('/alertas')} className="text-sm text-blue-600 hover:underline">Ir para Central de Alertas</button>
         </div>
         
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="bg-red-100 border border-red-200 rounded-lg p-3 text-center">
-            <p className="text-xs font-semibold text-red-800">+ de 5 dias atrasado</p>
-            <p className="text-2xl font-bold text-red-600">{alertas.atraso5}</p>
-          </div>
-          <div className="bg-orange-100 border border-orange-200 rounded-lg p-3 text-center">
-            <p className="text-xs font-semibold text-orange-800">2 a 4 dias atrasado</p>
-            <p className="text-2xl font-bold text-orange-600">{alertas.atraso2}</p>
-          </div>
-          <div className="bg-yellow-100 border border-yellow-200 rounded-lg p-3 text-center">
-            <p className="text-xs font-semibold text-yellow-800">Vence Hoje</p>
-            <p className="text-2xl font-bold text-yellow-600">{alertas.venceHoje}</p>
-          </div>
-          <div className="bg-blue-100 border border-blue-200 rounded-lg p-3 text-center">
-            <p className="text-xs font-semibold text-blue-800">Vence em 2 a 3 dias</p>
-            <p className="text-2xl font-bold text-blue-600">{alertas.vence2}</p>
-          </div>
-          <div className="bg-green-100 border border-green-200 rounded-lg p-3 text-center">
-            <p className="text-xs font-semibold text-green-800">Vence em 4 a 5 dias</p>
-            <p className="text-2xl font-bold text-green-600">{alertas.vence5}</p>
-          </div>
+          <div className="bg-red-100 border border-red-200 rounded-lg p-3 text-center"><p className="text-xs font-semibold text-red-800">+ de 5 dias atrasado</p><p className="text-2xl font-bold text-red-600">{alertas.atraso5}</p></div>
+          <div className="bg-orange-100 border border-orange-200 rounded-lg p-3 text-center"><p className="text-xs font-semibold text-orange-800">2 a 4 dias atrasado</p><p className="text-2xl font-bold text-orange-600">{alertas.atraso2}</p></div>
+          <div className="bg-yellow-100 border border-yellow-200 rounded-lg p-3 text-center"><p className="text-xs font-semibold text-yellow-800">Vence Hoje</p><p className="text-2xl font-bold text-yellow-600">{alertas.venceHoje}</p></div>
+          <div className="bg-blue-100 border border-blue-200 rounded-lg p-3 text-center"><p className="text-xs font-semibold text-blue-800">Vence em 2 a 3 dias</p><p className="text-2xl font-bold text-blue-600">{alertas.vence2}</p></div>
+          <div className="bg-green-100 border border-green-200 rounded-lg p-3 text-center"><p className="text-xs font-semibold text-green-800">Vence em 4 a 5 dias</p><p className="text-2xl font-bold text-green-600">{alertas.vence5}</p></div>
         </div>
       </div>
 
-      {/* Gráficos */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow p-4">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <TrendingUp size={18} className="text-red-500" /> Alunos por Turma
-          </h3>
-          {turmasList.length === 0 ? (
-            <p className="text-gray-400">Nenhum aluno matriculado em turma</p>
-          ) : (
-            turmasList.map((t, i) => (
-              <div key={i} className="mb-2">
-                <div className="flex justify-between text-sm">
-                  <span>{t.nome}</span>
-                  <span>{t.alunos}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(t.alunos / maxTurma) * 100}%` }} />
-                </div>
-              </div>
-            ))
-          )}
+          <h3 className="font-semibold mb-3 flex items-center gap-2"><TrendingUp size={18} className="text-red-500" /> Alunos por Turma</h3>
+          {turmasList.length === 0 ? <p className="text-gray-400">Nenhum aluno matriculado em turma</p> : turmasList.map((t, i) => (
+            <div key={i} className="mb-2">
+              <div className="flex justify-between text-sm"><span>{t.nome}</span><span>{t.alunos}</span></div>
+              <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-red-500 h-2 rounded-full" style={{ width: `${(t.alunos / maxTurma) * 100}%` }} /></div>
+            </div>
+          ))}
         </div>
 
         <div className="bg-white rounded-xl shadow p-4">
-          <h3 className="font-semibold mb-3 flex items-center gap-2">
-            <Award size={18} className="text-red-500" /> Distribuição por Modalidade
-          </h3>
-          {modalidadesList.length === 0 ? (
-            <p className="text-gray-400">Nenhum aluno vinculado a modalidade</p>
-          ) : (
-            modalidadesList.map((m, i) => (
-              <div key={i} className="mb-2">
-                <div className="flex justify-between text-sm">
-                  <span>{m.nome}</span>
-                  <span>{m.qtd}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(m.qtd / maxModalidade) * 100}%` }} />
-                </div>
-              </div>
-            ))
-          )}
+          <h3 className="font-semibold mb-3 flex items-center gap-2"><Award size={18} className="text-red-500" /> Distribuição por Modalidade</h3>
+          {modalidadesList.length === 0 ? <p className="text-gray-400">Nenhum aluno vinculado a modalidade</p> : modalidadesList.map((m, i) => (
+            <div key={i} className="mb-2">
+              <div className="flex justify-between text-sm"><span>{m.nome}</span><span>{m.qtd}</span></div>
+              <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-red-500 h-2 rounded-full" style={{ width: `${(m.qtd / maxModalidade) * 100}%` }} /></div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
