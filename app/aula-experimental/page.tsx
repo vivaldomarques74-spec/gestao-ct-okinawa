@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import { useRouter } from "next/navigation"
-import { CalendarDays, UserPlus, Trash2, MessageCircle, FileText, Download } from "lucide-react"
+import { CalendarDays, UserPlus, Trash2, MessageCircle, FileText, Download, FileSignature } from "lucide-react"
 import jsPDF from "jspdf"
 
 export default function AulaExperimentalPage() {
@@ -12,7 +12,8 @@ export default function AulaExperimentalPage() {
   const [modalidades, setModalidades] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
   const [agendamentos, setAgendamentos] = useState<any[]>([])
-  const [abaAtiva, setAbaAtiva] = useState<"pendente" | "compareceu" | "matriculado">("pendente")
+  // Adicionado a aba "todos" para garantir que nada fique escondido
+  const [abaAtiva, setAbaAtiva] = useState<"pendente" | "compareceu" | "matriculado" | "todos">("pendente")
 
   const [form, setForm] = useState({
     nome: "", responsavel: "", telefone: "",
@@ -22,15 +23,12 @@ export default function AulaExperimentalPage() {
   useEffect(() => { carregarDados() }, [])
 
   async function carregarDados() {
-    // Busca modalidades ativas
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
     
-    // CORREÇÃO: Sem filtro de status para garantir que todas as turmas apareçam
     const { data: turs } = await supabase.from("turmas").select("*")
     setTurmas(turs || [])
     
-    // Busca agendamentos e cruza os dados no JS
     const { data: ags } = await supabase.from("aulas_experimentais").select("*").order("data_aula")
     
     const agendamentosCruzados = (ags || []).map(ag => {
@@ -44,8 +42,13 @@ export default function AulaExperimentalPage() {
         horario = turma.horario
       }
 
+      // Normaliza o status antigo para não sumir
+      let statusNormalizado = ag.status
+      if (!statusNormalizado || statusNormalizado === "agendado") statusNormalizado = "pendente"
+
       return {
         ...ag,
+        status: statusNormalizado,
         modalidade_nome: mod?.nome || "?",
         turma_nome: turma?.nome || "?",
         turma_horario: horario
@@ -62,7 +65,7 @@ export default function AulaExperimentalPage() {
     }
     setLoading(true)
     
-    const { data: novoAgendamento, error } = await supabase.from("aulas_experimentais").insert([form]).select().single()
+    const { data: novoAgendamento, error } = await supabase.from("aulas_experimentais").insert([{ ...form, status: "pendente" }]).select().single()
     
     if (error) {
       alert("Erro ao agendar: " + error.message)
@@ -88,32 +91,27 @@ export default function AulaExperimentalPage() {
     setLoading(false)
   }
 
-  // --- NOVO COMPROVANTE PADRÃO CT OKINAWA ---
+  // --- COMPROVANTE DE AGENDAMENTO ---
   function gerarComprovantePDF(ag: any) {
     const doc = new jsPDF()
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
     const horario = ag.turmas?.horario || ag.turma_horario || "A confirmar"
 
-    // Fundo do Cabeçalho (Vermelho CT)
-    doc.setFillColor(204, 0, 0) // Vermelho
+    doc.setFillColor(204, 0, 0)
     doc.rect(0, 0, 210, 35, "F")
-    
-    // Texto do Cabeçalho
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(22)
     doc.setFont("helvetica", "bold")
     doc.text("CT OKINAWA", 105, 15, { align: "center" })
     doc.setFontSize(12)
-    doc.setFont("helvetica", "normal")
     doc.text("Comprovante de Agendamento - Aula Experimental", 105, 25, { align: "center" })
 
-    // Corpo do Documento
     doc.setTextColor(0, 0, 0)
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.text("DADOS DO ALUNO", 20, 55)
     doc.setLineWidth(0.5)
-    doc.setDrawColor(204, 0, 0) // Linha vermelha
+    doc.setDrawColor(204, 0, 0)
     doc.line(20, 57, 190, 57)
     
     doc.setFontSize(11)
@@ -128,7 +126,6 @@ export default function AulaExperimentalPage() {
     doc.setTextColor(0, 0, 0)
     doc.text("DADOS DA AULA", 20, 100)
     doc.line(20, 102, 190, 102)
-
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(50, 50, 50)
@@ -167,12 +164,80 @@ export default function AulaExperimentalPage() {
       y += 6
     })
 
-    // Rodapé
     doc.setFontSize(10)
     doc.setTextColor(150, 150, 150)
     doc.text("Disciplina • Respeito • Evolução", 105, 280, { align: "center" })
 
     doc.save(`Comprovante_Aula_Experimental_${ag.nome}.pdf`)
+  }
+
+  // --- TERMO DE CIÊNCIA E RESPONSABILIDADE (AULA EXPERIMENTAL) ---
+  function gerarTermoCienciaPDF(ag: any) {
+    const doc = new jsPDF()
+    const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
+
+    // Cabeçalho
+    doc.setFillColor(204, 0, 0) // Vermelho
+    doc.rect(0, 0, 210, 25, "F")
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(16)
+    doc.setFont("helvetica", "bold")
+    doc.text("CT OKINAWA", 105, 12, { align: "center" })
+    doc.setFontSize(10)
+    doc.text("Disciplina • Respeito • Evolução", 105, 18, { align: "center" })
+
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(14)
+    doc.setFont("helvetica", "bold")
+    doc.text("TERMO DE CIÊNCIA E RESPONSABILIDADE", 105, 40, { align: "center" })
+    doc.setFontSize(12)
+    doc.text("AULA EXPERIMENTAL", 105, 48, { align: "center" })
+
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "normal")
+    
+    let texto = ""
+    if (ag.responsavel) {
+      texto = `Eu, ${ag.responsavel}, na qualidade de responsável legal pelo(a) aluno(a) ${ag.nome}, declaro para os devidos fins que:`
+    } else {
+      texto = `Eu, ${ag.nome}, declaro para os devidos fins que:`
+    }
+    
+    let splitText = doc.splitTextToSize(texto, 170)
+    doc.text(splitText, 20, 65)
+    let y = 65 + (splitText.length * 6) + 5
+
+    const clausulas = [
+      `1. Estou ciente de que a prática de artes marciais (${ag.modalidades?.nome || "Artes Marciais"}) é uma atividade física de alto impacto e que envolve riscos inerentes, incluindo, mas não se limitando a, quedas, torções, contusões e lesões musculares.`,
+      `2. Declaro que o(a) aluno(a) encontra-se em plenas condições de saúde e apto(a) fisicamente para a prática da modalidade, isentando o CT OKINAWA de qualquer responsabilidade por eventuais acidentes ou lesões que possam ocorrer durante a aula.`,
+      `3. Estou ciente de que esta AULA EXPERIMENTAL tem caráter puramente demonstrativo e não gera, sob nenhuma hipótese, vínculo empregatício, contratual ou financeiro entre as partes.`,
+      `4. Comprometo-me a seguir as orientações do professor durante toda a atividade.`
+    ]
+
+    clausulas.forEach(clausula => {
+      const split = doc.splitTextToSize(clausula, 170)
+      if (y + (split.length * 6) > 260) {
+        doc.addPage()
+        y = 20
+      }
+      doc.text(split, 20, y)
+      y += (split.length * 6) + 4
+    })
+
+    y += 15
+    doc.setFontSize(11)
+    doc.text(`Data da Aula: ${dataFormatada}`, 20, y)
+    
+    y += 40
+    doc.setLineWidth(0.5)
+    doc.line(20, y, 90, y)
+    doc.line(110, y, 180, y)
+    y += 5
+    doc.setFontSize(10)
+    doc.text(ag.responsavel ? `${ag.responsavel} (Responsável)` : `${ag.nome} (Aluno)`, 20, y)
+    doc.text(`CT OKINAWA (Professor)`, 110, y)
+
+    doc.save(`Termo_Aula_Experimental_${ag.nome}.pdf`)
   }
 
   async function excluirAgendamento(id: string) {
@@ -197,16 +262,21 @@ export default function AulaExperimentalPage() {
 
     let mensagem = ""
     if (tipo === "comprovante") {
-      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidade_nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante de agendamento.* Chegue com 10 minutinhos de antecedência!\n\nQualquer dúvida, estamos à disposição. Até lá! OSS!`
+      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidade_nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante.* Chegue com 10 minutinhos de antecedência!\n\nAté lá! OSS!`
     } else {
-      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidade_nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! Se precisar reagendar, nos avise. OSS! 🥋`
+      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidade_nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! OSS! 🥋`
     }
 
     const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
     window.open(url, "_blank")
   }
 
-  const agendamentosFiltrados = agendamentos.filter(a => a.status === abaAtiva)
+  // Lógica de filtro robusta para não sumir ninguém
+  const agendamentosFiltrados = agendamentos.filter(a => {
+    if (abaAtiva === "todos") return true
+    if (abaAtiva === "pendente") return a.status === "pendente" || a.status === "agendado" || !a.status
+    return a.status === abaAtiva
+  })
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -249,6 +319,8 @@ export default function AulaExperimentalPage() {
             <button onClick={() => setAbaAtiva("pendente")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'pendente' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Ainda Vão Fazer</button>
             <button onClick={() => setAbaAtiva("compareceu")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'compareceu' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Fizeram (Cobrar)</button>
             <button onClick={() => setAbaAtiva("matriculado")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'matriculado' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Já Matriculados</button>
+            {/* ABA TODOS PARA GARANTIR QUE NADA SUMIR */}
+            <button onClick={() => setAbaAtiva("todos")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Ver Todos</button>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-3 pr-1">
@@ -264,15 +336,18 @@ export default function AulaExperimentalPage() {
                     <p className="font-bold text-lg">{ag.nome}</p>
                     <p className="text-xs text-gray-600 font-medium">WhatsApp: {ag.telefone}</p>
                     <p className="text-xs text-gray-600">Mod: {ag.modalidade_nome} | Turma: {ag.turma_nome} ({ag.turma_horario})</p>
-                    <p className="text-xs text-red-600 font-bold mt-1">Data da Aula: {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')}</p>
+                    <p className="text-xs text-red-600 font-bold mt-1">Data: {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')} | Status: {ag.status.toUpperCase()}</p>
                   </div>
                   
-                  <div className="mt-2 grid grid-cols-3 gap-1">
-                    <button onClick={() => gerarComprovantePDF({...ag, modalidades: {nome: ag.modalidade_nome}, turmas: {nome: ag.turma_nome, horario: ag.turma_horario}})} className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Baixar PDF">
-                      <Download size={14}/> PDF
+                  <div className="mt-2 grid grid-cols-2 gap-1">
+                    <button onClick={() => gerarComprovantePDF({...ag, modalidades: {nome: ag.modalidade_nome}, turmas: {nome: ag.turma_nome, horario: ag.turma_horario}})} className="bg-gray-200 text-gray-800 hover:bg-gray-300 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Baixar Comprovante de Agendamento">
+                      <Download size={14}/> Comprovante
+                    </button>
+                    <button onClick={() => gerarTermoCienciaPDF(ag)} className="bg-yellow-100 text-yellow-800 border border-yellow-300 hover:bg-yellow-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Baixar Termo de Ciência para Assinar">
+                      <FileSignature size={14}/> Termo Assinatura
                     </button>
                     <button onClick={() => enviarWhatsApp(ag, "comprovante")} className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Comprovante">
-                      <FileText size={14}/> Comprovante
+                      <FileText size={14}/> Enviar Comp.
                     </button>
                     <button onClick={() => enviarWhatsApp(ag, "lembrete")} className="bg-green-100 text-green-700 hover:bg-green-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Lembrete">
                       <MessageCircle size={14}/> Lembrete
