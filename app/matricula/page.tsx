@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react"
 import { supabase } from "../../lib/supabase"
 import { calcularDescontosMensalidade } from "../../lib/descontos"
-import { calcularPagamento } from "../../lib/pagamentos" // <-- NOVA IMPORTAÇÃO AQUI
+import { calcularPagamento } from "../../lib/pagamentos"
 import { useSearchParams } from "next/navigation"
 import { Lock, FileText, CheckCircle } from "lucide-react"
 import jsPDF from "jspdf"
@@ -43,24 +43,20 @@ function MatriculaContent() {
 
   const [valorGeralTotal, setValorGeralTotal] = useState(0)
   const [valorFinal, setValorFinal] = useState(0)
-  
-  // NOVO ESTADO: Para guardar as informações de juros e parcelas calculadas
   const [infoPagamento, setInfoPagamento] = useState({ valorParcela: 0, numParcelas: 1, taxaAplicada: 0 })
 
   useEffect(() => {
     const nome = searchParams.get("nome")
-    const cpf = searchParams.get("cpf")
     const whatsapp = searchParams.get("whatsapp")
     const escolaId = searchParams.get("escola_id")
 
-    if (nome || cpf || whatsapp || escolaId) {
-      setAluno(prev => ({ ...prev, nome: nome || prev.nome, cpf: cpf || prev.cpf, whatsapp: whatsapp || prev.whatsapp, escola_id: escolaId || prev.escola_id }))
+    if (nome || whatsapp || escolaId) {
+      setAluno(prev => ({ ...prev, nome: nome || prev.nome, whatsapp: whatsapp || prev.whatsapp, escola_id: escolaId || prev.escola_id }))
     }
   }, [searchParams])
 
   useEffect(() => { carregarDados(); verificarCaixa() }, [])
   
-  // Adicionado parcelas e tipoCartao nas dependências para recalcular na hora
   useEffect(() => { calcularValores() }, [itensMatricula, aluno.convenio_id, aluno.escola_id, formaPagamento, tipoCartao, parcelas, descTipo, descValor])
 
   async function verificarCaixa() {
@@ -71,8 +67,11 @@ function MatriculaContent() {
   async function carregarDados() {
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
-    const { data: turmasData } = await supabase.from("turmas").select("*, modalidades!inner(*)").eq("status", "ativo")
+    
+    // SEM FILTRO DE STATUS PARA NÃO DAR ERRO 400
+    const { data: turmasData } = await supabase.from("turmas").select("*") 
     setTodasTurmas(turmasData || [])
+    
     const { data: conv } = await supabase.from("convenios").select("*").eq("ativo", true)
     setConvenios(conv || [])
     const { data: esc } = await supabase.from("escolas").select("*").eq("status", "ativo")
@@ -83,7 +82,8 @@ function MatriculaContent() {
     let totalGeral = 0
     for (const item of itensMatricula) {
       const turma = todasTurmas.find(t => t.id === item.turmaId)
-      if (turma?.modalidades) totalGeral += Number(turma.modalidades.valor_geral || 0)
+      const modalidade = modalidades.find(m => m.id === turma?.modalidade_id)
+      if (modalidade) totalGeral += Number(modalidade.valor_geral || 0)
     }
     setValorGeralTotal(totalGeral)
 
@@ -103,10 +103,6 @@ function MatriculaContent() {
       else desconto += Number(descValor)
     }
 
-    // Removeu-se a linha "if (formaPagamento === Pix) desconto += 10" daqui, 
-    // pois agora a função calcularPagamento cuida disso de forma centralizada.
-
-    // AQUI APLICAMOS A REGRA CENTRALIZADA
     const baseComDescontos = Math.max(0, totalGeral - desconto)
     const resultado = calcularPagamento(baseComDescontos, formaPagamento, tipoCartao, parcelas, 10)
     
@@ -122,7 +118,10 @@ function MatriculaContent() {
   function removerModalidade(i: number) { const nova = [...itensMatricula]; nova.splice(i,1); setItensMatricula(nova) }
   function atualizarModalidade(i: number, modalidadeId: string) { const nova = [...itensMatricula]; nova[i] = { modalidadeId, turmaId: "" }; setItensMatricula(nova) }
   function atualizarTurma(i: number, turmaId: string) { const nova = [...itensMatricula]; nova[i].turmaId = turmaId; setItensMatricula(nova) }
-  function turmasDaModalidade(modalidadeId: string) { return todasTurmas.filter(t => t.modalidade_id === modalidadeId) }
+  
+  function turmasDaModalidade(modalidadeId: string) { 
+    return todasTurmas.filter(t => String(t.modalidade_id) === String(modalidadeId)) 
+  }
 
   async function gerarNumeroMatricula() {
     const { count, error } = await supabase.from("alunos").select("*", { count: "exact", head: true });
@@ -147,29 +146,32 @@ function MatriculaContent() {
     y += 15
 
     doc.setFontSize(10)
-    const introText = `Eu, ${aluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
-    const splitIntro = doc.splitTextToSize(introText, 180)
-    doc.text(splitIntro, 15, y)
-    y += splitIntro.length * 6 + 5
-
-    const condicaoText = aluno.menor 
-      ? `Na condição de: ( X ) Responsável legal pelo(a) aluno(a) menor ${aluno.nome}` 
-      : `Na condição de: ( X ) Aluno(a) maior de idade`
-    doc.text(condicaoText, 15, y)
-    y += 10
+    
+    if (aluno.menor) {
+      const introTextMenor = `Eu, ${aluno.responsavel_nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.responsavel_cpf || "____________________"}, na condição de responsável legal pelo(a) aluno(a) menor ${aluno.nome || "________________________________________"}, declaro, para todos os fins de direito, que:`
+      const splitIntro = doc.splitTextToSize(introTextMenor, 170)
+      doc.text(splitIntro, 15, y)
+      y += splitIntro.length * 6 + 5
+    } else {
+      const introText = `Eu, ${aluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
+      const splitIntro = doc.splitTextToSize(introText, 170)
+      doc.text(splitIntro, 15, y)
+      y += splitIntro.length * 6 + 5
+    }
 
     const clausulas = [
       `1. DA CIÊNCIA DO REGULAMENTO: Declaro que recebi, li, compreendi e tive acesso ao Regulamento Interno do CT OKINAWA, estando plenamente ciente de todas as normas de funcionamento, conduta, disciplina e organização do espaço.`,
       `2. DA PRÁTICA DE ATIVIDADE FÍSICA E RISCOS: Declaro estar ciente de que a prática de artes marciais envolve riscos inerentes. Assumo integral responsabilidade pela participação, isentando o CT OKINAWA de acidentes que não sejam oriundos de dolo ou negligência direta.`,
       `3. DAS CONDIÇÕES DE SAÚDE: Declaro que: ( X ) O aluno encontra-se apto à prática de atividades físicas. ${aluno.problema_saude ? `( X ) Informei previamente a seguinte condição de saúde: ${aluno.saude_detalhes}` : `( ) Informei previamente alguma condição de saúde relevante.`}`,
       `4. DO USO DE IMAGEM, VOZ E IDENTIDADE: Autorizo o CT OKINAWA a captar e utilizar imagem, voz e nome do aluno para fins institucionais, promocionais e de divulgação, sem limitação territorial e por prazo indeterminado, sem qualquer remuneração.`,
-      `5. DAS RESPONSABILIDADES: O descumprimento das normas poderá resultar em medidas disciplinares. O CT não se responsabiliza por ocorrências fora de suas dependências ou por ações de terceiros.`,
-      `6. DAS OBRIGAÇÕES FINANCEIRAS: A mensalidade possui vencimento fixo. O não pagamento poderá acarretar restrição de acesso às atividades até a devida regularização.`,
-      `7. DECLARAÇÃO FINAL: Declaro que todas as informações prestadas são verdadeiras e que este termo possui validade jurídica, não podendo alegar desconhecimento.`
+      `5. LGPD (LEI 13.709/2018): Autorizo o tratamento dos meus dados pessoais e dos dados do aluno menor, exclusivamente para fins de gestão acadêmica, financeira e comunicação, ciente de que posso solicitar a exclusão a qualquer momento.`,
+      `6. DAS RESPONSABILIDADES: O descumprimento das normas poderá resultar em medidas disciplinares. O CT não se responsabiliza por ocorrências fora de suas dependências ou por ações de terceiros.`,
+      `7. DAS OBRIGAÇÕES FINANCEIRAS: A mensalidade possui vencimento fixo. O não pagamento poderá acarretar restrição de acesso às atividades até a devida regularização.`,
+      `8. DECLARAÇÃO FINAL: Declaro que todas as informações prestadas são verdadeiras e que este termo possui validade jurídica, não podendo alegar desconhecimento.`
     ]
 
     clausulas.forEach(clausula => {
-      const splitText = doc.splitTextToSize(clausula, 180)
+      const splitText = doc.splitTextToSize(clausula, 170)
       if (y + splitText.length * 6 > 260) { doc.addPage(); y = 20; }
       doc.text(splitText, 15, y)
       y += splitText.length * 6 + 4
@@ -178,19 +180,23 @@ function MatriculaContent() {
     if (y > 220) { doc.addPage(); y = 20; }
     y += 10
     
-    doc.text(`Nome: ${aluno.nome || "_________________________________________"}`, 15, y); y += 6
-    doc.text(`CPF: ${aluno.cpf || "____________________"}`, 15, y); y += 6
-    doc.text(`Telefone: ${aluno.whatsapp || aluno.responsavel_whatsapp || "____________________"}`, 15, y); y += 6
-    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 15, y); y += 15
-
-    doc.text(`( X ) Aluno maior de idade`, 15, y); y += 6
-    doc.text(`( X ) Responsável legal`, 15, y); y += 20
+    doc.text(`Nome do Aluno: ${aluno.nome || "_________________________________________"}`, 15, y); y += 6
+    doc.text(`CPF do Aluno: ${aluno.cpf || "____________________"}`, 15, y); y += 6
+    if (aluno.menor) {
+      doc.text(`Responsável Legal: ${aluno.responsavel_nome || "_________________________________________"}`, 15, y); y += 6
+    }
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 15, y); y += 20
 
     doc.setLineWidth(0.5)
-    doc.line(15, y, 100, y)
-    doc.line(110, y, 195, y)
+    doc.line(15, y, 90, y)
+    doc.line(110, y, 185, y)
     y += 5
-    doc.text(`${aluno.menor ? aluno.responsavel_nome || "Assinatura do Responsável" : aluno.nome || "Assinatura do Aluno"}`, 15, y)
+    
+    const assinaturaAluno = aluno.menor 
+      ? aluno.responsavel_nome || "Assinatura do Responsável" 
+      : aluno.nome || "Assinatura do Aluno"
+
+    doc.text(assinaturaAluno, 15, y)
     doc.text(`CT OKINAWA`, 110, y)
 
     doc.save(`Termo_Responsabilidade_${aluno.nome || "Aluno"}.pdf`)
@@ -251,8 +257,10 @@ function MatriculaContent() {
 
       for (const mat of matriculasInseridas) {
         const turma = todasTurmas.find(t => t.id === mat.turma_id)
-        let valorOriginal = turma?.modalidades?.valor_geral || 0
-        const valorBase = turma?.modalidades?.valor_base || 0
+        const modalidade = modalidades.find(m => m.id === turma?.modalidade_id)
+        
+        let valorOriginal = modalidade?.valor_geral || 0
+        const valorBase = modalidade?.valor_base || 0
 
         if (aluno.escola_id) {
           const escola = escolas.find(e => e.id === aluno.escola_id)
@@ -305,7 +313,8 @@ function MatriculaContent() {
   function gerarRecibo(numeroMatricula: string, mesReferente: string) {
     const detalhes = itensMatricula.map(item => {
       const turma = todasTurmas.find(t => t.id === item.turmaId)
-      return `${turma?.modalidades?.nome} - ${turma?.nome}`
+      const mod = modalidades.find(m => m.id === turma?.modalidade_id)
+      return `${mod?.nome} - ${turma?.nome}`
     }).join(", ")
     const desconto = valorGeralTotal - (valorFinal - (valorFinal * (infoPagamento.taxaAplicada/100)))
     const juros = valorFinal * (infoPagamento.taxaAplicada/100)
@@ -410,22 +419,14 @@ function MatriculaContent() {
         </div>
 
         <div className="border border-red-300 p-4 rounded bg-red-50">
-          <label className="block font-bold text-red-700 mb-2">Desconto de Diretoria (Opcional)</label>
+          <label className="block font-bold text-red-700 mb-2">Desconto Pontual (Opcional)</label>
           <div className="grid grid-cols-3 gap-2 mb-2">
              <select className="p-2 border rounded" value={descTipo} onChange={e => setDescTipo(e.target.value)}>
                <option value="fixo">R$ Fixo (Ex: 30)</option>
                <option value="percentual">% (Ex: 20)</option>
              </select>
              <input type="number" className="p-2 border rounded" placeholder="Valor" value={descValor} onChange={e => setDescValor(e.target.value)} />
-             {!descRecorrente && (
-               <input type="number" className="p-2 border rounded" placeholder="Meses (Ex: 10)" value={descMeses} onChange={e => setDescMeses(e.target.value)} />
-             )}
           </div>
-          <label className="flex items-center gap-2 text-sm font-semibold text-blue-700 mb-3">
-            <input type="checkbox" checked={descRecorrente} onChange={e => { setDescRecorrente(e.target.checked); if(e.target.checked) setDescMeses(""); }} />
-            Desconto Recorrente (Para Sempre)
-          </label>
-
           {descValor && (
             <div className="border-t border-red-200 pt-2">
               <label className="text-xs font-bold text-gray-500 flex items-center gap-1 mb-1"><Lock size={12}/> Autorização da Diretoria</label>
@@ -467,11 +468,7 @@ function MatriculaContent() {
           <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2"><FileText size={18}/> Termo de Responsabilidade</h3>
           <p className="text-sm text-gray-600 mb-3">O sistema vai gerar o termo completo com os dados preenchidos. Basta imprimir e colher a assinatura.</p>
           
-          <button 
-            type="button" 
-            onClick={gerarTermoPDF} 
-            className="w-full bg-blue-600 text-white p-2 rounded flex items-center justify-center gap-2 hover:bg-blue-700"
-          >
+          <button type="button" onClick={gerarTermoPDF} className="w-full bg-blue-600 text-white p-2 rounded flex items-center justify-center gap-2 hover:bg-blue-700">
             <FileText size={18}/> Gerar e Imprimir Termo (PDF)
           </button>
 

@@ -32,12 +32,22 @@ export default function Dashboard() {
       .from("alunos").select("*", { count: "exact", head: true }).eq("status", "pendente"); 
     setEscolasPendentes(pendentesCount || 0);
 
+    // Buscar Aulas Experimentais
     const { data: exp } = await supabase
       .from("aulas_experimentais")
-      .select("*, modalidades(nome), turmas(nome, horario)")
+      .select("*")
       .neq("status", "matriculado")
       .order("data_aula");
-    setAulasExp(exp || []);
+    
+    // Precisamos cruzar os dados para pegar os nomes, pois o dashboard não tem o join
+    const { data: mods } = await supabase.from("modalidades").select("id, nome")
+    
+    const expCruzadas = (exp || []).map(e => {
+      const mod = mods?.find(m => m.id === e.modalidade_id)
+      return { ...e, modalidade_nome: mod?.nome || "Modalidade" }
+    })
+
+    setAulasExp(expCruzadas || []);
 
     const { data: mensalidades } = await supabase.from("mensalidades").select("*").eq("status", "pendente");
     
@@ -57,6 +67,7 @@ export default function Dashboard() {
     setAlertas({ atraso5, atraso2, venceHoje, vence2, vence5 });
     setStats({ ativos, inativos, alertas: mensalidades?.length || 0, turmas: turmas?.length || 0 });
 
+    // Graficos (Buscas simples para evitar erro 400)
     const { data: matriculas } = await supabase.from("matriculas").select("id, turma_id");
     const { data: turmasData } = await supabase.from("turmas").select("id, nome, modalidade_id");
     const { data: modalidadesData } = await supabase.from("modalidades").select("id, nome");
@@ -82,13 +93,13 @@ export default function Dashboard() {
     if (!numero.startsWith("55")) numero = "55" + numero
 
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
-    const horario = ag.turmas?.horario || "horário a confirmar"
+    const horario = "A confirmar"
 
     let mensagem = ""
     if (tipo === "comprovante") {
-      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidades?.nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante de agendamento.* Chegue com 10 minutinhos de antecedência!\n\nQualquer dúvida, estamos à disposição. Até lá! OSS!`
+      mensagem = `Olá, *${ag.nome}*! Tudo bem?\n\nSua aula experimental de *${ag.modalidade_nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}\n⏰ Horário: ${horario}\n📍 Local: R. Pres. Médici, 278 - Águas Claras\n\n⚠️ *Estou enviando em anexo o comprovante de agendamento.* Chegue com 10 minutinhos de antecedência!\n\nQualquer dúvida, estamos à disposição. Até lá! OSS!`
     } else {
-      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidades?.nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! Se precisar reagendar, nos avise. OSS! 🥋`
+      mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidade_nome}* HOJE!\n\n⏰ Horário: ${horario}\n\nEstamos te esperando! Se precisar reagendar, nos avise. OSS! 🥋`
     }
 
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, "_blank")
@@ -126,7 +137,7 @@ export default function Dashboard() {
         {escolasPendentes > 0 && <span className="text-blue-600 font-semibold text-sm">Clique aqui para revisar &rarr;</span>}
       </div>
 
-      {/* WIDGET DE AULAS EXPERIMENTAIS (COM BOTÕES DIRETOS) */}
+      {/* WIDGET DE AULAS EXPERIMENTAIS (SEMPRE VISÍVEL) */}
       <div className="bg-purple-50 border border-purple-200 p-4 rounded-xl mb-6 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-3">
@@ -143,7 +154,6 @@ export default function Dashboard() {
           <button onClick={() => router.push("/aula-experimental")} className="text-purple-600 font-semibold text-sm hover:underline">Gerenciar Funil Completo &rarr;</button>
         </div>
 
-        {/* LISTA RÁPIDA COM BOTÕES */}
         {aulasExp.length > 0 && (
           <div className="bg-white rounded-lg p-3 border border-purple-100 max-h-75 overflow-y-auto">
             <p className="text-xs font-bold text-purple-800 mb-2 uppercase tracking-wider">Próximos Agendamentos</p>
@@ -152,7 +162,7 @@ export default function Dashboard() {
                 <div key={ag.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
                   <div>
                     <p className="font-bold text-sm text-gray-800">{ag.nome}</p>
-                    <p className="text-xs text-gray-600">{ag.modalidades?.nome} - {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')} às {ag.turmas?.horario || "S/ hora"}</p>
+                    <p className="text-xs text-gray-600">{ag.modalidade_nome} - {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')}</p>
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => enviarWhatsApp(ag, "comprovante")} className="bg-blue-100 text-blue-700 p-2 rounded shadow transition hover:bg-blue-200" title="Enviar Comprovante">

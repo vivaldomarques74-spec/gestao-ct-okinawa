@@ -22,25 +22,21 @@ export default function AulaExperimentalPage() {
   useEffect(() => { carregarDados() }, [])
 
   async function carregarDados() {
-    // 1. Busca Modalidades
+    // Busca modalidades ativas
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
     
-    // 2. Busca Turmas (SEM JOIN para não dar erro 400 no Supabase)
-    const { data: turs, error: errTurmas } = await supabase.from("turmas").select("*")
-    if (errTurmas) console.error("Erro ao buscar turmas:", errTurmas)
+    // CORREÇÃO: Sem filtro de status para garantir que todas as turmas apareçam
+    const { data: turs } = await supabase.from("turmas").select("*")
     setTurmas(turs || [])
     
-    // 3. Busca Agendamentos (SEM JOIN)
-    const { data: ags, error: errAgs } = await supabase.from("aulas_experimentais").select("*").order("data_aula")
-    if (errAgs) console.error("Erro ao buscar agendamentos:", errAgs)
-
-    // 4. Cruza os dados no Javascript (Garante que nada fique em branco)
+    // Busca agendamentos e cruza os dados no JS
+    const { data: ags } = await supabase.from("aulas_experimentais").select("*").order("data_aula")
+    
     const agendamentosCruzados = (ags || []).map(ag => {
       const turma = turs?.find(t => t.id === ag.turma_id)
       const mod = mods?.find(m => m.id === ag.modalidade_id)
       
-      // Junta a hora de início e fim
       let horario = "s/ horário"
       if (turma?.hora_inicio && turma?.hora_fim) {
         horario = `${turma.hora_inicio} às ${turma.hora_fim}`
@@ -73,7 +69,6 @@ export default function AulaExperimentalPage() {
     } else {
       alert("✅ Aula experimental agendada! O comprovante será baixado.")
       
-      // Prepara os dados para o PDF
       const turma = turmas.find(t => t.id === form.turma_id)
       const mod = modalidades.find(m => m.id === form.modalidade_id)
       let horario = "A confirmar"
@@ -93,73 +88,89 @@ export default function AulaExperimentalPage() {
     setLoading(false)
   }
 
+  // --- NOVO COMPROVANTE PADRÃO CT OKINAWA ---
   function gerarComprovantePDF(ag: any) {
     const doc = new jsPDF()
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
-    const horario = ag.turmas?.horario || "A confirmar"
+    const horario = ag.turmas?.horario || ag.turma_horario || "A confirmar"
 
-    doc.setFillColor(128, 0, 128)
-    doc.rect(0, 0, 210, 30, "F")
+    // Fundo do Cabeçalho (Vermelho CT)
+    doc.setFillColor(204, 0, 0) // Vermelho
+    doc.rect(0, 0, 210, 35, "F")
+    
+    // Texto do Cabeçalho
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(22)
     doc.setFont("helvetica", "bold")
     doc.text("CT OKINAWA", 105, 15, { align: "center" })
     doc.setFontSize(12)
-    doc.text("Comprovante de Agendamento - Aula Experimental", 105, 23, { align: "center" })
+    doc.setFont("helvetica", "normal")
+    doc.text("Comprovante de Agendamento - Aula Experimental", 105, 25, { align: "center" })
 
+    // Corpo do Documento
     doc.setTextColor(0, 0, 0)
     doc.setFontSize(12)
-    doc.text("DADOS DO ALUNO", 20, 50)
+    doc.setFont("helvetica", "bold")
+    doc.text("DADOS DO ALUNO", 20, 55)
     doc.setLineWidth(0.5)
-    doc.line(20, 52, 190, 52)
+    doc.setDrawColor(204, 0, 0) // Linha vermelha
+    doc.line(20, 57, 190, 57)
     
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
-    doc.text(`Nome: ${ag.nome}`, 20, 60)
-    doc.text(`WhatsApp: ${ag.telefone}`, 20, 68)
-    if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 76)
+    doc.setTextColor(50, 50, 50)
+    doc.text(`Nome: ${ag.nome}`, 20, 65)
+    doc.text(`WhatsApp: ${ag.telefone}`, 20, 73)
+    if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 81)
 
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
-    doc.text("DADOS DA AULA", 20, 95)
-    doc.line(20, 97, 190, 97)
+    doc.setTextColor(0, 0, 0)
+    doc.text("DADOS DA AULA", 20, 100)
+    doc.line(20, 102, 190, 102)
 
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
-    doc.text(`Modalidade: ${ag.modalidades?.nome}`, 20, 105)
-    doc.text(`Turma: ${ag.turmas?.nome}`, 20, 113)
-    doc.text(`Data: ${dataFormatada}`, 20, 121)
-    doc.text(`Horário: ${horario}`, 20, 129)
+    doc.setTextColor(50, 50, 50)
+    doc.text(`Modalidade: ${ag.modalidades?.nome}`, 20, 110)
+    doc.text(`Turma: ${ag.turmas?.nome}`, 20, 118)
+    doc.text(`Data: ${dataFormatada}`, 20, 126)
+    doc.text(`Horário: ${horario}`, 20, 134)
 
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
-    doc.text("LOCAL", 20, 145)
-    doc.line(20, 147, 190, 147)
+    doc.setTextColor(0, 0, 0)
+    doc.text("LOCAL", 20, 150)
+    doc.line(20, 152, 190, 152)
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
-    doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 155)
+    doc.setTextColor(50, 50, 50)
+    doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 160)
 
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
-    doc.text("INSTRUÇÕES IMPORTANTES", 20, 175)
-    doc.line(20, 177, 190, 177)
+    doc.setTextColor(0, 0, 0)
+    doc.text("INSTRUÇÕES IMPORTANTES", 20, 180)
+    doc.line(20, 182, 190, 182)
     doc.setFontSize(10)
     doc.setFont("helvetica", "normal")
+    doc.setTextColor(50, 50, 50)
     const avisos = [
       "1. Chegue com 10 minutos de antecedência.",
       "2. Vista roupas confortáveis para a prática esportiva.",
       "3. Traga uma garrafa de água.",
       "4. Esta aula é experimental e não gera vínculo contratual."
     ]
-    let y = 185
+    let y = 190
     avisos.forEach(aviso => {
       doc.text(aviso, 20, y)
       y += 6
     })
 
+    // Rodapé
     doc.setFontSize(10)
     doc.setTextColor(150, 150, 150)
-    doc.text("Este documento é um comprovante de agendamento. Apresente no dia da aula.", 105, 280, { align: "center" })
+    doc.text("Disciplina • Respeito • Evolução", 105, 280, { align: "center" })
 
     doc.save(`Comprovante_Aula_Experimental_${ag.nome}.pdf`)
   }
@@ -203,7 +214,7 @@ export default function AulaExperimentalPage() {
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow p-4 border border-gray-100 h-fit">
-          <h2 className="font-bold text-lg mb-4 text-purple-700">Agendar Nova Aula</h2>
+          <h2 className="font-bold text-lg mb-4 text-red-700">Agendar Nova Aula</h2>
           <form onSubmit={agendar} className="space-y-3">
             <input className="input" placeholder="Nome do Aluno *" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required />
             <input className="input" placeholder="Responsável (se menor)" value={form.responsavel} onChange={e => setForm({...form, responsavel: e.target.value})} />
@@ -217,7 +228,7 @@ export default function AulaExperimentalPage() {
             <select className="input" value={form.turma_id} onChange={e => setForm({...form, turma_id: e.target.value})} disabled={!form.modalidade_id} required>
               <option value="">Selecione a Turma *</option>
               {turmas
-                .filter(t => String(t.modalidade_id) === String(form.modalidade_id)) // Garante que os IDs batem
+                .filter(t => String(t.modalidade_id) === String(form.modalidade_id))
                 .map(t => (
                   <option key={t.id} value={t.id}>
                     {t.nome} {t.hora_inicio ? `(${t.hora_inicio} - ${t.hora_fim})` : ''}
@@ -227,7 +238,7 @@ export default function AulaExperimentalPage() {
 
             <input type="date" className="input" value={form.data_aula} onChange={e => setForm({...form, data_aula: e.target.value})} required />
 
-            <button type="submit" disabled={loading} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold p-3 rounded mt-2 transition">
+            <button type="submit" disabled={loading} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold p-3 rounded mt-2 transition">
               {loading ? "Agendando..." : "Agendar e Baixar Comprovante"}
             </button>
           </form>
@@ -235,7 +246,7 @@ export default function AulaExperimentalPage() {
 
         <div className="bg-white rounded-xl shadow p-4 border border-gray-100 flex flex-col h-150">
           <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-            <button onClick={() => setAbaAtiva("pendente")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'pendente' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Ainda Vão Fazer</button>
+            <button onClick={() => setAbaAtiva("pendente")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'pendente' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Ainda Vão Fazer</button>
             <button onClick={() => setAbaAtiva("compareceu")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'compareceu' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Fizeram (Cobrar)</button>
             <button onClick={() => setAbaAtiva("matriculado")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'matriculado' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Já Matriculados</button>
           </div>
@@ -253,7 +264,7 @@ export default function AulaExperimentalPage() {
                     <p className="font-bold text-lg">{ag.nome}</p>
                     <p className="text-xs text-gray-600 font-medium">WhatsApp: {ag.telefone}</p>
                     <p className="text-xs text-gray-600">Mod: {ag.modalidade_nome} | Turma: {ag.turma_nome} ({ag.turma_horario})</p>
-                    <p className="text-xs text-blue-600 font-bold mt-1">Data da Aula: {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')}</p>
+                    <p className="text-xs text-red-600 font-bold mt-1">Data da Aula: {new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')}</p>
                   </div>
                   
                   <div className="mt-2 grid grid-cols-3 gap-1">
@@ -261,7 +272,7 @@ export default function AulaExperimentalPage() {
                       <Download size={14}/> PDF
                     </button>
                     <button onClick={() => enviarWhatsApp(ag, "comprovante")} className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Comprovante">
-                      <FileText size={14}/> Enviar Comp.
+                      <FileText size={14}/> Comprovante
                     </button>
                     <button onClick={() => enviarWhatsApp(ag, "lembrete")} className="bg-green-100 text-green-700 hover:bg-green-200 text-xs font-bold py-2 rounded flex items-center justify-center gap-1 transition" title="Enviar Lembrete">
                       <MessageCircle size={14}/> Lembrete
