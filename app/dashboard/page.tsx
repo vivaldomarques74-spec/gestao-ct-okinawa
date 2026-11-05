@@ -2,17 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Users, AlertTriangle, Layers, School, CheckCircle, FlaskConical, MessageCircle, FileText, Stethoscope, ChevronRight, RefreshCw, Award } from "lucide-react";
+import { Users, AlertTriangle, Layers, School, CheckCircle, FlaskConical, MessageCircle, FileText, Stethoscope, RefreshCw, CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState({ ativos: 0, turmas: 0 });
-  const [turmasList, setTurmasList] = useState<any[]>([]);
-  const [modalidadesList, setModalidadesList] = useState<any[]>([]);
-  const [escolasPendentes, setEscolasPendentes] = useState(0);
+  const [stats, setStats] = useState({ ativos: 0, turmas: 0, pendencias: 0 });
+  const [escolasPendentes, setEscolasPendentes] = useState<any[]>([]);
   const [aulasExp, setAulasExp] = useState<any[]>([]); 
-  const [consultasHoje, setConsultasHoje] = useState<any[]>([]); 
+  const [consultas, setConsultas] = useState<any[]>([]); 
   const [retornosSemana, setRetornosSemana] = useState<any[]>([]);
   
   const [alertas, setAlertas] = useState({
@@ -24,14 +22,15 @@ export default function Dashboard() {
   }, []);
 
   async function carregar() {
-    const { data: alunos } = await supabase.from("alunos").select("status");
+    // 1. Alunos e Turmas
+    const { data: alunos } = await supabase.from("alunos").select("status, nome, id");
     const ativos = alunos?.filter((a: any) => a.status === "ativo").length || 0;
-    const pendentes = alunos?.filter((a: any) => a.status === "pendente").length || 0;
+    const pendentes = alunos?.filter((a: any) => a.status === "pendente") || [];
     setEscolasPendentes(pendentes);
 
     const { data: turmas } = await supabase.from("turmas").select("id");
-    const { data: mods } = await supabase.from("modalidades").select("*");
     
+    // 2. Mensalidades (Alertas)
     const { data: mensalidades } = await supabase.from("mensalidades").select("*").eq("status", "pendente");
     const pendentesMensalidades = mensalidades || [];
     
@@ -49,27 +48,43 @@ export default function Dashboard() {
     });
 
     setAlertas({ atraso5, atraso2, venceHoje, vence2, vence5 });
-    setStats({ ativos, turmas: turmas?.length || 0 });
+    setStats({ ativos, turmas: turmas?.length || 0, pendencias: pendentesMensalidades.length });
 
-    const { data: exp } = await supabase.from("aulas_experimentais").select("*").neq("status", "matriculado");
+    // 3. Aulas Experimentais (Filtrando Hoje e Amanhã)
+    const hojeStr = hoje.toISOString().split('T')[0];
+    const amanha = new Date(hoje); amanha.setDate(amanha.getDate() + 1);
+    const amanhaStr = amanha.toISOString().split('T')[0];
+
+    const { data: exp } = await supabase
+      .from("aulas_experimentais")
+      .select("*")
+      .neq("status", "matriculado")
+      .in("data_aula", [hojeStr, amanhaStr])
+      .order("data_aula");
+      
+    const { data: mods } = await supabase.from("modalidades").select("id, nome");
+    
     const expCruzadas = (exp || []).map(e => {
       const mod = mods?.find(m => m.id === e.modalidade_id)
       return { ...e, modalidade_nome: mod?.nome || "Modalidade" }
     })
     setAulasExp(expCruzadas || []);
 
-    const hojeStr = new Date().toISOString().split('T')[0];
-    const { data: consultas } = await supabase
+    // 4. Consultas Saúde (Filtrando Hoje e Amanhã)
+    const daqui2Dias = new Date(hoje); daqui2Dias.setDate(daqui2Dias.getDate() + 2);
+    
+    const { data: consultasData } = await supabase
       .from("agendamentos_saude")
       .select("*, profissionais_saude(nome, especialidade)")
       .eq("status", "agendado")
       .gte("data_hora", `${hojeStr}T00:00:00`)
-      .lte("data_hora", `${hojeStr}T23:59:59`)
+      .lte("data_hora", `${amanhaStr}T23:59:59`)
       .order("data_hora");
-    setConsultasHoje(consultas || []);
+    setConsultas(consultasData || []);
 
-    const daqui7Dias = new Date()
-    daqui7Dias.setDate(daqui7Dias.getDate() + 7)
+    // 5. Retornos Agendados (Próximos 7 dias)
+    const daqui7Dias = new Date();
+    daqui7Dias.setDate(daqui7Dias.getDate() + 7);
     
     const { data: retornos } = await supabase
       .from("agendamentos_saude")
@@ -81,112 +96,174 @@ export default function Dashboard() {
       .order("data_hora")
     
     setRetornosSemana(retornos || [])
-
-    const { data: matriculas } = await supabase.from("matriculas").select("id, turma_id");
-    const { data: turmasData } = await supabase.from("turmas").select("id, nome, modalidade_id");
-    const { data: modalidadesData } = await supabase.from("modalidades").select("id, nome");
-
-    const turmaCount: any = {}; const modalidadeCount: any = {};
-
-    matriculas?.forEach((m: any) => {
-      const turma = turmasData?.find(t => t.id === m.turma_id);
-      const nomeTurma = turma?.nome || "Sem turma";
-      turmaCount[nomeTurma] = (turmaCount[nomeTurma] || 0) + 1;
-
-      const modalidade = modalidadesData?.find(mod => mod.id === turma?.modalidade_id);
-      const nomeMod = modalidade?.nome || "Sem modalidade";
-      modalidadeCount[nomeMod] = (modalidadeCount[nomeMod] || 0) + 1;
-    });
-
-    setTurmasList(Object.keys(turmaCount).map((nome) => ({ nome, alunos: turmaCount[nome] })));
-    setModalidadesList(Object.keys(modalidadeCount).map((nome) => ({ nome, qtd: modalidadeCount[nome] })));
   }
 
-  function enviarWhatsAppExp(ag: any, tipo: "comprovante" | "lembrete") {
+  function enviarWhatsAppExp(ag: any) {
     let numero = ag.telefone.replace(/\D/g, "")
     if (!numero.startsWith("55")) numero = "55" + numero
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
-    const mensagem = tipo === "comprovante" 
-      ? `Olá, *${ag.nome}*! Sua aula experimental de *${ag.modalidade_nome}* está confirmada! 🥋\n\n📅 Data: ${dataFormatada}`
-      : `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental HOJE! OSS! 🥋`
+    const mensagem = `Olá, *${ag.nome}*! Passando para lembrar da sua aula experimental de *${ag.modalidade_nome}* no CT Okinawa.\n\n📅 Data: ${dataFormatada}\n\nEstamos te esperando! OSS! 🥋`
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, "_blank")
   }
 
   function enviarWhatsAppSaude(ag: any) {
     let numero = ag.whatsapp_paciente.replace(/\D/g, "")
     if (!numero.startsWith("55")) numero = "55" + numero
-    const horaFormatada = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    const mensagem = `Olá, *${ag.nome_paciente}*! Passando para lembrar da sua consulta HOJE às ${horaFormatada} com *${ag.profissionais_saude?.nome}* (${ag.profissionais_saude?.especialidade}) no CT Okinawa. Até logo! 🩺`
+    const dataFormatada = new Date(ag.data_hora).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+    const mensagem = `Olá, *${ag.nome_paciente}*! Passando para lembrar da sua consulta no CT Okinawa.\n\n🩺 *Profissional:* ${ag.profissionais_saude?.nome}\n📅 *Data/Hora:* ${dataFormatada}\n\nAté logo!`
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, "_blank")
   }
 
-  const cards = [
-    { title: "Alunos Ativos", value: stats.ativos, icon: Users, color: "text-green-600" },
-    { title: "Turmas", value: stats.turmas, icon: Layers, color: "text-blue-500" },
-  ];
+  const hojeStr = new Date().toISOString().split('T')[0];
+  const amanha = new Date(); amanha.setDate(amanha.getDate() + 1);
+  const amanhaStr = amanha.toISOString().split('T')[0];
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Visão Geral</h1>
-        <p className="text-gray-500">Acompanhe os indicadores da sua academia</p>
+        <p className="text-gray-500">Acompanhe os indicadores e os agendamentos da sua academia</p>
       </div>
 
-      {/* LINHA 1 E 2: APENAS OS CARDS SOLICITADOS E OS WIDGETS */}
-      <div className="grid md:grid-cols-4 gap-4 mb-6">
-        {cards.map((card, i) => (
-          <div key={i} className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
-            <div>
-              <p className="text-gray-500 text-sm">{card.title}</p>
-              <p className="text-3xl font-bold">{card.value}</p>
-            </div>
-            <card.icon className={`w-8 h-8 ${card.color}`} />
+      {/* LINHA 1: INDICADORES GERAIS */}
+      <div className="grid md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
+          <div>
+            <p className="text-gray-500 text-sm">Alunos Ativos</p>
+            <p className="text-3xl font-bold">{stats.ativos}</p>
           </div>
-        ))}
-
-        {/* WIDGETS NA MESMA LINHA PARA COMPACTAR */}
-        <div onClick={() => escolasPendentes > 0 ? router.push("/escolas") : null} className={`rounded-xl p-4 flex flex-col justify-between transition shadow-sm border ${escolasPendentes > 0 ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100" : "bg-white border-gray-100"}`}>
-          <div className="flex items-center gap-2 mb-2">
-            <div className={`p-1.5 rounded-full text-white ${escolasPendentes > 0 ? "bg-blue-500" : "bg-green-500"}`}>
-              {escolasPendentes > 0 ? <School size={16} /> : <CheckCircle size={16} />}
-            </div>
-            <h3 className={`font-bold text-xs ${escolasPendentes > 0 ? "text-blue-900" : "text-gray-800"}`}>Escolas</h3>
-          </div>
-          <p className={`text-xs ${escolasPendentes > 0 ? "text-blue-700 font-semibold" : "text-gray-500"}`}>
-            {escolasPendentes > 0 ? `${escolasPendentes} pendente(s).` : "Sem pendências."}
-          </p>
+          <Users className="w-8 h-8 text-green-600" />
         </div>
-
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="bg-purple-100 p-1.5 rounded-full text-purple-600">
-                <FlaskConical size={16} />
-              </div>
-              <h3 className="font-bold text-xs text-gray-800">Exp.</h3>
-            </div>
-            <button onClick={() => router.push("/aula-experimental")} className="text-[10px] text-purple-600 font-bold hover:underline">Ver</button>
+        <div className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
+          <div>
+            <p className="text-gray-500 text-sm">Turmas Ativas</p>
+            <p className="text-3xl font-bold">{stats.turmas}</p>
           </div>
-          <p className="text-xs text-gray-500">{aulasExp.length} no funil.</p>
+          <Layers className="w-8 h-8 text-blue-500" />
         </div>
-
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="bg-teal-100 p-1.5 rounded-full text-teal-600">
-                <Stethoscope size={16} />
-              </div>
-              <h3 className="font-bold text-xs text-gray-800">Saúde</h3>
-            </div>
-            <button onClick={() => router.push("/saude")} className="text-[10px] text-teal-600 font-bold hover:underline">Ver</button>
+        <div className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
+          <div>
+            <p className="text-gray-500 text-sm">Total de Pendências</p>
+            <p className="text-3xl font-bold text-red-500">{stats.pendencias}</p>
           </div>
-          <p className="text-xs text-gray-500">{consultasHoje.length} consulta(s).</p>
+          <AlertTriangle className="w-8 h-8 text-red-500" />
         </div>
       </div>
 
-      {/* NOVO WIDGET: RETORNOS DA SEMANA */}
-      {retornosSemana.length > 0 && (
-        <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl mb-6 shadow-sm">
+      {/* LINHA 2: BLOCOS GRANDES DE AÇÃO (HOJE E AMANHÃ) */}
+      <div className="grid md:grid-cols-3 gap-6 mb-6">
+        
+        {/* BLOCO ESCOLAS */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-96">
+          <div className="bg-blue-50 p-4 border-b border-blue-100 flex justify-between items-center rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <School className="text-blue-600" size={20} />
+              <h2 className="font-bold text-blue-900">Escolas Parceiras</h2>
+            </div>
+            <button onClick={() => router.push("/escolas")} className="text-xs text-blue-600 hover:underline font-bold">Gerenciar</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {escolasPendentes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <CheckCircle size={40} className="text-green-500 mb-2 opacity-50" />
+                <p className="text-sm">Nenhum aluno aguardando aprovação.</p>
+              </div>
+            ) : (
+              escolasPendentes.map(aluno => (
+                <div key={aluno.id} className="bg-blue-50 border border-blue-100 p-3 rounded-lg flex justify-between items-center">
+                  <p className="font-bold text-sm text-blue-900">{aluno.nome}</p>
+                  <button onClick={() => router.push("/escolas")} className="text-xs bg-blue-600 text-white px-3 py-1 rounded font-bold">Aprovar</button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* BLOCO AULAS EXPERIMENTAIS */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-96">
+          <div className="bg-purple-50 p-4 border-b border-purple-100 flex justify-between items-center rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="text-purple-600" size={20} />
+              <h2 className="font-bold text-purple-900">Aulas Experimentais</h2>
+            </div>
+            <button onClick={() => router.push("/aula-experimental")} className="text-xs text-purple-600 hover:underline font-bold">Gerenciar</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {aulasExp.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <CheckCircle size={40} className="text-green-500 mb-2 opacity-50" />
+                <p className="text-sm">Nenhuma aula para hoje ou amanhã.</p>
+              </div>
+            ) : (
+              aulasExp.map(ag => {
+                const isHoje = ag.data_aula === hojeStr;
+                return (
+                  <div key={ag.id} className={`border p-3 rounded-lg flex justify-between items-center ${isHoje ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isHoje ? 'bg-red-200 text-red-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                          {isHoje ? 'HOJE' : 'AMANHÃ'}
+                        </span>
+                        <p className="font-bold text-sm text-gray-800">{ag.nome}</p>
+                      </div>
+                      <p className="text-xs text-gray-600">Mod: {ag.modalidade_nome}</p>
+                    </div>
+                    <button onClick={() => enviarWhatsAppExp(ag)} className={`p-2 rounded-full shadow text-white ${isHoje ? 'bg-red-500 hover:bg-red-600' : 'bg-yellow-500 hover:bg-yellow-600'}`}>
+                      <MessageCircle size={16} />
+                    </button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {/* BLOCO SAÚDE */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-96">
+          <div className="bg-teal-50 p-4 border-b border-teal-100 flex justify-between items-center rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="text-teal-600" size={20} />
+              <h2 className="font-bold text-teal-900">Consultas de Saúde</h2>
+            </div>
+            <button onClick={() => router.push("/saude")} className="text-xs text-teal-600 hover:underline font-bold">Gerenciar</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {consultas.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <CheckCircle size={40} className="text-green-500 mb-2 opacity-50" />
+                <p className="text-sm">Nenhuma consulta para hoje ou amanhã.</p>
+              </div>
+            ) : (
+              consultas.map(ag => {
+                const dataConsulta = new Date(ag.data_hora);
+                const isHoje = dataConsulta.toISOString().split('T')[0] === hojeStr;
+                return (
+                  <div key={ag.id} className={`border p-3 rounded-lg flex justify-between items-center ${isHoje ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isHoje ? 'bg-red-200 text-red-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                          {isHoje ? 'HOJE' : 'AMANHÃ'}
+                        </span>
+                        <p className="font-bold text-sm text-gray-800">{ag.nome_paciente}</p>
+                      </div>
+                      <p className="text-xs text-gray-600">{dataConsulta.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})} - {ag.profissionais_saude?.nome}</p>
+                    </div>
+                    <button onClick={() => enviarWhatsAppSaude(ag)} className={`p-2 rounded-full shadow text-white ${isHoje ? 'bg-red-500 hover:bg-red-600' : 'bg-yellow-500 hover:bg-yellow-600'}`}>
+                      <MessageCircle size={16} />
+                    </button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* LINHA 3: RETORNOS DA SEMANA E ALERTAS */}
+      <div className="grid md:grid-cols-2 gap-6">
+        
+        {/* RETORNOS */}
+        <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl shadow-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="bg-orange-500 p-2 rounded-full text-white">
               <RefreshCw size={20} />
@@ -196,67 +273,49 @@ export default function Dashboard() {
               <p className="text-sm text-orange-700">{retornosSemana.length} paciente(s) para retornar.</p>
             </div>
           </div>
-          <div className="grid md:grid-cols-3 gap-2">
-            {retornosSemana.map(ag => (
-              <div key={ag.id} className="bg-white p-2 rounded border border-orange-100 flex justify-between items-center text-sm">
-                <div>
-                  <p className="font-bold text-gray-800">{ag.nome_paciente}</p>
-                  <p className="text-xs text-gray-500">{new Date(ag.data_hora).toLocaleDateString('pt-BR')} - {ag.profissionais_saude?.nome}</p>
+          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            {retornosSemana.length === 0 ? (
+              <p className="text-sm text-orange-600 italic">Nenhum retorno agendado.</p>
+            ) : (
+              retornosSemana.map(ag => (
+                <div key={ag.id} className="bg-white p-2 rounded border border-orange-100 flex justify-between items-center text-sm">
+                  <div>
+                    <p className="font-bold text-gray-800">{ag.nome_paciente}</p>
+                    <p className="text-xs text-gray-500">{new Date(ag.data_hora).toLocaleDateString('pt-BR')} - {ag.profissionais_saude?.nome}</p>
+                  </div>
+                  <button onClick={() => enviarWhatsAppSaude(ag)} className="text-green-600 hover:text-green-800"><MessageCircle size={16}/></button>
                 </div>
-                <button onClick={() => enviarWhatsAppSaude(ag)} className="text-green-600 hover:text-green-800"><MessageCircle size={16}/></button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mb-6 bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-gray-600">
-            <AlertTriangle size={16} className="text-red-500" /> Alertas de Vencimento
-          </h3>
-          <button onClick={() => router.push('/alertas')} className="text-xs text-blue-600 hover:underline">Central de Alertas &rarr;</button>
-        </div>
-        
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-center"><p className="text-[10px] font-bold text-red-800 uppercase">Atraso +5d</p><p className="text-2xl font-bold text-red-600">{alertas.atraso5}</p></div>
-          <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 text-center"><p className="text-[10px] font-bold text-orange-800 uppercase">Atraso 2-4d</p><p className="text-2xl font-bold text-orange-600">{alertas.atraso2}</p></div>
-          <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-3 text-center"><p className="text-[10px] font-bold text-yellow-800 uppercase">Vence Hoje</p><p className="text-2xl font-bold text-yellow-600">{alertas.venceHoje}</p></div>
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-center"><p className="text-[10px] font-bold text-blue-800 uppercase">Vence 2-3d</p><p className="text-2xl font-bold text-blue-600">{alertas.vence2}</p></div>
-          <div className="bg-green-50 border border-green-100 rounded-lg p-3 text-center"><p className="text-[10px] font-bold text-green-800 uppercase">Vence 4-5d</p><p className="text-2xl font-bold text-green-600">{alertas.vence5}</p></div>
-        </div>
-      </div>
-
-      {/* DISTRIBUIÇÃO EM CARDS (SUBSTITUINDO OS GRÁFICOS) */}
-      <div className="grid md:grid-cols-2 gap-6">
-        
-        {/* CARD: ALUNOS POR TURMA */}
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-          <h3 className="font-semibold mb-4 text-sm text-gray-600 flex items-center gap-2">
-            <Layers size={16} className="text-red-500" /> Distribuição por Turma
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            {turmasList.length === 0 ? <p className="text-gray-400 text-sm col-span-2">Nenhum dado disponível.</p> : turmasList.map((t, i) => (
-              <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-lg flex flex-col justify-center items-center shadow-sm hover:shadow transition">
-                <span className="text-2xl font-bold text-gray-800">{t.alunos}</span>
-                <span className="text-xs font-semibold text-gray-500 text-center uppercase tracking-wide mt-1">{t.nome}</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
-        {/* CARD: DISTRIBUIÇÃO POR MODALIDADE */}
+        {/* ALERTAS DE VENCIMENTO */}
         <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-          <h3 className="font-semibold mb-4 text-sm text-gray-600 flex items-center gap-2">
-            <Award size={16} className="text-red-500" /> Distribuição por Modalidade
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-gray-600">
+              <AlertTriangle size={16} className="text-red-500" /> Alertas de Vencimento
+            </h3>
+            <button onClick={() => router.push('/alertas')} className="text-xs text-blue-600 hover:underline">Central de Alertas &rarr;</button>
+          </div>
+          
           <div className="grid grid-cols-2 gap-3">
-            {modalidadesList.length === 0 ? <p className="text-gray-400 text-sm col-span-2">Nenhum dado disponível.</p> : modalidadesList.map((m, i) => (
-              <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-lg flex flex-col justify-center items-center shadow-sm hover:shadow transition">
-                <span className="text-2xl font-bold text-gray-800">{m.qtd}</span>
-                <span className="text-xs font-semibold text-gray-500 text-center uppercase tracking-wide mt-1">{m.nome}</span>
-              </div>
-            ))}
+            <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-red-800 uppercase">Atraso +5d</p>
+              <p className="text-xl font-bold text-red-600">{alertas.atraso5}</p>
+            </div>
+            <div className="bg-orange-50 border border-orange-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-orange-800 uppercase">Atraso 2-4d</p>
+              <p className="text-xl font-bold text-orange-600">{alertas.atraso2}</p>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-yellow-800 uppercase">Vence Hoje</p>
+              <p className="text-xl font-bold text-yellow-600">{alertas.venceHoje}</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-blue-800 uppercase">Vence em 2-5d</p>
+              <p className="text-xl font-bold text-blue-600">{alertas.vence2 + alertas.vence5}</p>
+            </div>
           </div>
         </div>
 
