@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Users, AlertTriangle, Layers, School, CheckCircle, FlaskConical, MessageCircle, FileText, Stethoscope, RefreshCw, CalendarDays } from "lucide-react";
+import { Users, AlertTriangle, Layers, School, CheckCircle, FlaskConical, MessageCircle, FileText, Stethoscope, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState({ ativos: 0, turmas: 0, pendencias: 0 });
+  const [stats, setStats] = useState({ ativos: 0, turmas: 0 });
   const [escolasPendentes, setEscolasPendentes] = useState<any[]>([]);
   const [aulasExp, setAulasExp] = useState<any[]>([]); 
   const [consultas, setConsultas] = useState<any[]>([]); 
@@ -48,7 +48,7 @@ export default function Dashboard() {
     });
 
     setAlertas({ atraso5, atraso2, venceHoje, vence2, vence5 });
-    setStats({ ativos, turmas: turmas?.length || 0, pendencias: pendentesMensalidades.length });
+    setStats({ ativos, turmas: turmas?.length || 0 });
 
     // 3. Aulas Experimentais (Filtrando Hoje e Amanhã)
     const hojeStr = hoje.toISOString().split('T')[0];
@@ -71,8 +71,6 @@ export default function Dashboard() {
     setAulasExp(expCruzadas || []);
 
     // 4. Consultas Saúde (Filtrando Hoje e Amanhã)
-    const daqui2Dias = new Date(hoje); daqui2Dias.setDate(daqui2Dias.getDate() + 2);
-    
     const { data: consultasData } = await supabase
       .from("agendamentos_saude")
       .select("*, profissionais_saude(nome, especialidade)")
@@ -125,8 +123,8 @@ export default function Dashboard() {
         <p className="text-gray-500">Acompanhe os indicadores e os agendamentos da sua academia</p>
       </div>
 
-      {/* LINHA 1: INDICADORES GERAIS */}
-      <div className="grid md:grid-cols-3 gap-4 mb-6">
+      {/* LINHA 1: INDICADORES + ALERTAS */}
+      <div className="grid md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
           <div>
             <p className="text-gray-500 text-sm">Alunos Ativos</p>
@@ -141,12 +139,33 @@ export default function Dashboard() {
           </div>
           <Layers className="w-8 h-8 text-blue-500" />
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
-          <div>
-            <p className="text-gray-500 text-sm">Total de Pendências</p>
-            <p className="text-3xl font-bold text-red-500">{stats.pendencias}</p>
+
+        {/* ALERTAS SUBIRAM PARA CÁ */}
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 md:col-span-2 flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-gray-600">
+              <AlertTriangle size={16} className="text-red-500" /> Alertas de Vencimento
+            </h3>
+            <button onClick={() => router.push('/alertas')} className="text-xs text-blue-600 hover:underline">Central de Alertas &rarr;</button>
           </div>
-          <AlertTriangle className="w-8 h-8 text-red-500" />
+          <div className="grid grid-cols-4 gap-2">
+            <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-red-800 uppercase">Atraso +5d</p>
+              <p className="text-xl font-bold text-red-600">{alertas.atraso5}</p>
+            </div>
+            <div className="bg-orange-50 border border-orange-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-orange-800 uppercase">Atraso 2-4d</p>
+              <p className="text-xl font-bold text-orange-600">{alertas.atraso2}</p>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-yellow-800 uppercase">Vence Hoje</p>
+              <p className="text-xl font-bold text-yellow-600">{alertas.venceHoje}</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 text-center">
+              <p className="text-[10px] font-bold text-blue-800 uppercase">Vence em 2-5d</p>
+              <p className="text-xl font-bold text-blue-600">{alertas.vence2 + alertas.vence5}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -259,10 +278,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* LINHA 3: RETORNOS DA SEMANA E ALERTAS */}
-      <div className="grid md:grid-cols-2 gap-6">
-        
-        {/* RETORNOS */}
+      {/* LINHA 3: RETORNOS DA SEMANA */}
+      {retornosSemana.length > 0 && (
         <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl shadow-sm">
           <div className="flex items-center gap-3 mb-3">
             <div className="bg-orange-500 p-2 rounded-full text-white">
@@ -273,53 +290,20 @@ export default function Dashboard() {
               <p className="text-sm text-orange-700">{retornosSemana.length} paciente(s) para retornar.</p>
             </div>
           </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-            {retornosSemana.length === 0 ? (
-              <p className="text-sm text-orange-600 italic">Nenhum retorno agendado.</p>
-            ) : (
-              retornosSemana.map(ag => (
-                <div key={ag.id} className="bg-white p-2 rounded border border-orange-100 flex justify-between items-center text-sm">
-                  <div>
-                    <p className="font-bold text-gray-800">{ag.nome_paciente}</p>
-                    <p className="text-xs text-gray-500">{new Date(ag.data_hora).toLocaleDateString('pt-BR')} - {ag.profissionais_saude?.nome}</p>
-                  </div>
-                  <button onClick={() => enviarWhatsAppSaude(ag)} className="text-green-600 hover:text-green-800"><MessageCircle size={16}/></button>
+          <div className="grid md:grid-cols-4 gap-2">
+            {retornosSemana.map(ag => (
+              <div key={ag.id} className="bg-white p-2 rounded border border-orange-100 flex justify-between items-center text-sm shadow-sm">
+                <div>
+                  <p className="font-bold text-gray-800">{ag.nome_paciente}</p>
+                  <p className="text-xs text-gray-500">{new Date(ag.data_hora).toLocaleDateString('pt-BR')} - {ag.profissionais_saude?.nome}</p>
                 </div>
-              ))
-            )}
+                <button onClick={() => enviarWhatsAppSaude(ag)} className="text-green-600 hover:text-green-800"><MessageCircle size={16}/></button>
+              </div>
+            ))}
           </div>
         </div>
+      )}
 
-        {/* ALERTAS DE VENCIMENTO */}
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold flex items-center gap-2 text-sm uppercase tracking-wide text-gray-600">
-              <AlertTriangle size={16} className="text-red-500" /> Alertas de Vencimento
-            </h3>
-            <button onClick={() => router.push('/alertas')} className="text-xs text-blue-600 hover:underline">Central de Alertas &rarr;</button>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-center">
-              <p className="text-[10px] font-bold text-red-800 uppercase">Atraso +5d</p>
-              <p className="text-xl font-bold text-red-600">{alertas.atraso5}</p>
-            </div>
-            <div className="bg-orange-50 border border-orange-100 rounded-lg p-2 text-center">
-              <p className="text-[10px] font-bold text-orange-800 uppercase">Atraso 2-4d</p>
-              <p className="text-xl font-bold text-orange-600">{alertas.atraso2}</p>
-            </div>
-            <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-2 text-center">
-              <p className="text-[10px] font-bold text-yellow-800 uppercase">Vence Hoje</p>
-              <p className="text-xl font-bold text-yellow-600">{alertas.venceHoje}</p>
-            </div>
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 text-center">
-              <p className="text-[10px] font-bold text-blue-800 uppercase">Vence em 2-5d</p>
-              <p className="text-xl font-bold text-blue-600">{alertas.vence2 + alertas.vence5}</p>
-            </div>
-          </div>
-        </div>
-
-      </div>
     </div>
   );
 }
