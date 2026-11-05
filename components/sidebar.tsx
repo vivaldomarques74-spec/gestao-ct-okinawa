@@ -5,7 +5,31 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import {
-  Home, DollarSign, UserPlus, ShoppingBag, Calendar, Bell, Receipt, BarChart3, Database, Users, Key, Handshake, Package, Boxes, GraduationCap, School, UserCog, Menu, X, Gift, FileText, FlaskConical, Stethoscope, CalendarDays
+  Home,
+  DollarSign,
+  UserPlus,
+  ShoppingBag,
+  Calendar,
+  Bell,
+  Receipt,
+  BarChart3,
+  Database,
+  Users,
+  Key,
+  Handshake,
+  Package,
+  Boxes,
+  GraduationCap,
+  School,
+  UserCog,
+  Menu,
+  X,
+  Gift,
+  FileText,
+  FlaskConical,
+  Stethoscope,
+  CalendarDays,
+  TrendingDown, // NOVO ÍCONE AQUI
 } from "lucide-react";
 
 const menuAtendimento = [
@@ -15,13 +39,14 @@ const menuAtendimento = [
   { href: "/aula-experimental", icon: FlaskConical, label: "Aula Experimental" },
   { href: "/pdv", icon: ShoppingBag, label: "PDV" },
   { href: "/mensalidades", icon: Calendar, label: "Mensalidades" },
-  { href: "/saude", icon: CalendarDays, label: "Agenda de Saúde" }, // NOVO LINK AQUI
+  { href: "/saude", icon: CalendarDays, label: "Agenda de Saúde" },
   { href: "/alertas", icon: Bell, label: "Central de Alertas" },
   { href: "/imprimir-recibos", icon: Receipt, label: "Imprimir Recibos" },
 ];
 
 const menuAdmin = [
   { href: "/financeiro", icon: BarChart3, label: "Painel Financeiro" },
+  { href: "/despesas", icon: TrendingDown, label: "Contas a Pagar" }, // NOVO LINK AQUI
   { href: "/registros", icon: Database, label: "Central de Registros" },
   { href: "/relatorios", icon: Users, label: "Central de Relatórios" },
   { href: "/operadores", icon: Key, label: "Operadores" },

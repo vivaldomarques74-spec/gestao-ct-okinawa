@@ -3,54 +3,14 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
-import { Stethoscope } from "lucide-react"
+import { BarChart3, Printer } from "lucide-react"
 
-type Professor = {
-  id: string
-  nome: string
-  comissao: number
-}
-
-type Movimentacao = {
-  id: string
-  aluno_nome: string
-  turma_nome: string
-  data: string
-  tipo: string
-  valor_base: number
-  valor_comissao: number
-}
-
-type Presenca = {
-  id: string
-  aluno_nome: string
-  turma_nome: string
-  data: string
-  status: string
-}
-
-type ParceiroVenda = {
-  id: string
-  produto: string
-  valor: number
-  data: string
-}
-
-type ProfissionalSaude = {
-  id: string
-  nome: string
-  especialidade: string
-  modelo_repasse: string
-  valor_repasse: number
-}
-
-type AtendimentoSaude = {
-  id: string
-  paciente_nome: string
-  data: string
-  servico_nome: string
-  valor: number
-}
+type Professor = { id: string; nome: string; comissao: number }
+type Movimentacao = { id: string; aluno_nome: string; turma_nome: string; data: string; tipo: string; valor_base: number; valor_comissao: number }
+type Presenca = { id: string; aluno_nome: string; turma_nome: string; data: string; status: string }
+type ParceiroVenda = { id: string; produto: string; valor: number; data: string }
+type ProfissionalSaude = { id: string; nome: string; especialidade: string; modelo_repasse: string; valor_repasse: number }
+type AtendimentoSaude = { id: string; paciente_nome: string; data: string; servico_nome: string; valor: number }
 
 export default function RelatoriosPage() {
   const [aba, setAba] = useState("professores")
@@ -97,45 +57,40 @@ export default function RelatoriosPage() {
   const [totalFaturadoSaude, setTotalFaturadoSaude] = useState(0)
   const [loadingSaude, setLoadingSaude] = useState(false)
 
-  useEffect(() => {
-    carregarDadosBase()
-  }, [])
+  // BALANÇO MENSAL
+  const [mesBalanco, setMesBalanco] = useState(new Date().toISOString().slice(0, 7)) // YYYY-MM
+  const [balanco, setBalanco] = useState({ receitas: 0, despesas: 0, detalheReceitas: [] as any[], detalheDespesas: [] as any[] })
+  const [loadingBalanco, setLoadingBalanco] = useState(false)
+
+  useEffect(() => { carregarDadosBase() }, [])
 
   useEffect(() => {
-    if (aba === "professores" && professorSelecionado && dataInicioProf && dataFimProf) {
-      carregarRelatorioProfessor()
-    }
-  }, [professorSelecionado, dataInicioProf, dataFimProf])
+    if (aba === "professores" && professorSelecionado && dataInicioProf && dataFimProf) carregarRelatorioProfessor()
+  }, [professorSelecionado, dataInicioProf, dataFimProf, aba])
 
   useEffect(() => {
-    if (aba === "saude" && profSaudeSelecionado && dataInicioSaude && dataFimSaude) {
-      carregarRelatorioSaude()
-    }
+    if (aba === "saude" && profSaudeSelecionado && dataInicioSaude && dataFimSaude) carregarRelatorioSaude()
   }, [profSaudeSelecionado, dataInicioSaude, dataFimSaude, aba])
 
   useEffect(() => {
-    if (aba === "presenca") {
-      carregarPresencas()
-    }
-  }, [filtroTurmaPresenca, dataInicioPres, dataFimPres])
+    if (aba === "presenca") carregarPresencas()
+  }, [filtroTurmaPresenca, dataInicioPres, dataFimPres, aba])
 
   useEffect(() => {
-    if (aba === "turmas") {
-      carregarModalidadesTurmas()
-    }
-  }, [modalidadeSelecionada])
+    if (aba === "turmas") carregarModalidadesTurmas()
+  }, [modalidadeSelecionada, aba])
 
   useEffect(() => {
-    if (aba === "turmas" && turmaSelecionada) {
-      carregarAlunosPorTurma()
-    }
+    if (aba === "turmas" && turmaSelecionada) carregarAlunosPorTurma()
   }, [turmaSelecionada])
 
   useEffect(() => {
-    if (aba === "parceiros" && parceiroSelecionado && dataInicioParceiro && dataFimParceiro) {
-      carregarRelatorioParceiro()
-    }
-  }, [parceiroSelecionado, dataInicioParceiro, dataFimParceiro])
+    if (aba === "parceiros" && parceiroSelecionado && dataInicioParceiro && dataFimParceiro) carregarRelatorioParceiro()
+  }, [parceiroSelecionado, dataInicioParceiro, dataFimParceiro, aba])
+
+  useEffect(() => {
+    if (aba === "balanco") carregarBalanco()
+  }, [aba, mesBalanco])
 
   async function carregarDadosBase() {
     const { data: profs } = await supabase.from("professores").select("*").eq("status", "ativo")
@@ -148,8 +103,6 @@ export default function RelatoriosPage() {
     setTurmas(turmasCompletas || [])
     const { data: pars } = await supabase.from("parceiros").select("*").eq("status", "ativo")
     setParceiros(pars || [])
-    
-    // Carrega Profissionais de Saúde
     const { data: saude } = await supabase.from("profissionais_saude").select("*").eq("status", "ativo")
     setProfissionaisSaude(saude || [])
   }
@@ -161,270 +114,46 @@ export default function RelatoriosPage() {
     setTurmas(data || [])
   }
 
-  // --- LÓGICA DE PROFESSORES ---
   async function carregarRelatorioProfessor() {
     setLoadingProf(true)
-    // ... (mesma lógica de antes para professores)
-    // Vou omitir para focar na saúde, mas o código completo está no final
+    const { data: turmasProfessor } = await supabase.from("turmas").select("id, nome").eq("professor_id", professorSelecionado).eq("status", "ativo")
+    if (!turmasProfessor?.length) { setMovimentacoesProf([]); setTotalComissaoProf(0); setLoadingProf(false); return; }
+    
+    const turmaIds = turmasProfessor.map(t => t.id)
+    const { data: matriculas } = await supabase.from("matriculas").select("id, aluno_id, turma_id, alunos ( id, nome )").in("turma_id", turmaIds).eq("status", "ativo")
+    if (!matriculas?.length) { setMovimentacoesProf([]); setTotalComissaoProf(0); setLoadingProf(false); return; }
+    
+    const matriculaPorAluno = new Map()
+    for (const m of matriculas) {
+      let alunoNome = "?"
+      if (m.alunos) {
+        if (Array.isArray(m.alunos) && m.alunos.length > 0) alunoNome = m.alunos[0]?.nome || "?"
+        else if (typeof m.alunos === "object" && m.alunos !== null) alunoNome = (m.alunos as any).nome || "?"
+      }
+      matriculaPorAluno.set(m.aluno_id, { turmaId: m.turma_id, alunoNome })
+    }
+    
+    const alunoIds = Array.from(matriculaPorAluno.keys())
+    const { data: movimentacoes } = await supabase.from("caixa").select("*").in("aluno_id", alunoIds).in("tipo", ["matricula", "mensalidade"]).eq("cancelado", false).gte("data", `${dataInicioProf}T00:00:00`).lte("data", `${dataFimProf}T23:59:59`)
+    
+    const professor = professores.find(p => p.id === professorSelecionado)
+    const comissaoPercent = professor?.comissao || 0
+    
+    const lista: Movimentacao[] = []
+    let total = 0
+    for (const mov of movimentacoes || []) {
+      const info = matriculaPorAluno.get(mov.aluno_id)
+      if (!info) continue
+      const valorBase = Number(mov.valor_base || 0)
+      const comissao = valorBase * (comissaoPercent / 100)
+      lista.push({ id: mov.id, aluno_nome: info.alunoNome, turma_nome: turmasProfessor.find(t => t.id === info.turmaId)?.nome || "", data: mov.data, tipo: mov.tipo, valor_base: valorBase, valor_comissao: comissao })
+      total += comissao
+    }
+    setMovimentacoesProf(lista)
+    setTotalComissaoProf(total)
     setLoadingProf(false)
   }
 
-  // --- LÓGICA DE SAÚDE ---
-  async function carregarRelatorioSaude() {
-    setLoadingSaude(true)
-    
-    // Busca os agendamentos que o paciente compareceu (e pagou) no período
-    const { data: consultas } = await supabase
-      .from("agendamentos_saude")
-      .select("*, servicos_saude(nome)")
-      .eq("profissional_id", profSaudeSelecionado)
-      .eq("status", "compareceu")
-      .gte("data_hora", `${dataInicioSaude}T00:00:00`)
-      .lte("data_hora", `${dataFimSaude}T23:59:59`)
-      .order("data_hora")
-
-    const lista = (consultas || []).map(c => ({
-      id: c.id,
-      paciente_nome: c.nome_paciente,
-      data: c.data_hora,
-      servico_nome: c.servicos_saude?.nome || "Consulta",
-      valor: Number(c.valor)
-    }))
-
-    const total = lista.reduce((acc, curr) => acc + curr.valor, 0)
-    
-    setAtendimentosSaude(lista)
-    setTotalFaturadoSaude(total)
-    setLoadingSaude(false)
-  }
-
-  function imprimirRelatorioSaude() {
-    const prof = profissionaisSaude.find(p => p.id === profSaudeSelecionado)
-    if (!prof) return
-
-    const dataInicioFormatada = new Date(dataInicioSaude + "T12:00:00").toLocaleDateString('pt-BR')
-    const dataFimFormatada = new Date(dataFimSaude + "T12:00:00").toLocaleDateString('pt-BR')
-    
-    // Define os textos baseados no modelo de contrato
-    const isAluguel = prof.modelo_repasse === 'mensalidade'
-    const valorRepasse = prof.valor_repasse
-    
-    let tituloRecibo = isAluguel ? "RECIBO DE ALUGUEL DE ESPAÇO" : "RECIBO DE REPASSE DE COMISSÃO"
-    let textoRecibo = isAluguel 
-      ? `Eu, <strong>${prof.nome}</strong>, declaro que pagou ao <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia de <strong>R$ ${valorRepasse.toFixed(2).replace('.', ',')}</strong> referente à utilização do espaço e equipamentos no período de <strong>${dataInicioFormatada}</strong> a <strong>${dataFimFormatada}</strong>.`
-      : `Eu, <strong>${prof.nome}</strong>, declaro que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia de <strong>R$ ${((totalFaturadoSaude * valorRepasse) / 100).toFixed(2).replace('.', ',')}</strong> referente ao repasse de ${valorRepasse}% pelos atendimentos realizados no período de <strong>${dataInicioFormatada}</strong> a <strong>${dataFimFormatada}</strong>.`
-
-    const valorAssinatura = isAluguel 
-      ? valorRepasse.toFixed(2).replace('.', ',') 
-      : ((totalFaturadoSaude * valorRepasse) / 100).toFixed(2).replace('.', ',')
-
-    const w = window.open("", "", "width=900,height=800")
-    w?.document.write(`
-      <html><head><title>Relatório e Recibo - Saúde</title>
-      <style>
-        @page { size: A4; margin: 15mm; }
-        body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; font-size: 10pt; margin: 0; padding: 0; }
-        .header { text-align: center; border-bottom: 2px solid #008080; padding-bottom: 5px; margin-bottom: 15px; }
-        .header h1 { font-size: 22px; color: #008080; margin: 0; }
-        .header p { font-size: 11px; color: #666; margin: 3px 0 0 0; }
-        .section-title { font-size: 13px; font-weight: bold; color: #008080; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        thead { display: table-header-group; }
-        tr { page-break-inside: avoid; }
-        th { background: #f5f5f5; color: #333; padding: 6px; text-align: left; font-size: 9pt; border-bottom: 2px solid #ccc; }
-        td { padding: 6px; border-bottom: 1px solid #eee; font-size: 9pt; }
-        .total-table { font-weight: bold; text-align: right; font-size: 11pt; margin-bottom: 20px; page-break-inside: avoid; }
-        .total-table span { color: #008080; }
-        .recibo-box { border: 1px solid #008080; padding: 15px; border-radius: 5px; margin-top: 20px; background: #f0fafa; page-break-inside: avoid; }
-        .recibo-text { line-height: 1.5; text-align: justify; font-size: 10pt; margin-bottom: 10px; }
-        .recibo-valor { font-size: 15px; font-weight: bold; text-align: center; margin: 10px 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; padding: 8px 0; }
-        .assinaturas { display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid; }
-        .assinatura-linha { text-align: center; width: 45%; }
-        .linha { border-top: 1px solid #000; margin-bottom: 5px; }
-        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-      </style>
-      </head><body>
-        <div class="header">
-          <h1>CT OKINAWA</h1>
-          <p>Saúde e Performance</p>
-        </div>
-
-        <div class="section-title">1. Relatório de Atendimentos</div>
-        <p><strong>Profissional:</strong> ${prof.nome} (${prof.especialidade})</p>
-        <p><strong>Período:</strong> ${dataInicioFormatada} a ${dataFimFormatada}</p>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Paciente</th>
-              <th>Data</th>
-              <th>Procedimento</th>
-              <th>Valor Cobrado</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${atendimentosSaude.map(a => `
-              <tr>
-                <td>${a.paciente_nome}</td>
-                <td>${new Date(a.data).toLocaleDateString()}</td>
-                <td>${a.servico_nome}</td>
-                <td>R$ ${a.valor.toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-
-        <div class="total-table">
-          Total Faturado no Período: <span>R$ ${totalFaturadoSaude.toFixed(2).replace('.', ',')}</span>
-        </div>
-
-        <div class="section-title">2. ${isAluguel ? 'Recibo de Aluguel' : 'Recibo de Repasse'}</div>
-        <div class="recibo-box">
-          <div class="recibo-text">
-            ${textoRecibo}
-          </div>
-          
-          <div class="recibo-valor">
-            Valor: R$ ${valorAssinatura}
-          </div>
-          
-          <div class="recibo-text" style="font-size: 9pt; color: #555;">
-            Para clareza e comprovação, assino o presente recibo.
-          </div>
-        </div>
-
-        <div class="assinaturas">
-          <div class="assinatura-linha">
-            <div class="linha"></div>
-            <p><strong>${prof.nome}</strong></p>
-            <p style="font-size: 9px; color: #666;">Profissional de Saúde</p>
-          </div>
-          <div class="assinatura-linha">
-            <div class="linha"></div>
-            <p><strong>CT OKINAWA</strong></p>
-            <p style="font-size: 9px; color: #666;">Coordenação</p>
-          </div>
-        </div>
-
-        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
-      </body></html>
-    `)
-    w?.document.close()
-  }
-
-  // --- MANTENDO O RESTO DO CÓDIGO EXISTENTE ---
-  async function carregarPresencas() {
-    setLoadingPres(true)
-    let query = supabase.from("presencas").select("*, alunos(nome), turmas(nome)").order("data", { ascending: false })
-    if (filtroTurmaPresenca) query = query.eq("turma_id", filtroTurmaPresenca)
-    if (dataInicioPres) query = query.gte("data", dataInicioPres)
-    if (dataFimPres) query = query.lte("data", dataFimPres)
-    const { data } = await query
-    const lista = (data || []).map(p => {
-      let alunoNome = "?"
-      if (p.alunos) {
-        if (Array.isArray(p.alunos) && p.alunos.length > 0) alunoNome = p.alunos[0]?.nome || "?"
-        else if (typeof p.alunos === "object") alunoNome = (p.alunos as any).nome || "?"
-      }
-      let turmaNome = "?"
-      if (p.turmas) {
-        if (Array.isArray(p.turmas) && p.turmas.length > 0) turmaNome = p.turmas[0]?.nome || "?"
-        else if (typeof p.turmas === "object") turmaNome = (p.turmas as any).nome || "?"
-      }
-      return {
-        id: p.id,
-        aluno_nome: alunoNome,
-        turma_nome: turmaNome,
-        data: p.data,
-        status: p.status,
-      }
-    })
-    setPresencas(lista)
-    setLoadingPres(false)
-  }
-
-  async function excluirPresenca(id: string) {
-    if (!confirm("Excluir esta presença?")) return
-    await supabase.from("presencas").delete().eq("id", id)
-    carregarPresencas()
-  }
-
-  async function editarPresenca(id: string, novoStatus: string) {
-    await supabase.from("presencas").update({ status: novoStatus }).eq("id", id)
-    carregarPresencas()
-  }
-
-  function imprimirPresencas() {
-    const w = window.open("", "", "width=800,height=600")
-    w?.document.write(`<html><head><title>Relatório de Presenças</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
-    <h1>CT OKINAWA</h1><h2>Relatório de Presenças</h2><p>Período: ${dataInicioPres || "início"} a ${dataFimPres || "fim"}</p>
-    <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th></tr></thead><tbody>
-    ${presencas.map(p => `<tr><td>${p.aluno_nome}</td><td>${p.turma_nome}</td><td>${new Date(p.data).toLocaleDateString()}</td><td>${p.status}</td></tr>`).join('')}
-    </tbody></table>
-    <script>window.onload=()=>window.print()</script>
-    </body></html>`)
-    w?.document.close()
-  }
-
-  async function carregarAlunosPorTurma() {
-    if (!turmaSelecionada) return
-    const { data: matriculas } = await supabase
-      .from("matriculas")
-      .select("alunos(id, nome, cpf, status)")
-      .eq("turma_id", turmaSelecionada)
-      .eq("status", "ativo")
-    const alunos = matriculas?.map(m => {
-      const a = m.alunos
-      if (Array.isArray(a) && a.length > 0) return a[0]
-      return a
-    }).filter(Boolean) || []
-    setAlunosTurma(alunos)
-  }
-
-  async function carregarRelatorioParceiro() {
-    setLoadingParceiro(true)
-    const { data: vendas } = await supabase
-      .from("caixa")
-      .select("*")
-      .eq("tipo", "venda")
-      .eq("parceiro_id", parceiroSelecionado)
-      .eq("cancelado", false)
-      .gte("data", `${dataInicioParceiro}T00:00:00`)
-      .lte("data", `${dataFimParceiro}T23:59:59`)
-    const lista = (vendas || []).map(v => ({
-      id: v.id,
-      produto: v.descricao || v.nome || "Produto",
-      valor: Number(v.valor),
-      data: v.data,
-    }))
-    const total = lista.reduce((acc, v) => acc + v.valor, 0)
-    setVendasParceiro(lista)
-    setTotalVendasParceiro(total)
-    setLoadingParceiro(false)
-  }
-
-  function imprimirRelatorioParceiro() {
-    const parceiro = parceiros.find(p => p.id === parceiroSelecionado)
-    const w = window.open("", "", "width=800,height=600")
-    w?.document.write(`<html><head><title>Relatório Parceiro</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
-    <h1>CT OKINAWA</h1><h2>Relatório de Vendas - Parceiro ${parceiro?.nome}</h2>
-    <p>Período: ${new Date(dataInicioParceiro).toLocaleDateString()} a ${new Date(dataFimParceiro).toLocaleDateString()}</p>
-    <table><thead><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead><tbody>
-    ${vendasParceiro.map(v => `<tr><td>${v.produto}</td><td>R$ ${v.valor.toFixed(2)}</td><td>${new Date(v.data).toLocaleDateString()}</td></tr>`).join('')}
-    </tbody></table>
-    <h3>Total: R$ ${totalVendasParceiro.toFixed(2)}</h3>
-    <script>window.onload=()=>window.print()</script>
-    </body></html>`)
-    w?.document.close()
-  }
-
-  function getModalidadeNome(turma: any): string {
-    if (!turma.modalidades) return "?"
-    if (Array.isArray(turma.modalidades)) return turma.modalidades[0]?.nome || "?"
-    return turma.modalidades.nome || "?"
-  }
-
-  // --- CÓDIGO DE IMPRESSÃO DE PROFESSORES ---
   function imprimirRelatorioProfessor() {
     const professor = professores.find(p => p.id === professorSelecionado)
     const comissaoPercent = professor?.comissao || 0
@@ -466,45 +195,23 @@ export default function RelatoriosPage() {
         <p><strong>Professor:</strong> ${professor?.nome} | <strong>Comissão:</strong> ${comissaoPercent}%</p>
         <p><strong>Período:</strong> ${dataInicioFormatada} a ${dataFimFormatada}</p>
         <table>
-          <thead>
-            <tr>
-              <th>Aluno</th><th>Turma</th><th>Data Pgto</th><th>Tipo</th><th>Valor Base</th><th>Comissão</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Aluno</th><th>Turma</th><th>Data Pgto</th><th>Tipo</th><th>Valor Base</th><th>Comissão</th></tr></thead>
           <tbody>
             ${movimentacoesProf.map(m => `
-              <tr>
-                <td>${m.aluno_nome}</td><td>${m.turma_nome}</td><td>${new Date(m.data).toLocaleDateString()}</td><td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td><td>R$ ${m.valor_base.toFixed(2)}</td><td>R$ ${m.valor_comissao.toFixed(2)}</td>
-              </tr>
+              <tr><td>${m.aluno_nome}</td><td>${m.turma_nome}</td><td>${new Date(m.data).toLocaleDateString()}</td><td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td><td>R$ ${m.valor_base.toFixed(2)}</td><td>R$ ${m.valor_comissao.toFixed(2)}</td></tr>
             `).join('')}
           </tbody>
         </table>
-        <div class="total-table">
-          Total de Comissão: <span>R$ ${valorFormatado}</span>
-        </div>
+        <div class="total-table">Total de Comissão: <span>R$ ${valorFormatado}</span></div>
         <div class="section-title">2. Recibo de Pagamento</div>
         <div class="recibo-box">
-          <div class="recibo-text">
-            Eu, <strong>${professor?.nome}</strong>, declaro para os devidos fins que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia abaixo referente ao pagamento de comissão pelos serviços prestados no período supracitado.
-          </div>
-          <div class="recibo-valor">
-            Valor Recebido: R$ ${valorFormatado}
-          </div>
-          <div class="recibo-text" style="font-size: 9pt; color: #555;">
-            Para clareza e comprovação, assino o presente recibo, concordando com os valores e itens listados no relatório acima.
-          </div>
+          <div class="recibo-text">Eu, <strong>${professor?.nome}</strong>, declaro para os devidos fins que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia abaixo referente ao pagamento de comissão pelos serviços prestados no período supracitado.</div>
+          <div class="recibo-valor">Valor Recebido: R$ ${valorFormatado}</div>
+          <div class="recibo-text" style="font-size: 9pt; color: #555;">Para clareza e comprovação, assino o presente recibo, concordando com os valores e itens listados no relatório acima.</div>
         </div>
         <div class="assinaturas">
-          <div class="assinatura-linha">
-            <div class="linha"></div>
-            <p><strong>${professor?.nome}</strong></p>
-            <p style="font-size: 9px; color: #666;">Professor(a)</p>
-          </div>
-          <div class="assinatura-linha">
-            <div class="linha"></div>
-            <p><strong>CT OKINAWA</strong></p>
-            <p style="font-size: 9px; color: #666;">Coordenação</p>
-          </div>
+          <div class="assinatura-linha"><div class="linha"></div><p><strong>${professor?.nome}</strong></p><p style="font-size: 9px; color: #666;">Professor(a)</p></div>
+          <div class="assinatura-linha"><div class="linha"></div><p><strong>CT OKINAWA</strong></p><p style="font-size: 9px; color: #666;">Coordenação</p></div>
         </div>
         <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
       </body></html>
@@ -512,61 +219,327 @@ export default function RelatoriosPage() {
     w?.document.close()
   }
 
-  // Lógica de Relatório de Professor (Busca)
-  async function carregarRelatorioProfessorBase() {
-    setLoadingProf(true)
-    const { data: turmasProfessor } = await supabase.from("turmas").select("id, nome").eq("professor_id", professorSelecionado).eq("status", "ativo")
-    if (!turmasProfessor?.length) { setMovimentacoesProf([]); setTotalComissaoProf(0); setLoadingProf(false); return; }
-    const turmaIds = turmasProfessor.map(t => t.id)
-    const { data: matriculas } = await supabase.from("matriculas").select("id, aluno_id, turma_id, alunos ( id, nome )").in("turma_id", turmaIds).eq("status", "ativo")
-    if (!matriculas?.length) { setMovimentacoesProf([]); setTotalComissaoProf(0); setLoadingProf(false); return; }
-    const matriculaPorAluno = new Map()
-    for (const m of matriculas) {
-      let alunoNome = "?"
-      if (m.alunos) {
-        if (Array.isArray(m.alunos) && m.alunos.length > 0) alunoNome = m.alunos[0]?.nome || "?"
-        else if (typeof m.alunos === "object" && m.alunos !== null) alunoNome = (m.alunos as any).nome || "?"
-      }
-      matriculaPorAluno.set(m.aluno_id, { turmaId: m.turma_id, alunoNome })
-    }
-    const alunoIds = Array.from(matriculaPorAluno.keys())
-    const { data: movimentacoes } = await supabase.from("caixa").select("*").in("aluno_id", alunoIds).in("tipo", ["matricula", "mensalidade"]).eq("cancelado", false).gte("data", `${dataInicioProf}T00:00:00`).lte("data", `${dataFimProf}T23:59:59`)
-    const professor = professores.find(p => p.id === professorSelecionado)
-    const comissaoPercent = professor?.comissao || 0
-    const lista: Movimentacao[] = []
-    let total = 0
-    for (const mov of movimentacoes || []) {
-      const info = matriculaPorAluno.get(mov.aluno_id)
-      if (!info) continue
-      const valorBase = Number(mov.valor_base || 0)
-      const comissao = valorBase * (comissaoPercent / 100)
-      lista.push({ id: mov.id, aluno_nome: info.alunoNome, turma_nome: turmasProfessor.find(t => t.id === info.turmaId)?.nome || "", data: mov.data, tipo: mov.tipo, valor_base: valorBase, valor_comissao: comissao })
-      total += comissao
-    }
-    setMovimentacoesProf(lista)
-    setTotalComissaoProf(total)
-    setLoadingProf(false)
+  // --- LÓGICA DE SAÚDE ---
+  async function carregarRelatorioSaude() {
+    setLoadingSaude(true)
+    const { data: consultas } = await supabase
+      .from("agendamentos_saude")
+      .select("*, servicos_saude(nome)")
+      .eq("profissional_id", profSaudeSelecionado)
+      .eq("status", "compareceu")
+      .gte("data_hora", `${dataInicioSaude}T00:00:00`)
+      .lte("data_hora", `${dataFimSaude}T23:59:59`)
+      .order("data_hora")
+
+    const lista = (consultas || []).map(c => ({
+      id: c.id, paciente_nome: c.nome_paciente, data: c.data_hora, servico_nome: c.servicos_saude?.nome || "Consulta", valor: Number(c.valor)
+    }))
+
+    const total = lista.reduce((acc, curr) => acc + curr.valor, 0)
+    setAtendimentosSaude(lista)
+    setTotalFaturadoSaude(total)
+    setLoadingSaude(false)
   }
 
-  useEffect(() => {
-    if (aba === "professores" && professorSelecionado && dataInicioProf && dataFimProf) {
-      carregarRelatorioProfessorBase()
-    }
-  }, [professorSelecionado, dataInicioProf, dataFimProf, aba])
+  function imprimirRelatorioSaude() {
+    const prof = profissionaisSaude.find(p => p.id === profSaudeSelecionado)
+    if (!prof) return
+
+    const dataInicioFormatada = new Date(dataInicioSaude + "T12:00:00").toLocaleDateString('pt-BR')
+    const dataFimFormatada = new Date(dataFimSaude + "T12:00:00").toLocaleDateString('pt-BR')
+    const isAluguel = prof.modelo_repasse === 'mensalidade'
+    const valorRepasse = prof.valor_repasse
+    
+    let textoRecibo = isAluguel 
+      ? `Eu, <strong>${prof.nome}</strong>, declaro que pagou ao <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia de <strong>R$ ${valorRepasse.toFixed(2).replace('.', ',')}</strong> referente à utilização do espaço e equipamentos no período de <strong>${dataInicioFormatada}</strong> a <strong>${dataFimFormatada}</strong>.`
+      : `Eu, <strong>${prof.nome}</strong>, declaro que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia de <strong>R$ ${((totalFaturadoSaude * valorRepasse) / 100).toFixed(2).replace('.', ',')}</strong> referente ao repasse de ${valorRepasse}% pelos atendimentos realizados no período de <strong>${dataInicioFormatada}</strong> a <strong>${dataFimFormatada}</strong>.`
+
+    const valorAssinatura = isAluguel ? valorRepasse.toFixed(2).replace('.', ',') : ((totalFaturadoSaude * valorRepasse) / 100).toFixed(2).replace('.', ',')
+
+    const w = window.open("", "", "width=900,height=800")
+    w?.document.write(`
+      <html><head><title>Relatório e Recibo - Saúde</title>
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; font-size: 10pt; margin: 0; padding: 0; }
+        .header { text-align: center; border-bottom: 2px solid #008080; padding-bottom: 5px; margin-bottom: 15px; }
+        .header h1 { font-size: 22px; color: #008080; margin: 0; }
+        .header p { font-size: 11px; color: #666; margin: 3px 0 0 0; }
+        .section-title { font-size: 13px; font-weight: bold; color: #008080; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
+        th { background: #f5f5f5; color: #333; padding: 6px; text-align: left; font-size: 9pt; border-bottom: 2px solid #ccc; }
+        td { padding: 6px; border-bottom: 1px solid #eee; font-size: 9pt; }
+        .total-table { font-weight: bold; text-align: right; font-size: 11pt; margin-bottom: 20px; page-break-inside: avoid; }
+        .total-table span { color: #008080; }
+        .recibo-box { border: 1px solid #008080; padding: 15px; border-radius: 5px; margin-top: 20px; background: #f0fafa; page-break-inside: avoid; }
+        .recibo-text { line-height: 1.5; text-align: justify; font-size: 10pt; margin-bottom: 10px; }
+        .recibo-valor { font-size: 15px; font-weight: bold; text-align: center; margin: 10px 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; padding: 8px 0; }
+        .assinaturas { display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid; }
+        .assinatura-linha { text-align: center; width: 45%; }
+        .linha { border-top: 1px solid #000; margin-bottom: 5px; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style>
+      </head><body>
+        <div class="header"><h1>CT OKINAWA</h1><p>Saúde e Performance</p></div>
+        <div class="section-title">1. Relatório de Atendimentos</div>
+        <p><strong>Profissional:</strong> ${prof.nome} (${prof.especialidade})</p>
+        <p><strong>Período:</strong> ${dataInicioFormatada} a ${dataFimFormatada}</p>
+        <table>
+          <thead><tr><th>Paciente</th><th>Data</th><th>Procedimento</th><th>Valor Cobrado</th></tr></thead>
+          <tbody>
+            ${atendimentosSaude.map(a => `<tr><td>${a.paciente_nome}</td><td>${new Date(a.data).toLocaleDateString()}</td><td>${a.servico_nome}</td><td>R$ ${a.valor.toFixed(2)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="total-table">Total Faturado no Período: <span>R$ ${totalFaturadoSaude.toFixed(2).replace('.', ',')}</span></div>
+        <div class="section-title">2. ${isAluguel ? 'Recibo de Aluguel' : 'Recibo de Repasse'}</div>
+        <div class="recibo-box">
+          <div class="recibo-text">${textoRecibo}</div>
+          <div class="recibo-valor">Valor: R$ ${valorAssinatura}</div>
+          <div class="recibo-text" style="font-size: 9pt; color: #555;">Para clareza e comprovação, assino o presente recibo.</div>
+        </div>
+        <div class="assinaturas">
+          <div class="assinatura-linha"><div class="linha"></div><p><strong>${prof.nome}</strong></p><p style="font-size: 9px; color: #666;">Profissional de Saúde</p></div>
+          <div class="assinatura-linha"><div class="linha"></div><p><strong>CT OKINAWA</strong></p><p style="font-size: 9px; color: #666;">Coordenação</p></div>
+        </div>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
+      </body></html>
+    `)
+    w?.document.close()
+  }
+
+  // --- BALANÇO MENSAL ---
+  async function carregarBalanco() {
+    setLoadingBalanco(true)
+    const [ano, mes] = mesBalanco.split('-')
+    const primeiroDia = `${ano}-${mes}-01T00:00:00`
+    const ultimoDia = new Date(Number(ano), Number(mes), 0).toISOString().split('T')[0] + "T23:59:59"
+
+    const { data: receitas } = await supabase.from("caixa").select("*, alunos(nome)").eq("cancelado", false).gte("data", primeiroDia).lte("data", ultimoDia)
+    const { data: despesas } = await supabase.from("despesas").select("*").eq("status", "pago").gte("data_pagamento", `${ano}-${mes}-01`).lte("data_pagamento", new Date(Number(ano), Number(mes), 0).toISOString().split('T')[0])
+
+    const totalReceitas = (receitas || []).reduce((acc, curr) => acc + Number(curr.valor), 0)
+    const totalDespesas = (despesas || []).reduce((acc, curr) => acc + Number(curr.valor), 0)
+
+    setBalanco({ receitas: totalReceitas, despesas: totalDespesas, detalheReceitas: receitas || [], detalheDespesas: despesas || [] })
+    setLoadingBalanco(false)
+  }
+
+  function imprimirBalanco() {
+    const [ano, mes] = mesBalanco.split('-')
+    const nomeMes = new Date(Number(ano), Number(mes) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    const lucro = balanco.receitas - balanco.despesas
+
+    const w = window.open("", "", "width=800,height=800")
+    w?.document.write(`
+      <html><head><title>Balanço Financeiro - ${nomeMes}</title>
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; font-size: 10pt; margin: 0; padding: 0; }
+        .header { text-align: center; border-bottom: 2px solid #008080; padding-bottom: 5px; margin-bottom: 15px; }
+        .header h1 { font-size: 22px; color: #008080; margin: 0; }
+        .resumo { display: flex; justify-content: space-between; margin: 20px 0; background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #ddd; }
+        .box { text-align: center; width: 30%; }
+        .box h3 { font-size: 12px; color: #666; margin-bottom: 5px; }
+        .box h2 { font-size: 22px; margin: 0; }
+        .receita h2 { color: #008000; }
+        .despesa h2 { color: #cc0000; }
+        .lucro h2 { color: ${lucro >= 0 ? '#008000' : '#cc0000'}; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { background: #eee; padding: 8px; text-align: left; font-size: 10pt; }
+        td { padding: 6px; border-bottom: 1px solid #ddd; font-size: 9pt; }
+      </style></head><body>
+        <div class="header"><h1>CT OKINAWA</h1><p>Balanço Financeiro - ${nomeMes}</p></div>
+        <div class="resumo">
+          <div class="box receita"><h3>Receitas</h3><h2>R$ ${balanco.receitas.toFixed(2)}</h2></div>
+          <div class="box despesa"><h3>Despesas</h3><h2>R$ ${balanco.despesas.toFixed(2)}</h2></div>
+          <div class="box lucro"><h3>Resultado Líquido</h3><h2>R$ ${lucro.toFixed(2)}</h2></div>
+        </div>
+        <h3>Detalhamento de Receitas</h3>
+        <table>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Valor</th></tr></thead>
+          <tbody>
+            ${balanco.detalheReceitas.map((r: any) => `<tr><td>${new Date(r.data).toLocaleDateString()}</td><td>${r.nome || r.alunos?.nome || '---'}</td><td style="text-transform: capitalize">${r.tipo}</td><td>R$ ${Number(r.valor).toFixed(2)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <h3>Detalhamento de Despesas</h3>
+        <table>
+          <thead><tr><th>Data Pgto</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
+          <tbody>
+            ${balanco.detalheDespesas.map((d: any) => `<tr><td>${new Date(d.data_pagamento + "T12:00:00").toLocaleDateString()}</td><td>${d.descricao}</td><td>${d.categoria}</td><td>R$ ${Number(d.valor).toFixed(2)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <script>window.onload = () => { window.print(); window.close(); }</script>
+      </body></html>
+    `)
+    w?.document.close()
+  }
+
+  // --- OUTRAS FUNÇÕES (PRESENÇA, TURMAS, PARCEIROS) ---
+  async function carregarPresencas() {
+    setLoadingPres(true)
+    let query = supabase.from("presencas").select("*, alunos(nome), turmas(nome)").order("data", { ascending: false })
+    if (filtroTurmaPresenca) query = query.eq("turma_id", filtroTurmaPresenca)
+    if (dataInicioPres) query = query.gte("data", dataInicioPres)
+    if (dataFimPres) query = query.lte("data", dataFimPres)
+    const { data } = await query
+    const lista = (data || []).map(p => {
+      let alunoNome = "?"
+      if (p.alunos) {
+        if (Array.isArray(p.alunos) && p.alunos.length > 0) alunoNome = p.alunos[0]?.nome || "?"
+        else if (typeof p.alunos === "object") alunoNome = (p.alunos as any).nome || "?"
+      }
+      let turmaNome = "?"
+      if (p.turmas) {
+        if (Array.isArray(p.turmas) && p.turmas.length > 0) turmaNome = p.turmas[0]?.nome || "?"
+        else if (typeof p.turmas === "object") turmaNome = (p.turmas as any).nome || "?"
+      }
+      return { id: p.id, aluno_nome: alunoNome, turma_nome: turmaNome, data: p.data, status: p.status }
+    })
+    setPresencas(lista)
+    setLoadingPres(false)
+  }
+
+  async function excluirPresenca(id: string) {
+    if (!confirm("Excluir esta presença?")) return
+    await supabase.from("presencas").delete().eq("id", id)
+    carregarPresencas()
+  }
+
+  async function editarPresenca(id: string, novoStatus: string) {
+    await supabase.from("presencas").update({ status: novoStatus }).eq("id", id)
+    carregarPresencas()
+  }
+
+  function imprimirPresencas() {
+    const w = window.open("", "", "width=800,height=600")
+    w?.document.write(`<html><head><title>Relatório de Presenças</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
+    <h1>CT OKINAWA</h1><h2>Relatório de Presenças</h2><p>Período: ${dataInicioPres || "início"} a ${dataFimPres || "fim"}</p>
+    <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th></tr></thead><tbody>
+    ${presencas.map(p => `<tr><td>${p.aluno_nome}</td><td>${p.turma_nome}</td><td>${new Date(p.data).toLocaleDateString()}</td><td>${p.status}</td></tr>`).join('')}
+    </tbody></table>
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`)
+    w?.document.close()
+  }
+
+  async function carregarAlunosPorTurma() {
+    if (!turmaSelecionada) return
+    const { data: matriculas } = await supabase.from("matriculas").select("alunos(id, nome, cpf, status)").eq("turma_id", turmaSelecionada).eq("status", "ativo")
+    const alunos = matriculas?.map(m => {
+      const a = m.alunos
+      if (Array.isArray(a) && a.length > 0) return a[0]
+      return a
+    }).filter(Boolean) || []
+    setAlunosTurma(alunos)
+  }
+
+  async function carregarRelatorioParceiro() {
+    setLoadingParceiro(true)
+    const { data: vendas } = await supabase.from("caixa").select("*").eq("tipo", "venda").eq("parceiro_id", parceiroSelecionado).eq("cancelado", false).gte("data", `${dataInicioParceiro}T00:00:00`).lte("data", `${dataFimParceiro}T23:59:59`)
+    const lista = (vendas || []).map(v => ({ id: v.id, produto: v.descricao || v.nome || "Produto", valor: Number(v.valor), data: v.data }))
+    const total = lista.reduce((acc, v) => acc + v.valor, 0)
+    setVendasParceiro(lista)
+    setTotalVendasParceiro(total)
+    setLoadingParceiro(false)
+  }
+
+  function imprimirRelatorioParceiro() {
+    const parceiro = parceiros.find(p => p.id === parceiroSelecionado)
+    const w = window.open("", "", "width=800,height=600")
+    w?.document.write(`<html><head><title>Relatório Parceiro</title><style>table,th,td{border:1px solid #ccc;border-collapse:collapse;padding:8px}</style></head><body>
+    <h1>CT OKINAWA</h1><h2>Relatório de Vendas - Parceiro ${parceiro?.nome}</h2>
+    <p>Período: ${new Date(dataInicioParceiro).toLocaleDateString()} a ${new Date(dataFimParceiro).toLocaleDateString()}</p>
+    <table><thead><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead><tbody>
+    ${vendasParceiro.map(v => `<tr><td>${v.produto}</td><td>R$ ${v.valor.toFixed(2)}</td><td>${new Date(v.data).toLocaleDateString()}</td></tr>`).join('')}
+    </tbody></table>
+    <h3>Total: R$ ${totalVendasParceiro.toFixed(2)}</h3>
+    <script>window.onload=()=>window.print()</script>
+    </body></html>`)
+    w?.document.close()
+  }
+
+  function getModalidadeNome(turma: any): string {
+    if (!turma.modalidades) return "?"
+    if (Array.isArray(turma.modalidades)) return turma.modalidades[0]?.nome || "?"
+    return turma.modalidades.nome || "?"
+  }
 
   return (
     <AdminGuard>
       <div className="max-w-7xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-6">Central de Relatórios</h1>
+        
         <div className="flex gap-2 mb-6 border-b overflow-x-auto pb-2">
           <button className={`px-4 py-2 whitespace-nowrap ${aba === "professores" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("professores")}>Professores</button>
           <button className={`px-4 py-2 whitespace-nowrap ${aba === "saude" ? "bg-teal-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("saude")}>Profissionais de Saúde</button>
           <button className={`px-4 py-2 whitespace-nowrap ${aba === "presenca" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("presenca")}>Presença</button>
           <button className={`px-4 py-2 whitespace-nowrap ${aba === "turmas" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("turmas")}>Modalidades / Turmas</button>
           <button className={`px-4 py-2 whitespace-nowrap ${aba === "parceiros" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("parceiros")}>Parceiros</button>
+          <button className={`px-4 py-2 whitespace-nowrap font-bold flex items-center gap-1 ${aba === "balanco" ? "bg-teal-600 text-white rounded-t" : "text-gray-600 hover:bg-gray-100"}`} onClick={() => setAba("balanco")}><BarChart3 size={16}/> Balanço Mensal</button>
         </div>
 
-        {/* ABA SAÚDE */}
+        {aba === "balanco" && (
+          <div className="bg-white p-4 rounded-xl shadow">
+            <div className="flex justify-between items-center mb-6 bg-gray-50 p-3 rounded border">
+              <div>
+                <label className="text-sm font-bold text-gray-600 mr-2">Selecione o Mês:</label>
+                <input type="month" className="p-2 border rounded" value={mesBalanco} onChange={e => setMesBalanco(e.target.value)} />
+              </div>
+              <button onClick={imprimirBalanco} className="bg-teal-600 text-white px-4 py-2 rounded font-bold flex items-center gap-2 hover:bg-teal-700">
+                <Printer size={18}/> Imprimir Relatório (PDF)
+              </button>
+            </div>
+
+            {loadingBalanco ? <p className="text-center py-10">Calculando...</p> : (
+              <>
+                <div className="grid md:grid-cols-3 gap-4 mb-8">
+                  <div className="bg-green-50 border border-green-200 p-4 rounded-xl text-center">
+                    <p className="text-sm font-bold text-green-700 uppercase">Receitas (Entradas)</p>
+                    <p className="text-3xl font-bold text-green-600 mt-2">R$ {balanco.receitas.toFixed(2)}</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center">
+                    <p className="text-sm font-bold text-red-700 uppercase">Despesas (Saídas)</p>
+                    <p className="text-3xl font-bold text-red-600 mt-2">R$ {balanco.despesas.toFixed(2)}</p>
+                  </div>
+                  <div className={`${balanco.receitas - balanco.despesas >= 0 ? 'bg-teal-50 border-teal-200' : 'bg-orange-50 border-orange-200'} border p-4 rounded-xl text-center`}>
+                    <p className="text-sm font-bold text-gray-700 uppercase">Resultado Líquido</p>
+                    <p className={`text-3xl font-bold mt-2 ${balanco.receitas - balanco.despesas >= 0 ? 'text-teal-600' : 'text-orange-600'}`}>
+                      R$ {(balanco.receitas - balanco.despesas).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="font-bold text-green-700 border-b pb-2 mb-2">Últimas Receitas</h3>
+                    <div className="max-h-60 overflow-y-auto text-sm">
+                      {balanco.detalheReceitas.slice(0, 10).map((r, i) => (
+                        <div key={i} className="flex justify-between p-2 border-b">
+                          <span>{new Date(r.data).toLocaleDateString()} - {r.nome || 'Caixa'}</span>
+                          <span className="text-green-600 font-bold">+ R$ {Number(r.valor).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-red-700 border-b pb-2 mb-2">Últimas Despesas</h3>
+                    <div className="max-h-60 overflow-y-auto text-sm">
+                      {balanco.detalheDespesas.slice(0, 10).map((d, i) => (
+                        <div key={i} className="flex justify-between p-2 border-b">
+                          <span>{new Date(d.data_pagamento + "T12:00:00").toLocaleDateString()} - {d.descricao}</span>
+                          <span className="text-red-600 font-bold">- R$ {Number(d.valor).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {aba === "saude" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-3 gap-4 mb-4">
@@ -590,10 +563,7 @@ export default function RelatoriosPage() {
                     <tbody>
                       {atendimentosSaude.map(a => (
                         <tr key={a.id}>
-                          <td className="p-2">{a.paciente_nome}</td>
-                          <td className="p-2">{new Date(a.data).toLocaleDateString()}</td>
-                          <td className="p-2">{a.servico_nome}</td>
-                          <td className="p-2">R$ {a.valor.toFixed(2)}</td>
+                          <td className="p-2">{a.paciente_nome}</td><td className="p-2">{new Date(a.data).toLocaleDateString()}</td><td className="p-2">{a.servico_nome}</td><td className="p-2">R$ {a.valor.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -608,7 +578,6 @@ export default function RelatoriosPage() {
           </div>
         )}
 
-        {/* ABA PROFESSORES (Mantida) */}
         {aba === "professores" && (
           <div className="bg-white p-4 rounded-xl shadow">
              <div className="grid md:grid-cols-3 gap-4 mb-4">
@@ -631,12 +600,7 @@ export default function RelatoriosPage() {
                     <tbody>
                       {movimentacoesProf.map(m => (
                         <tr key={m.id}>
-                          <td className="p-2">{m.aluno_nome}</td>
-                          <td className="p-2">{m.turma_nome}</td>
-                          <td className="p-2">{new Date(m.data).toLocaleDateString()}</td>
-                          <td className="p-2">{m.tipo === "matricula" ? "Matrícula" : "Mensalidade"}</td>
-                          <td className="p-2">R$ {m.valor_base.toFixed(2)}</td>
-                          <td className="p-2">R$ {m.valor_comissao.toFixed(2)}</td>
+                          <td className="p-2">{m.aluno_nome}</td><td className="p-2">{m.turma_nome}</td><td className="p-2">{new Date(m.data).toLocaleDateString()}</td><td className="p-2">{m.tipo === "matricula" ? "Matrícula" : "Mensalidade"}</td><td className="p-2">R$ {m.valor_base.toFixed(2)}</td><td className="p-2">R$ {m.valor_comissao.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -651,7 +615,6 @@ export default function RelatoriosPage() {
           </div>
         )}
 
-        {/* OUTRAS ABAS (MANTIDAS) */}
         {aba === "presenca" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-4 gap-4 mb-4">

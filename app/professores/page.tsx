@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
-import { FileText, Download } from "lucide-react"
+import { FileText } from "lucide-react"
 import jsPDF from "jspdf"
 
 type Professor = {
   id: string
   nome: string
   cpf: string
-  rg: string
   endereco: string
   modalidade: string
   telefone: string
@@ -26,7 +25,7 @@ export default function ProfessoresPage() {
   const [professores, setProfessores] = useState<Professor[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({
-    nome: "", cpf: "", rg: "", endereco: "", modalidade: "",
+    nome: "", cpf: "", endereco: "", modalidade: "",
     telefone: "", pix: "", comissao: "", codigo_acesso: "", status: "ativo", observacao: "",
   })
   const [editandoId, setEditandoId] = useState<string | null>(null)
@@ -53,7 +52,7 @@ export default function ProfessoresPage() {
     if (isNaN(comissaoNum) || comissaoNum < 0 || comissaoNum > 100) return alert("Comissão deve ser entre 0 e 100")
 
     const payload = {
-      nome: form.nome.trim(), cpf: form.cpf || null, rg: form.rg || null, endereco: form.endereco || null,
+      nome: form.nome.trim(), cpf: form.cpf || null, endereco: form.endereco || null,
       modalidade: form.modalidade || null, telefone: form.telefone || null, pix: form.pix || null,
       comissao: comissaoNum, codigo_acesso: form.codigo_acesso || null, status: form.status, observacao: form.observacao || null,
     }
@@ -86,7 +85,7 @@ export default function ProfessoresPage() {
   function editarProfessor(prof: Professor) {
     setEditandoId(prof.id)
     setForm({
-      nome: prof.nome, cpf: prof.cpf || "", rg: prof.rg || "", endereco: prof.endereco || "", modalidade: prof.modalidade || "",
+      nome: prof.nome, cpf: prof.cpf || "", endereco: prof.endereco || "", modalidade: prof.modalidade || "",
       telefone: prof.telefone || "", pix: prof.pix || "", comissao: prof.comissao.toString(),
       codigo_acesso: prof.codigo_acesso || "", status: prof.status, observacao: prof.observacao || "",
     })
@@ -107,7 +106,7 @@ export default function ProfessoresPage() {
 
   function resetForm() {
     setEditandoId(null)
-    setForm({ nome: "", cpf: "", rg: "", endereco: "", modalidade: "", telefone: "", pix: "", comissao: "", codigo_acesso: "", status: "ativo", observacao: "" })
+    setForm({ nome: "", cpf: "", endereco: "", modalidade: "", telefone: "", pix: "", comissao: "", codigo_acesso: "", status: "ativo", observacao: "" })
   }
 
   function copiarCodigo(codigo: string) {
@@ -115,12 +114,11 @@ export default function ProfessoresPage() {
     alert("Código copiado! Use para acessar a presença.")
   }
 
-  // --- CONTRATO E MANUAL (COM COMISSÃO DINÂMICA E MARGEM CORRIGIDA) ---
   function gerarContratoManualPDF(prof: Professor) {
     const doc = new jsPDF()
     let y = 20
     const margem = 15
-    const larguraTexto = 170 // Margem ajustada para não cortar o texto na direita
+    const larguraTexto = 170
 
     const adicionarTexto = (texto: string, isTitulo = false, isNegrito = false) => {
       doc.setFontSize(isTitulo ? 12 : 10)
@@ -135,13 +133,14 @@ export default function ProfessoresPage() {
       y += 4 
     }
 
+    // --- PÁGINA 1: CONTRATO ---
     doc.setFontSize(14)
     doc.setFont("helvetica", "bold")
     doc.text("CONTRATO DE PRESTAÇÃO DE SERVIÇOS AUTÔNOMOS", 105, y, { align: "center" })
     y += 15
 
     adicionarTexto("CONTRATANTE: CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA, pessoa jurídica de direito privado, com sede à R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050, neste ato representada por seu responsável legal Arliton Almeida de Jesus.", false, true)
-    adicionarTexto(`CONTRATADO(A): ${prof.nome}, inscrito(a) no CPF nº ${prof.cpf || '---'}, portador(a) do RG nº ${prof.rg || '---'}, residente e domiciliado(a) à ${prof.endereco || '---'}.`, false, true)
+    adicionarTexto(`CONTRATADO(A): ${prof.nome}, inscrito(a) no CPF nº ${prof.cpf || '---'}, residente e domiciliado(a) à ${prof.endereco || '---'}.`, false, true)
 
     adicionarTexto("CLÁUSULA 1 – DO OBJETO", true)
     adicionarTexto(`O presente contrato tem por objeto a prestação de serviços profissionais autônomos pelo(a) CONTRATADO(A), consistentes na ministração de aulas da modalidade ${prof.modalidade || '[MODALIDADE]'}, nas dependências da CONTRATANTE, bem como outras atividades correlatas necessárias ao bom funcionamento das turmas.`)
@@ -159,7 +158,7 @@ export default function ProfessoresPage() {
     adicionarTexto("§3º Alunos inadimplentes não serão considerados para fins de cálculo.")
 
     adicionarTexto("CLÁUSULA 5 – DA FORMA DE PAGAMENTO", true)
-    adicionarTexto("O pagamento será realizado até o dia 10 de cada mês, referente ao período anterior, via PIX.")
+    adicionarTexto(`O pagamento será realizado até o dia 10 de cada mês, referente ao período anterior, por meio de transferência via PIX para a chave: ${prof.pix || 'A definir no ato da assinatura'}.`)
 
     adicionarTexto("CLÁUSULA 6 – DAS OBRIGAÇÕES DO(A) CONTRATADO(A)", true)
     adicionarTexto("I – Ministrar aulas com qualidade técnica e responsabilidade; II – Zelar pela integridade dos alunos; III – Cumprir horários estabelecidos; IV – Registrar a presença dos alunos em todas as aulas por meio do sistema definido; V – Manter conduta ética e profissional; VI – Preservar a estrutura do CT.")
@@ -176,18 +175,7 @@ export default function ProfessoresPage() {
     adicionarTexto("CLÁUSULA 10 – DA RESCISÃO", true)
     adicionarTexto("O presente contrato poderá ser rescindido por qualquer das partes, a qualquer tempo, mediante aviso prévio mínimo de 30 (trinta) dias. Em caso de rescisão imotivada pelo CONTRATADO sem o cumprimento do aviso, será devida multa de 50% do valor médio do faturamento mensal.")
 
-    if (y > 220) { doc.addPage(); y = 20 }
-    y += 20
-    doc.setFontSize(10)
-    doc.text("Salvador, ____ de _______________ de ________", 105, y, { align: "center" })
-    y += 30
-    doc.line(30, y, 90, y)
-    doc.line(120, y, 180, y)
-    doc.text("Arliton Almeida - CT OKINAWA", 30, y + 5)
-    doc.text(prof.nome, 120, y + 5)
-
-
-    // MANUAL DO PROFESSOR
+    // --- PÁGINA 2: MANUAL DO PROFESSOR ---
     doc.addPage()
     y = 20
     doc.setFontSize(14)
@@ -222,65 +210,25 @@ export default function ProfessoresPage() {
     adicionarTexto("9. DA RESPONSABILIDADE POR ALUNOS FORA DO CT", true)
     adicionarTexto("Caso o professor, por iniciativa própria, assuma a responsabilidade de acompanhar, transportar ou prestar assistência ao aluno fora das dependências do CT, tal responsabilidade será exclusiva do professor, isentando o CT OKINAWA de qualquer ocorrência.")
 
+    // ASSINATURA ÚNICA NO FINAL DE TUDO
     if (y > 220) { doc.addPage(); y = 20 }
     y += 20
-    adicionarTexto("TERMO DE CIÊNCIA DO PROFESSOR", true, true)
-    adicionarTexto("Declaro que li e estou de acordo com o presente manual.")
+    adicionarTexto("TERMO DE CIÊNCIA E ASSINATURA", true, true)
+    adicionarTexto("Declaro que li, compreendi e estou de acordo com o presente Contrato e Manual do Professor.")
     y += 20
-    doc.line(30, y, 180, y)
-    doc.text(`${prof.nome} - CPF: ${prof.cpf || '---'}`, 30, y + 5)
-
-    doc.save(`Contrato_e_Manual_${prof.nome.replace(/\s+/g, '_')}.pdf`)
-  }
-
-  // --- RECIBO DE COMISSÃO ---
-  function gerarReciboComissao(prof: Professor) {
-    const mes = prompt("Digite o mês de referência (Ex: Outubro/2023):")
-    if (!mes) return
-    const valorTotalStr = prompt("Digite o valor TOTAL da comissão a ser paga (Ex: 1500.50):")
-    if (!valorTotalStr) return
-    
-    const valorTotal = parseFloat(valorTotalStr.replace(",", "."))
-    if (isNaN(valorTotal)) return alert("Valor inválido.")
-
-    const doc = new jsPDF()
-    let y = 20
-
-    doc.setFontSize(16)
-    doc.setFont("helvetica", "bold")
-    doc.text("RECIBO DE PAGAMENTO DE COMISSÃO", 105, y, { align: "center" })
-    y += 15
-
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "normal")
-    doc.text(`Valor: R$ ${valorTotal.toFixed(2).replace('.', ',')}`, 15, y)
-    y += 10
-    doc.text(`Referente a: Comissão de ${prof.comissao}% sobre aulas de ${prof.modalidade || "Modalidades"}`, 15, y)
-    y += 10
-    doc.text(`Mês de Referência: ${mes}`, 15, y)
-    y += 20
-
-    const texto = `Eu, ${prof.nome}, inscrito(a) no CPF nº ${prof.cpf || '---'}, declaro para os devidos fins que recebi do CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA a quantia de R$ ${valorTotal.toFixed(2).replace('.', ',')} (${valorTotal.toFixed(2)} reais), referente ao pagamento de comissão pelos serviços prestados no mês de ${mes}.`
-    const splitText = doc.splitTextToSize(texto, 170)
-    doc.text(splitText, 15, y)
-    y += splitText.length * 7 + 30
-
-    doc.setFontSize(10)
-    doc.text("Salvador, ____ de _______________ de ________", 105, y, { align: "center" })
-    y += 30
-
     doc.setLineWidth(0.5)
     doc.line(30, y, 90, y)
     doc.line(120, y, 180, y)
-    
-    doc.text(prof.nome, 30, y + 5)
-    doc.text("CT OKINAWA", 120, y + 5)
-    
-    doc.setFontSize(8)
-    doc.text("Assinatura do Profissional", 30, y + 10)
-    doc.text("Assinatura do Responsável", 120, y + 10)
+    y += 5
+    doc.setFontSize(10)
+    doc.setFont("helvetica", "bold")
+    doc.text("Arliton Almeida - CT OKINAWA", 30, y)
+    doc.text(`${prof.nome}`, 120, y)
+    doc.setFont("helvetica", "normal")
+    doc.text("Contratante", 30, y + 5)
+    doc.text(`CPF: ${prof.cpf || '---'}`, 120, y + 5)
 
-    doc.save(`Recibo_Comissao_${prof.nome.replace(/\s+/g, '_')}.pdf`)
+    doc.save(`Contrato_e_Manual_${prof.nome.replace(/\s+/g, '_')}.pdf`)
   }
 
   return (
@@ -288,15 +236,11 @@ export default function ProfessoresPage() {
       <div className="max-w-6xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-6">Professores</h1>
 
-        {/* Formulário */}
         <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4">
-            {editandoId ? "Editar Professor" : "Novo Professor"}
-          </h2>
+          <h2 className="text-xl font-bold mb-4">{editandoId ? "Editar Professor" : "Novo Professor"}</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <input className="input" placeholder="Nome completo" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
             <input className="input" placeholder="CPF" value={form.cpf} onChange={e => setForm({ ...form, cpf: e.target.value })} />
-            <input className="input" placeholder="RG" value={form.rg} onChange={e => setForm({ ...form, rg: e.target.value })} />
             <input className="input" placeholder="Endereço Completo" value={form.endereco} onChange={e => setForm({ ...form, endereco: e.target.value })} />
             <input className="input" placeholder="Modalidade (Ex: Karatê)" value={form.modalidade} onChange={e => setForm({ ...form, modalidade: e.target.value })} />
             <input className="input" placeholder="Telefone" value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} />
@@ -324,7 +268,6 @@ export default function ProfessoresPage() {
           </div>
         </div>
 
-        {/* Lista de professores */}
         <div className="bg-white rounded-xl shadow overflow-hidden">
           {loading ? (
             <div className="p-6 text-center">Carregando...</div>
@@ -354,10 +297,7 @@ export default function ProfessoresPage() {
                     </td>
                     <td className="p-3 flex gap-2 flex-wrap">
                       <button onClick={() => gerarContratoManualPDF(prof)} className="mini bg-purple-600 flex items-center gap-1">
-                        <FileText size={14}/> Contrato
-                      </button>
-                      <button onClick={() => gerarReciboComissao(prof)} className="mini bg-blue-600 flex items-center gap-1">
-                        <Download size={14}/> Recibo
+                        <FileText size={14}/> Contrato + Manual
                       </button>
                       <button onClick={() => editarProfessor(prof)} className="mini azul">Editar</button>
                       <button onClick={() => alternarStatus(prof)} className={`mini ${prof.status === "ativo" ? "bg-yellow-500" : "bg-green-500"}`}>

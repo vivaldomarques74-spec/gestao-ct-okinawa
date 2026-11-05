@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Users, AlertTriangle, Layers, TrendingUp, Award, School, CheckCircle, FlaskConical, MessageCircle, FileText, Stethoscope, ChevronRight, RefreshCw } from "lucide-react";
+import { Users, AlertTriangle, Layers, School, CheckCircle, FlaskConical, MessageCircle, FileText, Stethoscope, ChevronRight, RefreshCw, Award } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState({ ativos: 0, inativos: 0, alertas: 0, turmas: 0 });
+  const [stats, setStats] = useState({ ativos: 0, turmas: 0 });
   const [turmasList, setTurmasList] = useState<any[]>([]);
   const [modalidadesList, setModalidadesList] = useState<any[]>([]);
   const [escolasPendentes, setEscolasPendentes] = useState(0);
@@ -26,7 +26,6 @@ export default function Dashboard() {
   async function carregar() {
     const { data: alunos } = await supabase.from("alunos").select("status");
     const ativos = alunos?.filter((a: any) => a.status === "ativo").length || 0;
-    const inativos = alunos?.filter((a: any) => a.status === "inativo").length || 0;
     const pendentes = alunos?.filter((a: any) => a.status === "pendente").length || 0;
     setEscolasPendentes(pendentes);
 
@@ -50,7 +49,7 @@ export default function Dashboard() {
     });
 
     setAlertas({ atraso5, atraso2, venceHoje, vence2, vence5 });
-    setStats({ ativos, inativos, alertas: pendentesMensalidades.length, turmas: turmas?.length || 0 });
+    setStats({ ativos, turmas: turmas?.length || 0 });
 
     const { data: exp } = await supabase.from("aulas_experimentais").select("*").neq("status", "matriculado");
     const expCruzadas = (exp || []).map(e => {
@@ -69,7 +68,6 @@ export default function Dashboard() {
       .order("data_hora");
     setConsultasHoje(consultas || []);
 
-    // NOVO: Puxa Retornos dos próximos 7 dias
     const daqui7Dias = new Date()
     daqui7Dias.setDate(daqui7Dias.getDate() + 7)
     
@@ -124,13 +122,8 @@ export default function Dashboard() {
 
   const cards = [
     { title: "Alunos Ativos", value: stats.ativos, icon: Users, color: "text-green-600" },
-    { title: "Alunos Inativos", value: stats.inativos, icon: Users, color: "text-gray-500" },
-    { title: "Total Pendências", value: stats.alertas, icon: AlertTriangle, color: "text-red-500" },
     { title: "Turmas", value: stats.turmas, icon: Layers, color: "text-blue-500" },
   ];
-
-  const maxTurma = Math.max(...turmasList.map((t) => t.alunos), 1);
-  const maxModalidade = Math.max(...modalidadesList.map((m) => m.qtd), 1);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -139,6 +132,7 @@ export default function Dashboard() {
         <p className="text-gray-500">Acompanhe os indicadores da sua academia</p>
       </div>
 
+      {/* LINHA 1 E 2: APENAS OS CARDS SOLICITADOS E OS WIDGETS */}
       <div className="grid md:grid-cols-4 gap-4 mb-6">
         {cards.map((card, i) => (
           <div key={i} className="bg-white rounded-xl shadow-sm p-4 flex justify-between items-center border border-gray-100">
@@ -149,75 +143,44 @@ export default function Dashboard() {
             <card.icon className={`w-8 h-8 ${card.color}`} />
           </div>
         ))}
-      </div>
 
-      <div className="grid md:grid-cols-3 gap-4 mb-6">
+        {/* WIDGETS NA MESMA LINHA PARA COMPACTAR */}
         <div onClick={() => escolasPendentes > 0 ? router.push("/escolas") : null} className={`rounded-xl p-4 flex flex-col justify-between transition shadow-sm border ${escolasPendentes > 0 ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100" : "bg-white border-gray-100"}`}>
-          <div className="flex items-center gap-3 mb-2">
-            <div className={`p-2 rounded-full text-white ${escolasPendentes > 0 ? "bg-blue-500" : "bg-green-500"}`}>
-              {escolasPendentes > 0 ? <School size={20} /> : <CheckCircle size={20} />}
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`p-1.5 rounded-full text-white ${escolasPendentes > 0 ? "bg-blue-500" : "bg-green-500"}`}>
+              {escolasPendentes > 0 ? <School size={16} /> : <CheckCircle size={16} />}
             </div>
-            <h3 className={`font-bold text-sm ${escolasPendentes > 0 ? "text-blue-900" : "text-gray-800"}`}>Escolas Parceiras</h3>
+            <h3 className={`font-bold text-xs ${escolasPendentes > 0 ? "text-blue-900" : "text-gray-800"}`}>Escolas</h3>
           </div>
           <p className={`text-xs ${escolasPendentes > 0 ? "text-blue-700 font-semibold" : "text-gray-500"}`}>
-            {escolasPendentes > 0 ? `${escolasPendentes} aluno(s) aguardando aprovação.` : "Nenhuma pendência no momento."}
+            {escolasPendentes > 0 ? `${escolasPendentes} pendente(s).` : "Sem pendências."}
           </p>
-          {escolasPendentes > 0 && <p className="text-xs text-blue-600 font-bold mt-2 flex items-center gap-1">Revisar agora <ChevronRight size={14}/></p>}
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div className="bg-purple-100 p-1.5 rounded-full text-purple-600">
-                <FlaskConical size={18} />
+                <FlaskConical size={16} />
               </div>
-              <h3 className="font-bold text-sm text-gray-800">Aulas Experimentais</h3>
+              <h3 className="font-bold text-xs text-gray-800">Exp.</h3>
             </div>
-            <button onClick={() => router.push("/aula-experimental")} className="text-xs text-purple-600 font-bold hover:underline">Gerenciar</button>
+            <button onClick={() => router.push("/aula-experimental")} className="text-[10px] text-purple-600 font-bold hover:underline">Ver</button>
           </div>
-          <p className="text-xs text-gray-500 mb-2">{aulasExp.length} pessoa(s) no funil.</p>
-          
-          {aulasExp.length > 0 && (
-            <div className="space-y-1.5 max-h-20 overflow-y-auto pr-1">
-              {aulasExp.slice(0, 3).map(ag => (
-                <div key={ag.id} className="flex justify-between items-center bg-gray-50 p-1.5 rounded text-xs border border-gray-100">
-                  <span className="font-semibold truncate max-w-30">{ag.nome}</span>
-                  <div className="flex gap-1">
-                    <button onClick={() => enviarWhatsAppExp(ag, "comprovante")} className="text-blue-600 hover:text-blue-800" title="Comprovante"><FileText size={14} /></button>
-                    <button onClick={() => enviarWhatsAppExp(ag, "lembrete")} className="text-green-600 hover:text-green-800" title="Lembrete"><MessageCircle size={14} /></button>
-                  </div>
-                </div>
-              ))}
-              {aulasExp.length > 3 && <p className="text-[10px] text-gray-400 text-center">+ {aulasExp.length - 3} agendamentos...</p>}
-            </div>
-          )}
+          <p className="text-xs text-gray-500">{aulasExp.length} no funil.</p>
         </div>
 
         <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <div className="bg-teal-100 p-1.5 rounded-full text-teal-600">
-                <Stethoscope size={18} />
+                <Stethoscope size={16} />
               </div>
-              <h3 className="font-bold text-sm text-gray-800">Saúde Hoje</h3>
+              <h3 className="font-bold text-xs text-gray-800">Saúde</h3>
             </div>
-            <button onClick={() => router.push("/saude")} className="text-xs text-teal-600 font-bold hover:underline">Ver Agenda</button>
+            <button onClick={() => router.push("/saude")} className="text-[10px] text-teal-600 font-bold hover:underline">Ver</button>
           </div>
-          <p className="text-xs text-gray-500 mb-2">{consultasHoje.length} consulta(s) agendada(s).</p>
-
-          {consultasHoje.length > 0 ? (
-            <div className="space-y-1.5 max-h-20 overflow-y-auto pr-1">
-              {consultasHoje.map(ag => (
-                <div key={ag.id} className="flex justify-between items-center bg-gray-50 p-1.5 rounded text-xs border border-gray-100">
-                  <span className="font-semibold truncate max-w-25">{ag.nome_paciente}</span>
-                  <span className="text-gray-500 text-[10px]">{new Date(ag.data_hora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
-                  <button onClick={() => enviarWhatsAppSaude(ag)} className="text-green-600 hover:text-green-800" title="Lembrete WhatsApp"><MessageCircle size={14} /></button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[10px] text-gray-400 text-center mt-2">Tudo tranquilo por aqui.</p>
-          )}
+          <p className="text-xs text-gray-500">{consultasHoje.length} consulta(s).</p>
         </div>
       </div>
 
@@ -264,26 +227,39 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* DISTRIBUIÇÃO EM CARDS (SUBSTITUINDO OS GRÁFICOS) */}
       <div className="grid md:grid-cols-2 gap-6">
+        
+        {/* CARD: ALUNOS POR TURMA */}
         <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-          <h3 className="font-semibold mb-4 text-sm text-gray-600 flex items-center gap-2"><TrendingUp size={16} className="text-red-500" /> Alunos por Turma</h3>
-          {turmasList.length === 0 ? <p className="text-gray-400 text-sm">Nenhum dado disponível.</p> : turmasList.map((t, i) => (
-            <div key={i} className="mb-3">
-              <div className="flex justify-between text-xs mb-1"><span className="font-medium text-gray-700">{t.nome}</span><span className="font-bold text-gray-500">{t.alunos}</span></div>
-              <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${(t.alunos / maxTurma) * 100}%` }} /></div>
-            </div>
-          ))}
+          <h3 className="font-semibold mb-4 text-sm text-gray-600 flex items-center gap-2">
+            <Layers size={16} className="text-red-500" /> Distribuição por Turma
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {turmasList.length === 0 ? <p className="text-gray-400 text-sm col-span-2">Nenhum dado disponível.</p> : turmasList.map((t, i) => (
+              <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-lg flex flex-col justify-center items-center shadow-sm hover:shadow transition">
+                <span className="text-2xl font-bold text-gray-800">{t.alunos}</span>
+                <span className="text-xs font-semibold text-gray-500 text-center uppercase tracking-wide mt-1">{t.nome}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
+        {/* CARD: DISTRIBUIÇÃO POR MODALIDADE */}
         <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-          <h3 className="font-semibold mb-4 text-sm text-gray-600 flex items-center gap-2"><Award size={16} className="text-red-500" /> Alunos por Modalidade</h3>
-          {modalidadesList.length === 0 ? <p className="text-gray-400 text-sm">Nenhum dado disponível.</p> : modalidadesList.map((m, i) => (
-            <div key={i} className="mb-3">
-              <div className="flex justify-between text-xs mb-1"><span className="font-medium text-gray-700">{m.nome}</span><span className="font-bold text-gray-500">{m.qtd}</span></div>
-              <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${(m.qtd / maxModalidade) * 100}%` }} /></div>
-            </div>
-          ))}
+          <h3 className="font-semibold mb-4 text-sm text-gray-600 flex items-center gap-2">
+            <Award size={16} className="text-red-500" /> Distribuição por Modalidade
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {modalidadesList.length === 0 ? <p className="text-gray-400 text-sm col-span-2">Nenhum dado disponível.</p> : modalidadesList.map((m, i) => (
+              <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-lg flex flex-col justify-center items-center shadow-sm hover:shadow transition">
+                <span className="text-2xl font-bold text-gray-800">{m.qtd}</span>
+                <span className="text-xs font-semibold text-gray-500 text-center uppercase tracking-wide mt-1">{m.nome}</span>
+              </div>
+            ))}
+          </div>
         </div>
+
       </div>
     </div>
   );
