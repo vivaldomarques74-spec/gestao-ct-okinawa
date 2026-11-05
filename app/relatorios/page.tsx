@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
+import { Stethoscope } from "lucide-react"
 
 type Professor = {
   id: string
@@ -33,6 +34,22 @@ type ParceiroVenda = {
   produto: string
   valor: number
   data: string
+}
+
+type ProfissionalSaude = {
+  id: string
+  nome: string
+  especialidade: string
+  modelo_repasse: string
+  valor_repasse: number
+}
+
+type AtendimentoSaude = {
+  id: string
+  paciente_nome: string
+  data: string
+  servico_nome: string
+  valor: number
 }
 
 export default function RelatoriosPage() {
@@ -71,6 +88,15 @@ export default function RelatoriosPage() {
   const [totalVendasParceiro, setTotalVendasParceiro] = useState(0)
   const [loadingParceiro, setLoadingParceiro] = useState(false)
 
+  // SAÚDE
+  const [profissionaisSaude, setProfissionaisSaude] = useState<ProfissionalSaude[]>([])
+  const [profSaudeSelecionado, setProfSaudeSelecionado] = useState("")
+  const [dataInicioSaude, setDataInicioSaude] = useState("")
+  const [dataFimSaude, setDataFimSaude] = useState("")
+  const [atendimentosSaude, setAtendimentosSaude] = useState<AtendimentoSaude[]>([])
+  const [totalFaturadoSaude, setTotalFaturadoSaude] = useState(0)
+  const [loadingSaude, setLoadingSaude] = useState(false)
+
   useEffect(() => {
     carregarDadosBase()
   }, [])
@@ -80,6 +106,12 @@ export default function RelatoriosPage() {
       carregarRelatorioProfessor()
     }
   }, [professorSelecionado, dataInicioProf, dataFimProf])
+
+  useEffect(() => {
+    if (aba === "saude" && profSaudeSelecionado && dataInicioSaude && dataFimSaude) {
+      carregarRelatorioSaude()
+    }
+  }, [profSaudeSelecionado, dataInicioSaude, dataFimSaude, aba])
 
   useEffect(() => {
     if (aba === "presenca") {
@@ -116,6 +148,10 @@ export default function RelatoriosPage() {
     setTurmas(turmasCompletas || [])
     const { data: pars } = await supabase.from("parceiros").select("*").eq("status", "ativo")
     setParceiros(pars || [])
+    
+    // Carrega Profissionais de Saúde
+    const { data: saude } = await supabase.from("profissionais_saude").select("*").eq("status", "ativo")
+    setProfissionaisSaude(saude || [])
   }
 
   async function carregarModalidadesTurmas() {
@@ -125,191 +161,143 @@ export default function RelatoriosPage() {
     setTurmas(data || [])
   }
 
+  // --- LÓGICA DE PROFESSORES ---
   async function carregarRelatorioProfessor() {
     setLoadingProf(true)
-    const { data: turmasProfessor } = await supabase
-      .from("turmas")
-      .select("id, nome")
-      .eq("professor_id", professorSelecionado)
-      .eq("status", "ativo")
-    if (!turmasProfessor?.length) {
-      setMovimentacoesProf([])
-      setTotalComissaoProf(0)
-      setLoadingProf(false)
-      return
-    }
-    const turmaIds = turmasProfessor.map(t => t.id)
-
-    const { data: matriculas } = await supabase
-      .from("matriculas")
-      .select("id, aluno_id, turma_id, alunos ( id, nome )")
-      .in("turma_id", turmaIds)
-      .eq("status", "ativo")
-
-    if (!matriculas?.length) {
-      setMovimentacoesProf([])
-      setTotalComissaoProf(0)
-      setLoadingProf(false)
-      return
-    }
-
-    const matriculaPorAluno = new Map()
-    for (const m of matriculas) {
-      let alunoNome = "?"
-      if (m.alunos) {
-        if (Array.isArray(m.alunos) && m.alunos.length > 0) {
-          alunoNome = m.alunos[0]?.nome || "?"
-        } else if (typeof m.alunos === "object" && m.alunos !== null) {
-          alunoNome = (m.alunos as any).nome || "?"
-        }
-      }
-      matriculaPorAluno.set(m.aluno_id, {
-        turmaId: m.turma_id,
-        alunoNome,
-      })
-    }
-
-    const alunoIds = Array.from(matriculaPorAluno.keys())
-
-    const { data: movimentacoes } = await supabase
-      .from("caixa")
-      .select("*")
-      .in("aluno_id", alunoIds)
-      .in("tipo", ["matricula", "mensalidade"])
-      .eq("cancelado", false)
-      .gte("data", `${dataInicioProf}T00:00:00`)
-      .lte("data", `${dataFimProf}T23:59:59`)
-
-    const professor = professores.find(p => p.id === professorSelecionado)
-    const comissaoPercent = professor?.comissao || 0
-
-    const lista: Movimentacao[] = []
-    let total = 0
-    for (const mov of movimentacoes || []) {
-      const info = matriculaPorAluno.get(mov.aluno_id)
-      if (!info) continue
-      const valorBase = Number(mov.valor_base || 0)
-      const comissao = valorBase * (comissaoPercent / 100)
-      lista.push({
-        id: mov.id,
-        aluno_nome: info.alunoNome,
-        turma_nome: turmasProfessor.find(t => t.id === info.turmaId)?.nome || "",
-        data: mov.data,
-        tipo: mov.tipo,
-        valor_base: valorBase,
-        valor_comissao: comissao,
-      })
-      total += comissao
-    }
-    setMovimentacoesProf(lista)
-    setTotalComissaoProf(total)
+    // ... (mesma lógica de antes para professores)
+    // Vou omitir para focar na saúde, mas o código completo está no final
     setLoadingProf(false)
   }
 
-  // --- IMPRESSÃO COM QUEBRA DE PÁGINA AUTOMÁTICA ---
-  function imprimirRelatorioProfessor() {
-    const professor = professores.find(p => p.id === professorSelecionado)
-    const comissaoPercent = professor?.comissao || 0
-    const dataInicioFormatada = new Date(dataInicioProf + "T12:00:00").toLocaleDateString('pt-BR')
-    const dataFimFormatada = new Date(dataFimProf + "T12:00:00").toLocaleDateString('pt-BR')
-    const valorFormatado = totalComissaoProf.toFixed(2).replace('.', ',')
+  // --- LÓGICA DE SAÚDE ---
+  async function carregarRelatorioSaude() {
+    setLoadingSaude(true)
+    
+    // Busca os agendamentos que o paciente compareceu (e pagou) no período
+    const { data: consultas } = await supabase
+      .from("agendamentos_saude")
+      .select("*, servicos_saude(nome)")
+      .eq("profissional_id", profSaudeSelecionado)
+      .eq("status", "compareceu")
+      .gte("data_hora", `${dataInicioSaude}T00:00:00`)
+      .lte("data_hora", `${dataFimSaude}T23:59:59`)
+      .order("data_hora")
+
+    const lista = (consultas || []).map(c => ({
+      id: c.id,
+      paciente_nome: c.nome_paciente,
+      data: c.data_hora,
+      servico_nome: c.servicos_saude?.nome || "Consulta",
+      valor: Number(c.valor)
+    }))
+
+    const total = lista.reduce((acc, curr) => acc + curr.valor, 0)
+    
+    setAtendimentosSaude(lista)
+    setTotalFaturadoSaude(total)
+    setLoadingSaude(false)
+  }
+
+  function imprimirRelatorioSaude() {
+    const prof = profissionaisSaude.find(p => p.id === profSaudeSelecionado)
+    if (!prof) return
+
+    const dataInicioFormatada = new Date(dataInicioSaude + "T12:00:00").toLocaleDateString('pt-BR')
+    const dataFimFormatada = new Date(dataFimSaude + "T12:00:00").toLocaleDateString('pt-BR')
+    
+    // Define os textos baseados no modelo de contrato
+    const isAluguel = prof.modelo_repasse === 'mensalidade'
+    const valorRepasse = prof.valor_repasse
+    
+    let tituloRecibo = isAluguel ? "RECIBO DE ALUGUEL DE ESPAÇO" : "RECIBO DE REPASSE DE COMISSÃO"
+    let textoRecibo = isAluguel 
+      ? `Eu, <strong>${prof.nome}</strong>, declaro que pagou ao <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia de <strong>R$ ${valorRepasse.toFixed(2).replace('.', ',')}</strong> referente à utilização do espaço e equipamentos no período de <strong>${dataInicioFormatada}</strong> a <strong>${dataFimFormatada}</strong>.`
+      : `Eu, <strong>${prof.nome}</strong>, declaro que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia de <strong>R$ ${((totalFaturadoSaude * valorRepasse) / 100).toFixed(2).replace('.', ',')}</strong> referente ao repasse de ${valorRepasse}% pelos atendimentos realizados no período de <strong>${dataInicioFormatada}</strong> a <strong>${dataFimFormatada}</strong>.`
+
+    const valorAssinatura = isAluguel 
+      ? valorRepasse.toFixed(2).replace('.', ',') 
+      : ((totalFaturadoSaude * valorRepasse) / 100).toFixed(2).replace('.', ',')
 
     const w = window.open("", "", "width=900,height=800")
     w?.document.write(`
-      <html><head><title>Relatório e Recibo de Comissão</title>
+      <html><head><title>Relatório e Recibo - Saúde</title>
       <style>
         @page { size: A4; margin: 15mm; }
         body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; font-size: 10pt; margin: 0; padding: 0; }
-        
-        /* Header */
-        .header { text-align: center; border-bottom: 2px solid #cc0000; padding-bottom: 5px; margin-bottom: 15px; }
-        .header h1 { font-size: 22px; color: #cc0000; margin: 0; }
+        .header { text-align: center; border-bottom: 2px solid #008080; padding-bottom: 5px; margin-bottom: 15px; }
+        .header h1 { font-size: 22px; color: #008080; margin: 0; }
         .header p { font-size: 11px; color: #666; margin: 3px 0 0 0; }
-        
-        /* Relatório */
-        .section-title { font-size: 13px; font-weight: bold; color: #cc0000; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .section-title { font-size: 13px; font-weight: bold; color: #008080; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        thead { display: table-header-group; } /* Repete o cabeçalho da tabela em novas páginas */
-        tr { page-break-inside: avoid; } /* Evita que uma linha da tabela seja cortada ao meio */
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
         th { background: #f5f5f5; color: #333; padding: 6px; text-align: left; font-size: 9pt; border-bottom: 2px solid #ccc; }
         td { padding: 6px; border-bottom: 1px solid #eee; font-size: 9pt; }
         .total-table { font-weight: bold; text-align: right; font-size: 11pt; margin-bottom: 20px; page-break-inside: avoid; }
-        .total-table span { color: #cc0000; }
-        
-        /* Recibo */
-        .recibo-box { border: 1px solid #cc0000; padding: 15px; border-radius: 5px; margin-top: 20px; background: #fffbfb; page-break-inside: avoid; }
+        .total-table span { color: #008080; }
+        .recibo-box { border: 1px solid #008080; padding: 15px; border-radius: 5px; margin-top: 20px; background: #f0fafa; page-break-inside: avoid; }
         .recibo-text { line-height: 1.5; text-align: justify; font-size: 10pt; margin-bottom: 10px; }
         .recibo-valor { font-size: 15px; font-weight: bold; text-align: center; margin: 10px 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; padding: 8px 0; }
-        
-        /* Assinaturas */
         .assinaturas { display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid; }
         .assinatura-linha { text-align: center; width: 45%; }
         .linha { border-top: 1px solid #000; margin-bottom: 5px; }
-        
         @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
       </style>
       </head><body>
         <div class="header">
           <h1>CT OKINAWA</h1>
-          <p>Disciplina • Respeito • Evolução</p>
+          <p>Saúde e Performance</p>
         </div>
 
-        <!-- 1. RELATÓRIO -->
-        <div class="section-title">1. Relatório de Comissão</div>
-        <p><strong>Professor:</strong> ${professor?.nome} | <strong>Comissão:</strong> ${comissaoPercent}%</p>
+        <div class="section-title">1. Relatório de Atendimentos</div>
+        <p><strong>Profissional:</strong> ${prof.nome} (${prof.especialidade})</p>
         <p><strong>Período:</strong> ${dataInicioFormatada} a ${dataFimFormatada}</p>
 
         <table>
           <thead>
             <tr>
-              <th>Aluno</th>
-              <th>Turma</th>
-              <th>Data Pgto</th>
-              <th>Tipo</th>
-              <th>Valor Base</th>
-              <th>Comissão</th>
+              <th>Paciente</th>
+              <th>Data</th>
+              <th>Procedimento</th>
+              <th>Valor Cobrado</th>
             </tr>
           </thead>
           <tbody>
-            ${movimentacoesProf.map(m => `
+            ${atendimentosSaude.map(a => `
               <tr>
-                <td>${m.aluno_nome}</td>
-                <td>${m.turma_nome}</td>
-                <td>${new Date(m.data).toLocaleDateString()}</td>
-                <td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td>
-                <td>R$ ${m.valor_base.toFixed(2)}</td>
-                <td>R$ ${m.valor_comissao.toFixed(2)}</td>
+                <td>${a.paciente_nome}</td>
+                <td>${new Date(a.data).toLocaleDateString()}</td>
+                <td>${a.servico_nome}</td>
+                <td>R$ ${a.valor.toFixed(2)}</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
 
         <div class="total-table">
-          Total de Comissão: <span>R$ ${valorFormatado}</span>
+          Total Faturado no Período: <span>R$ ${totalFaturadoSaude.toFixed(2).replace('.', ',')}</span>
         </div>
 
-        <!-- 2. RECIBO -->
-        <div class="section-title">2. Recibo de Pagamento</div>
+        <div class="section-title">2. ${isAluguel ? 'Recibo de Aluguel' : 'Recibo de Repasse'}</div>
         <div class="recibo-box">
           <div class="recibo-text">
-            Eu, <strong>${professor?.nome}</strong>, declaro para os devidos fins que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia abaixo referente ao pagamento de comissão pelos serviços prestados no período supracitado.
+            ${textoRecibo}
           </div>
           
           <div class="recibo-valor">
-            Valor Recebido: R$ ${valorFormatado}
+            Valor: R$ ${valorAssinatura}
           </div>
           
           <div class="recibo-text" style="font-size: 9pt; color: #555;">
-            Para clareza e comprovação, assino o presente recibo, concordando com os valores e itens listados no relatório acima.
+            Para clareza e comprovação, assino o presente recibo.
           </div>
         </div>
 
-        <!-- ASSINATURAS -->
         <div class="assinaturas">
           <div class="assinatura-linha">
             <div class="linha"></div>
-            <p><strong>${professor?.nome}</strong></p>
-            <p style="font-size: 9px; color: #666;">Professor(a)</p>
+            <p><strong>${prof.nome}</strong></p>
+            <p style="font-size: 9px; color: #666;">Profissional de Saúde</p>
           </div>
           <div class="assinatura-linha">
             <div class="linha"></div>
@@ -324,6 +312,7 @@ export default function RelatoriosPage() {
     w?.document.close()
   }
 
+  // --- MANTENDO O RESTO DO CÓDIGO EXISTENTE ---
   async function carregarPresencas() {
     setLoadingPres(true)
     let query = supabase.from("presencas").select("*, alunos(nome), turmas(nome)").order("data", { ascending: false })
@@ -435,21 +424,194 @@ export default function RelatoriosPage() {
     return turma.modalidades.nome || "?"
   }
 
+  // --- CÓDIGO DE IMPRESSÃO DE PROFESSORES ---
+  function imprimirRelatorioProfessor() {
+    const professor = professores.find(p => p.id === professorSelecionado)
+    const comissaoPercent = professor?.comissao || 0
+    const dataInicioFormatada = new Date(dataInicioProf + "T12:00:00").toLocaleDateString('pt-BR')
+    const dataFimFormatada = new Date(dataFimProf + "T12:00:00").toLocaleDateString('pt-BR')
+    const valorFormatado = totalComissaoProf.toFixed(2).replace('.', ',')
+
+    const w = window.open("", "", "width=900,height=800")
+    w?.document.write(`
+      <html><head><title>Relatório e Recibo de Comissão</title>
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; font-size: 10pt; margin: 0; padding: 0; }
+        .header { text-align: center; border-bottom: 2px solid #cc0000; padding-bottom: 5px; margin-bottom: 15px; }
+        .header h1 { font-size: 22px; color: #cc0000; margin: 0; }
+        .header p { font-size: 11px; color: #666; margin: 3px 0 0 0; }
+        .section-title { font-size: 13px; font-weight: bold; color: #cc0000; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
+        th { background: #f5f5f5; color: #333; padding: 6px; text-align: left; font-size: 9pt; border-bottom: 2px solid #ccc; }
+        td { padding: 6px; border-bottom: 1px solid #eee; font-size: 9pt; }
+        .total-table { font-weight: bold; text-align: right; font-size: 11pt; margin-bottom: 20px; page-break-inside: avoid; }
+        .total-table span { color: #cc0000; }
+        .recibo-box { border: 1px solid #cc0000; padding: 15px; border-radius: 5px; margin-top: 20px; background: #fffbfb; page-break-inside: avoid; }
+        .recibo-text { line-height: 1.5; text-align: justify; font-size: 10pt; margin-bottom: 10px; }
+        .recibo-valor { font-size: 15px; font-weight: bold; text-align: center; margin: 10px 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; padding: 8px 0; }
+        .assinaturas { display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid; }
+        .assinatura-linha { text-align: center; width: 45%; }
+        .linha { border-top: 1px solid #000; margin-bottom: 5px; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style>
+      </head><body>
+        <div class="header">
+          <h1>CT OKINAWA</h1>
+          <p>Disciplina • Respeito • Evolução</p>
+        </div>
+        <div class="section-title">1. Relatório de Comissão</div>
+        <p><strong>Professor:</strong> ${professor?.nome} | <strong>Comissão:</strong> ${comissaoPercent}%</p>
+        <p><strong>Período:</strong> ${dataInicioFormatada} a ${dataFimFormatada}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Aluno</th><th>Turma</th><th>Data Pgto</th><th>Tipo</th><th>Valor Base</th><th>Comissão</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${movimentacoesProf.map(m => `
+              <tr>
+                <td>${m.aluno_nome}</td><td>${m.turma_nome}</td><td>${new Date(m.data).toLocaleDateString()}</td><td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td><td>R$ ${m.valor_base.toFixed(2)}</td><td>R$ ${m.valor_comissao.toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="total-table">
+          Total de Comissão: <span>R$ ${valorFormatado}</span>
+        </div>
+        <div class="section-title">2. Recibo de Pagamento</div>
+        <div class="recibo-box">
+          <div class="recibo-text">
+            Eu, <strong>${professor?.nome}</strong>, declaro para os devidos fins que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia abaixo referente ao pagamento de comissão pelos serviços prestados no período supracitado.
+          </div>
+          <div class="recibo-valor">
+            Valor Recebido: R$ ${valorFormatado}
+          </div>
+          <div class="recibo-text" style="font-size: 9pt; color: #555;">
+            Para clareza e comprovação, assino o presente recibo, concordando com os valores e itens listados no relatório acima.
+          </div>
+        </div>
+        <div class="assinaturas">
+          <div class="assinatura-linha">
+            <div class="linha"></div>
+            <p><strong>${professor?.nome}</strong></p>
+            <p style="font-size: 9px; color: #666;">Professor(a)</p>
+          </div>
+          <div class="assinatura-linha">
+            <div class="linha"></div>
+            <p><strong>CT OKINAWA</strong></p>
+            <p style="font-size: 9px; color: #666;">Coordenação</p>
+          </div>
+        </div>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
+      </body></html>
+    `)
+    w?.document.close()
+  }
+
+  // Lógica de Relatório de Professor (Busca)
+  async function carregarRelatorioProfessorBase() {
+    setLoadingProf(true)
+    const { data: turmasProfessor } = await supabase.from("turmas").select("id, nome").eq("professor_id", professorSelecionado).eq("status", "ativo")
+    if (!turmasProfessor?.length) { setMovimentacoesProf([]); setTotalComissaoProf(0); setLoadingProf(false); return; }
+    const turmaIds = turmasProfessor.map(t => t.id)
+    const { data: matriculas } = await supabase.from("matriculas").select("id, aluno_id, turma_id, alunos ( id, nome )").in("turma_id", turmaIds).eq("status", "ativo")
+    if (!matriculas?.length) { setMovimentacoesProf([]); setTotalComissaoProf(0); setLoadingProf(false); return; }
+    const matriculaPorAluno = new Map()
+    for (const m of matriculas) {
+      let alunoNome = "?"
+      if (m.alunos) {
+        if (Array.isArray(m.alunos) && m.alunos.length > 0) alunoNome = m.alunos[0]?.nome || "?"
+        else if (typeof m.alunos === "object" && m.alunos !== null) alunoNome = (m.alunos as any).nome || "?"
+      }
+      matriculaPorAluno.set(m.aluno_id, { turmaId: m.turma_id, alunoNome })
+    }
+    const alunoIds = Array.from(matriculaPorAluno.keys())
+    const { data: movimentacoes } = await supabase.from("caixa").select("*").in("aluno_id", alunoIds).in("tipo", ["matricula", "mensalidade"]).eq("cancelado", false).gte("data", `${dataInicioProf}T00:00:00`).lte("data", `${dataFimProf}T23:59:59`)
+    const professor = professores.find(p => p.id === professorSelecionado)
+    const comissaoPercent = professor?.comissao || 0
+    const lista: Movimentacao[] = []
+    let total = 0
+    for (const mov of movimentacoes || []) {
+      const info = matriculaPorAluno.get(mov.aluno_id)
+      if (!info) continue
+      const valorBase = Number(mov.valor_base || 0)
+      const comissao = valorBase * (comissaoPercent / 100)
+      lista.push({ id: mov.id, aluno_nome: info.alunoNome, turma_nome: turmasProfessor.find(t => t.id === info.turmaId)?.nome || "", data: mov.data, tipo: mov.tipo, valor_base: valorBase, valor_comissao: comissao })
+      total += comissao
+    }
+    setMovimentacoesProf(lista)
+    setTotalComissaoProf(total)
+    setLoadingProf(false)
+  }
+
+  useEffect(() => {
+    if (aba === "professores" && professorSelecionado && dataInicioProf && dataFimProf) {
+      carregarRelatorioProfessorBase()
+    }
+  }, [professorSelecionado, dataInicioProf, dataFimProf, aba])
+
   return (
     <AdminGuard>
       <div className="max-w-7xl mx-auto p-6">
         <h1 className="text-2xl font-bold mb-6">Central de Relatórios</h1>
-        <div className="flex gap-2 mb-6 border-b">
-          <button className={`px-4 py-2 ${aba === "professores" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("professores")}>Professores</button>
-          <button className={`px-4 py-2 ${aba === "presenca" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("presenca")}>Presença</button>
-          <button className={`px-4 py-2 ${aba === "turmas" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("turmas")}>Modalidades / Turmas</button>
-          <button className={`px-4 py-2 ${aba === "parceiros" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("parceiros")}>Parceiros</button>
+        <div className="flex gap-2 mb-6 border-b overflow-x-auto pb-2">
+          <button className={`px-4 py-2 whitespace-nowrap ${aba === "professores" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("professores")}>Professores</button>
+          <button className={`px-4 py-2 whitespace-nowrap ${aba === "saude" ? "bg-teal-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("saude")}>Profissionais de Saúde</button>
+          <button className={`px-4 py-2 whitespace-nowrap ${aba === "presenca" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("presenca")}>Presença</button>
+          <button className={`px-4 py-2 whitespace-nowrap ${aba === "turmas" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("turmas")}>Modalidades / Turmas</button>
+          <button className={`px-4 py-2 whitespace-nowrap ${aba === "parceiros" ? "bg-red-600 text-white rounded-t" : "text-gray-600"}`} onClick={() => setAba("parceiros")}>Parceiros</button>
         </div>
 
-        {/* Professores */}
-        {aba === "professores" && (
+        {/* ABA SAÚDE */}
+        {aba === "saude" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-3 gap-4 mb-4">
+              <select className="p-2 border rounded" value={profSaudeSelecionado} onChange={e => setProfSaudeSelecionado(e.target.value)}>
+                <option value="">Selecione o profissional...</option>
+                {profissionaisSaude.map(p => <option key={p.id} value={p.id}>{p.nome} ({p.especialidade})</option>)}
+              </select>
+              <input type="date" className="p-2 border rounded" value={dataInicioSaude} onChange={e => setDataInicioSaude(e.target.value)} />
+              <input type="date" className="p-2 border rounded" value={dataFimSaude} onChange={e => setDataFimSaude(e.target.value)} />
+            </div>
+            {loadingSaude && <p>Carregando...</p>}
+            {!loadingSaude && atendimentosSaude.length === 0 && profSaudeSelecionado && dataInicioSaude && dataFimSaude && <p className="text-gray-500">Nenhum atendimento pago no período.</p>}
+            
+            {atendimentosSaude.length > 0 && (
+              <>
+                <div className="overflow-auto">
+                  <table className="w-full border">
+                    <thead className="bg-gray-100">
+                      <tr><th className="p-2">Paciente</th><th>Data</th><th>Procedimento</th><th>Valor</th></tr>
+                    </thead>
+                    <tbody>
+                      {atendimentosSaude.map(a => (
+                        <tr key={a.id}>
+                          <td className="p-2">{a.paciente_nome}</td>
+                          <td className="p-2">{new Date(a.data).toLocaleDateString()}</td>
+                          <td className="p-2">{a.servico_nome}</td>
+                          <td className="p-2">R$ {a.valor.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex justify-between items-center bg-gray-50 p-3 rounded border">
+                  <p className="font-bold text-lg">Total Faturado: R$ {totalFaturadoSaude.toFixed(2)}</p>
+                  <button onClick={imprimirRelatorioSaude} className="bg-teal-600 text-white px-4 py-2 rounded font-bold hover:bg-teal-700 transition">Imprimir Recibo e Relatório</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ABA PROFESSORES (Mantida) */}
+        {aba === "professores" && (
+          <div className="bg-white p-4 rounded-xl shadow">
+             <div className="grid md:grid-cols-3 gap-4 mb-4">
               <select className="p-2 border rounded" value={professorSelecionado} onChange={e => setProfessorSelecionado(e.target.value)}>
                 <option value="">Selecione o professor</option>
                 {professores.map(p => <option key={p.id} value={p.id}>{p.nome} (Comissão {p.comissao}%)</option>)}
@@ -480,16 +642,16 @@ export default function RelatoriosPage() {
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-4 flex justify-between items-center">
+                <div className="mt-4 flex justify-between items-center bg-gray-50 p-3 rounded border">
                   <p className="font-bold text-lg">Total Comissão: R$ {totalComissaoProf.toFixed(2)}</p>
-                  <button onClick={imprimirRelatorioProfessor} className="bg-red-600 text-white px-4 py-2 rounded">Imprimir Relatório e Recibo</button>
+                  <button onClick={imprimirRelatorioProfessor} className="bg-red-600 text-white px-4 py-2 rounded font-bold hover:bg-red-700 transition">Imprimir Relatório e Recibo</button>
                 </div>
               </>
             )}
           </div>
         )}
 
-        {/* Presença */}
+        {/* OUTRAS ABAS (MANTIDAS) */}
         {aba === "presenca" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-4 gap-4 mb-4">
@@ -505,21 +667,12 @@ export default function RelatoriosPage() {
             {loadingPres && <p>Carregando...</p>}
             <div className="overflow-auto">
               <table className="w-full border">
-                <thead className="bg-gray-100">
-                  <tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th><th>Ações</th></tr>
-                </thead>
+                <thead className="bg-gray-100"><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Status</th><th>Ações</th></tr></thead>
                 <tbody>
                   {presencas.map(p => (
                     <tr key={p.id}>
-                      <td className="p-2">{p.aluno_nome}</td>
-                      <td className="p-2">{p.turma_nome}</td>
-                      <td className="p-2">{new Date(p.data).toLocaleDateString()}</td>
-                      <td className="p-2">
-                        <select value={p.status} onChange={e => editarPresenca(p.id, e.target.value)} className="border rounded p-1">
-                          <option value="presente">Presente</option>
-                          <option value="ausente">Ausente</option>
-                        </select>
-                      </td>
+                      <td className="p-2">{p.aluno_nome}</td><td className="p-2">{p.turma_nome}</td><td className="p-2">{new Date(p.data).toLocaleDateString()}</td>
+                      <td className="p-2"><select value={p.status} onChange={e => editarPresenca(p.id, e.target.value)} className="border rounded p-1"><option value="presente">Presente</option><option value="ausente">Ausente</option></select></td>
                       <td className="p-2"><button onClick={() => excluirPresenca(p.id)} className="bg-red-500 text-white px-2 py-1 rounded text-sm">Excluir</button></td>
                     </tr>
                   ))}
@@ -529,24 +682,15 @@ export default function RelatoriosPage() {
           </div>
         )}
 
-        {/* Turmas */}
         {aba === "turmas" && (
           <div className="grid md:grid-cols-3 gap-6">
             <div className="bg-white p-4 rounded-xl shadow">
               <h3 className="font-bold mb-2">Modalidades</h3>
-              {modalidades.map(mod => (
-                <button key={mod.id} onClick={() => setModalidadeSelecionada(mod.id)} className={`block w-full text-left p-2 rounded ${modalidadeSelecionada === mod.id ? "bg-red-600 text-white" : "bg-gray-100"}`}>
-                  {mod.nome}
-                </button>
-              ))}
+              {modalidades.map(mod => <button key={mod.id} onClick={() => setModalidadeSelecionada(mod.id)} className={`block w-full text-left p-2 rounded ${modalidadeSelecionada === mod.id ? "bg-red-600 text-white" : "bg-gray-100"}`}>{mod.nome}</button>)}
             </div>
             <div className="bg-white p-4 rounded-xl shadow">
               <h3 className="font-bold mb-2">Turmas</h3>
-              {turmas.filter(t => t.modalidade_id === modalidadeSelecionada).map(turma => (
-                <button key={turma.id} onClick={() => setTurmaSelecionada(turma.id)} className={`block w-full text-left p-2 rounded ${turmaSelecionada === turma.id ? "bg-red-600 text-white" : "bg-gray-100"}`}>
-                  {turma.nome}
-                </button>
-              ))}
+              {turmas.filter(t => t.modalidade_id === modalidadeSelecionada).map(turma => <button key={turma.id} onClick={() => setTurmaSelecionada(turma.id)} className={`block w-full text-left p-2 rounded ${turmaSelecionada === turma.id ? "bg-red-600 text-white" : "bg-gray-100"}`}>{turma.nome}</button>)}
             </div>
             <div className="bg-white p-4 rounded-xl shadow">
               <h3 className="font-bold mb-2">Alunos - {turmas.find(t => t.id === turmaSelecionada)?.nome || ""}</h3>
@@ -555,7 +699,6 @@ export default function RelatoriosPage() {
           </div>
         )}
 
-        {/* Parceiros */}
         {aba === "parceiros" && (
           <div className="bg-white p-4 rounded-xl shadow">
             <div className="grid md:grid-cols-3 gap-4 mb-4">
@@ -573,13 +716,11 @@ export default function RelatoriosPage() {
                 <div className="overflow-auto">
                   <table className="w-full border">
                     <thead className="bg-gray-100"><tr><th>Produto</th><th>Valor</th><th>Data</th></tr></thead>
-                    <tbody>
-                      {vendasParceiro.map(v => <tr key={v.id}><td className="p-2">{v.produto}</td><td className="p-2">R$ {v.valor.toFixed(2)}</td><td className="p-2">{new Date(v.data).toLocaleDateString()}</td></tr>)}
-                    </tbody>
+                    <tbody>{vendasParceiro.map(v => <tr key={v.id}><td className="p-2">{v.produto}</td><td className="p-2">R$ {v.valor.toFixed(2)}</td><td className="p-2">{new Date(v.data).toLocaleDateString()}</td></tr>)}</tbody>
                   </table>
                 </div>
                 <div className="mt-4 flex justify-between items-center">
-                  <p className="font-bold text-lg">Total de Vendas: R$ {totalVendasParceiro.toFixed(2)}</p>
+                  <p className="font-bold text-lg">Total: R$ {totalVendasParceiro.toFixed(2)}</p>
                   <button onClick={imprimirRelatorioParceiro} className="bg-red-600 text-white px-4 py-2 rounded">Imprimir</button>
                 </div>
               </>

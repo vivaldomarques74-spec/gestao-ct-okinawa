@@ -37,8 +37,6 @@ function MatriculaContent() {
 
   const [descTipo, setDescTipo] = useState("fixo")
   const [descValor, setDescValor] = useState("")
-  const [descMeses, setDescMeses] = useState("")
-  const [descRecorrente, setDescRecorrente] = useState(false)
   const [senhaDiretor, setSenhaDiretor] = useState("")
 
   const [valorGeralTotal, setValorGeralTotal] = useState(0)
@@ -47,17 +45,24 @@ function MatriculaContent() {
 
   useEffect(() => {
     const nome = searchParams.get("nome")
+    const cpf = searchParams.get("cpf") // PUXA O CPF
     const whatsapp = searchParams.get("whatsapp")
     const escolaId = searchParams.get("escola_id")
 
-    if (nome || whatsapp || escolaId) {
-      setAluno(prev => ({ ...prev, nome: nome || prev.nome, whatsapp: whatsapp || prev.whatsapp, escola_id: escolaId || prev.escola_id }))
+    if (nome || cpf || whatsapp || escolaId) {
+      setAluno(prev => ({ 
+        ...prev, 
+        nome: nome || prev.nome, 
+        cpf: cpf || prev.cpf, // PREENCHE O CPF
+        whatsapp: whatsapp || prev.whatsapp, 
+        escola_id: escolaId || prev.escola_id 
+      }))
     }
   }, [searchParams])
 
   useEffect(() => { carregarDados(); verificarCaixa() }, [])
   
-  useEffect(() => { calcularValores() }, [itensMatricula, aluno.convenio_id, aluno.escola_id, formaPagamento, tipoCartao, parcelas, descTipo, descValor])
+  useEffect(() => { calcularValores() }, [itensMatricula, modalidades, aluno.convenio_id, aluno.escola_id, formaPagamento, tipoCartao, parcelas, descTipo, descValor])
 
   async function verificarCaixa() {
     const { data } = await supabase.from("caixa_turno").select("*").eq("status", "aberto").maybeSingle()
@@ -80,8 +85,7 @@ function MatriculaContent() {
   function calcularValores() {
     let totalGeral = 0
     for (const item of itensMatricula) {
-      const turma = todasTurmas.find(t => t.id === item.turmaId)
-      const modalidade = modalidades.find(m => m.id === turma?.modalidade_id)
+      const modalidade = modalidades.find(m => m.id === item.modalidadeId)
       if (modalidade) totalGeral += Number(modalidade.valor_geral || 0)
     }
     setValorGeralTotal(totalGeral)
@@ -115,8 +119,18 @@ function MatriculaContent() {
 
   function adicionarModalidade() { setItensMatricula([...itensMatricula, { modalidadeId: "", turmaId: "" }]) }
   function removerModalidade(i: number) { const nova = [...itensMatricula]; nova.splice(i,1); setItensMatricula(nova) }
-  function atualizarModalidade(i: number, modalidadeId: string) { const nova = [...itensMatricula]; nova[i] = { modalidadeId, turmaId: "" }; setItensMatricula(nova) }
-  function atualizarTurma(i: number, turmaId: string) { const nova = [...itensMatricula]; nova[i].turmaId = turmaId; setItensMatricula(nova) }
+  
+  function atualizarModalidade(i: number, modalidadeId: string) { 
+    const nova = [...itensMatricula]; 
+    nova[i] = { modalidadeId, turmaId: "" }; 
+    setItensMatricula(nova) 
+  }
+  
+  function atualizarTurma(i: number, turmaId: string) { 
+    const nova = [...itensMatricula]; 
+    nova[i].turmaId = turmaId; 
+    setItensMatricula(nova) 
+  }
   
   function turmasDaModalidade(modalidadeId: string) { 
     return todasTurmas.filter(t => String(t.modalidade_id) === String(modalidadeId)) 
@@ -146,7 +160,6 @@ function MatriculaContent() {
 
     doc.setFontSize(10)
     
-    // --- CORREÇÃO LÓGICA DO TERMO PARA MENOR DE IDADE ---
     if (aluno.menor) {
       const introTextMenor = `Eu, ${aluno.responsavel_nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.responsavel_cpf || "____________________"}, na condição de responsável legal pelo(a) aluno(a) menor ${aluno.nome || "________________________________________"}, declaro, para todos os fins de direito, que:`
       const splitIntro = doc.splitTextToSize(introTextMenor, 170)
@@ -205,10 +218,12 @@ function MatriculaContent() {
 
   async function salvarMatricula() {
     if (!caixaAberto) return alert("❌ Caixa não está aberto.")
-    if (!aluno.nome.trim() || itensMatricula.length === 0 || itensMatricula.some(i => !i.turmaId)) return alert("Preencha nome e selecione pelo menos uma turma.")
-    if (descValor && senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta. Operação negada.")
-    if (!termoAceito) return alert("⚠️ Você precisa gerar e aceitar o Termo de Responsabilidade antes de finalizar a matrícula.")
-    if ((formaPagamento === "Pix" || formaPagamento === "Cartão") && valorFinal > 0 && !codigoPagamento.trim()) return alert("⚠️ Insira o código de autorização da maquininha.")
+    
+    const isValid = itensMatricula.length > 0 && itensMatricula.every(i => i.modalidadeId !== "")
+    if (!aluno.nome.trim() || !isValid) return alert("Preencha o nome e selecione pelo menos uma modalidade.")
+    if (descValor && senhaDiretor !== "984215") return alert("❌ Senha de Diretoria incorreta.")
+    if (!termoAceito) return alert("⚠️ Gere e aceite o Termo antes de finalizar.")
+    if ((formaPagamento === "Pix" || formaPagamento === "Cartão") && valorFinal > 0 && !codigoPagamento.trim()) return alert("⚠️ Insira o código de autorização.")
 
     setLoading(true)
     
@@ -236,28 +251,27 @@ function MatriculaContent() {
       const alunoId = novoAluno.id
 
       if (descValor) {
-        const meses = descRecorrente ? 999 : Number(descMeses)
+        const meses = 999 
         await supabase.from("descontos_especiais").insert([{
-          aluno_id: alunoId, tipo: descTipo, valor: Number(descValor), meses_duracao: meses, meses_restantes: meses, recorrente: descRecorrente, status: "ativo"
+          aluno_id: alunoId, tipo: descTipo, valor: Number(descValor), meses_duracao: meses, meses_restantes: meses, recorrente: true, status: "ativo"
         }])
       }
 
-      const indicacaoId = searchParams.get("indicacao_id")
-      if (indicacaoId) await supabase.from("escolas_indicacoes").update({ status: "aprovado", aluno_id: alunoId }).eq("id", indicacaoId)
-
       const matriculasInseridas = []
       for (const item of itensMatricula) {
-        const { data: mat, error: errMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoId, turma_id: item.turmaId, status: "ativo" }]).select().single()
-        if (errMat) throw new Error(`Erro ao vincular turma: ${errMat.message}`)
-        matriculasInseridas.push(mat)
+        const turmaIdParaSalvar = (!item.turmaId || item.turmaId === "sem_turma") ? null : item.turmaId
+        
+        const { data: mat, error: errMat } = await supabase.from("matriculas").insert([{ aluno_id: alunoId, turma_id: turmaIdParaSalvar, status: "ativo" }]).select().single()
+        if (errMat) throw new Error(`Erro ao vincular matrícula: ${errMat.message}`)
+        
+        matriculasInseridas.push({ ...mat, modalidade_id: item.modalidadeId })
       }
 
       const hoje = new Date()
       const diaVencimento = hoje.getDate();
 
       for (const mat of matriculasInseridas) {
-        const turma = todasTurmas.find(t => t.id === mat.turma_id)
-        const modalidade = modalidades.find(m => m.id === turma?.modalidade_id)
+        const modalidade = modalidades.find(m => m.id === mat.modalidade_id)
         
         let valorOriginal = modalidade?.valor_geral || 0
         const valorBase = modalidade?.valor_base || 0
@@ -298,8 +312,6 @@ function MatriculaContent() {
       setItensMatricula([])
       setCodigoPagamento("")
       setDescValor("")
-      setDescMeses("")
-      setDescRecorrente(false)
       setSenhaDiretor("")
       setTermoAceito(false)
     } catch (err: any) {
@@ -312,10 +324,11 @@ function MatriculaContent() {
 
   function gerarRecibo(numeroMatricula: string, mesReferente: string) {
     const detalhes = itensMatricula.map(item => {
+      const mod = modalidades.find(m => m.id === item.modalidadeId)
       const turma = todasTurmas.find(t => t.id === item.turmaId)
-      const mod = modalidades.find(m => m.id === turma?.modalidade_id)
-      return `${mod?.nome} - ${turma?.nome}`
+      return turma ? `${mod?.nome} - ${turma?.nome}` : `${mod?.nome} (Acesso Livre)`
     }).join(", ")
+    
     const desconto = valorGeralTotal - (valorFinal - (valorFinal * (infoPagamento.taxaAplicada/100)))
     const juros = valorFinal * (infoPagamento.taxaAplicada/100)
     const nomeEscola = aluno.escola_id ? escolas.find(e => e.id === aluno.escola_id)?.nome : null;
@@ -327,7 +340,7 @@ function MatriculaContent() {
       .logo { text-align: center; margin-bottom: 4px; } .logo img { max-width: 40mm; height: auto; } .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
       hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } .total { font-weight: bold; font-size: 11pt; } .verse { text-align: center; margin-top: 8px; font-style: italic; } .center { text-align: center; }
       </style></head><body>
-        <div class="logo"><img src="${window.location.origin}/logo.png" alt="Logo" /></div>
+        <div class="logo"><img src="${window.location.origin}/logo-color.png" alt="Logo" /></div>
         <div class="titulo">CT OKINAWA</div><div class="center">Disciplina • Respeito • Evolução</div><hr/>
         <div class="center"><b>RECIBO DE MATRÍCULA</b></div><hr/>
         <div><b>Nº Matrícula:</b> ${numeroMatricula}</div><div><b>Aluno:</b> ${aluno.nome}</div><div><b>CPF:</b> ${aluno.cpf || '---'}</div>
@@ -391,13 +404,14 @@ function MatriculaContent() {
             const turmasDisponiveis = turmasDaModalidade(item.modalidadeId)
             return (
               <div key={idx} className="border p-3 rounded mb-2">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <select className="flex-1 p-2 border rounded" value={item.modalidadeId} onChange={e => atualizarModalidade(idx, e.target.value)}>
                     <option value="">Selecione a modalidade</option>
                     {modalidades.map(mod => <option key={mod.id} value={mod.id}>{mod.nome} - R$ {mod.valor_geral}</option>)}
                   </select>
                   <select className="flex-1 p-2 border rounded" value={item.turmaId} onChange={e => atualizarTurma(idx, e.target.value)} disabled={!item.modalidadeId}>
-                    <option value="">Selecione a turma</option>
+                    <option value="">Selecione a turma (Opcional)</option>
+                    <option value="sem_turma">Sem Turma (Acesso Livre)</option>
                     {turmasDisponiveis.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
                   </select>
                   <button type="button" onClick={() => removerModalidade(idx)} className="bg-red-500 text-white px-3 rounded">X</button>

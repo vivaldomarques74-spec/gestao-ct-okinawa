@@ -39,6 +39,8 @@ export default function AulaExperimentalPage() {
         horario = `${turma.hora_inicio} às ${turma.hora_fim}`
       } else if (turma?.horario) {
         horario = turma.horario
+      } else if (!ag.turma_id || ag.turma_id === 'sem_turma') {
+        horario = "Acesso Livre"
       }
 
       let statusNormalizado = ag.status
@@ -48,7 +50,7 @@ export default function AulaExperimentalPage() {
         ...ag,
         status: statusNormalizado,
         modalidade_nome: mod?.nome || "?",
-        turma_nome: turma?.nome || "?",
+        turma_nome: turma?.nome || "Sem Turma (Acesso Livre)",
         turma_horario: horario
       }
     })
@@ -58,12 +60,20 @@ export default function AulaExperimentalPage() {
 
   async function agendar(e: any) {
     e.preventDefault()
-    if (!form.nome || !form.telefone || !form.modalidade_id || !form.turma_id || !form.data_aula) {
+    if (!form.nome || !form.telefone || !form.modalidade_id || !form.data_aula) {
       return alert("Preencha todos os campos obrigatórios.")
     }
+    if (form.turma_id !== 'sem_turma' && !form.turma_id) {
+      return alert("Selecione uma turma ou a opção 'Sem Turma'.")
+    }
+    
     setLoading(true)
     
-    const { data: novoAgendamento, error } = await supabase.from("aulas_experimentais").insert([{ ...form, status: "pendente" }]).select().single()
+    // Se for "sem_turma", salva null no banco
+    const turmaIdParaSalvar = form.turma_id === 'sem_turma' ? null : form.turma_id
+    const formParaSalvar = { ...form, turma_id: turmaIdParaSalvar, status: "pendente" }
+
+    const { data: novoAgendamento, error } = await supabase.from("aulas_experimentais").insert([formParaSalvar]).select().single()
     
     if (error) {
       alert("Erro ao agendar: " + error.message)
@@ -72,14 +82,16 @@ export default function AulaExperimentalPage() {
       
       const turma = turmas.find(t => t.id === form.turma_id)
       const mod = modalidades.find(m => m.id === form.modalidade_id)
+      
       let horario = "A confirmar"
       if (turma?.hora_inicio && turma?.hora_fim) horario = `${turma.hora_inicio} às ${turma.hora_fim}`
       else if (turma?.horario) horario = turma.horario
+      else if (form.turma_id === 'sem_turma') horario = "Acesso Livre"
 
       const agParaPDF = {
         ...novoAgendamento,
         modalidades: { nome: mod?.nome },
-        turmas: { nome: turma?.nome, horario: horario }
+        turmas: { nome: turma?.nome || "Sem Turma (Acesso Livre)", horario: horario }
       }
 
       gerarComprovantePDF(agParaPDF) 
@@ -89,9 +101,7 @@ export default function AulaExperimentalPage() {
     setLoading(false)
   }
 
-  // --- COMPROVANTE DE AGENDAMENTO (LOGO AJUSTADA) ---
   function gerarComprovantePDF(ag: any) {
-    // Carrega a imagem antes de gerar o PDF para não dar erro
     const img = new Image()
     img.src = '/logo-color.png'
 
@@ -100,20 +110,17 @@ export default function AulaExperimentalPage() {
       const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
       const horario = ag.turmas?.horario || ag.turma_horario || "A confirmar"
 
-      // Adiciona a logo centralizada (X=65, Y=10, Largura=80, Altura=45) - Mantém proporção
       doc.addImage(img, 'PNG', 65, 10, 80, 45)
 
-      // Título
       doc.setTextColor(0, 0, 0)
       doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
       doc.text("COMPROVANTE DE AGENDAMENTO - AULA EXPERIMENTAL", 105, 65, { align: "center" })
 
-      doc.setDrawColor(204, 0, 0) // Linha vermelha
+      doc.setDrawColor(204, 0, 0)
       doc.setLineWidth(0.5)
       doc.line(20, 70, 190, 70)
 
-      // DADOS DO ALUNO
       doc.setTextColor(0, 0, 0)
       doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
@@ -127,7 +134,6 @@ export default function AulaExperimentalPage() {
       doc.text(`WhatsApp: ${ag.telefone}`, 20, 98)
       if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 106)
 
-      // DADOS DA AULA
       doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
       doc.setTextColor(0, 0, 0)
@@ -142,7 +148,6 @@ export default function AulaExperimentalPage() {
       doc.text(`Data: ${dataFormatada}`, 20, 146)
       doc.text(`Horário: ${horario}`, 20, 154)
 
-      // LOCAL
       doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
       doc.setTextColor(0, 0, 0)
@@ -154,7 +159,6 @@ export default function AulaExperimentalPage() {
       doc.setTextColor(50, 50, 50)
       doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 180)
 
-      // INSTRUÇÕES
       doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
       doc.setTextColor(0, 0, 0)
@@ -176,7 +180,6 @@ export default function AulaExperimentalPage() {
         y += 6
       })
 
-      // Rodapé
       doc.setFontSize(10)
       doc.setTextColor(150, 150, 150)
       doc.text("Disciplina • Respeito • Evolução", 105, 280, { align: "center" })
@@ -185,7 +188,6 @@ export default function AulaExperimentalPage() {
     }
   }
 
-  // --- TERMO DE CIÊNCIA (LOGO AJUSTADA) ---
   function gerarTermoCienciaPDF(ag: any) {
     const img = new Image()
     img.src = '/logo-color.png'
@@ -194,7 +196,6 @@ export default function AulaExperimentalPage() {
       const doc = new jsPDF()
       const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
 
-      // Adiciona a logo
       doc.addImage(img, 'PNG', 65, 10, 80, 45)
 
       doc.setTextColor(0, 0, 0)
@@ -204,7 +205,7 @@ export default function AulaExperimentalPage() {
       doc.setFontSize(12)
       doc.text("AULA EXPERIMENTAL", 105, 73, { align: "center" })
 
-      doc.setDrawColor(204, 0, 0) // Linha vermelha
+      doc.setDrawColor(204, 0, 0)
       doc.setLineWidth(0.5)
       doc.line(20, 78, 190, 78)
 
@@ -313,6 +314,7 @@ export default function AulaExperimentalPage() {
 
             <select className="input" value={form.turma_id} onChange={e => setForm({...form, turma_id: e.target.value})} disabled={!form.modalidade_id} required>
               <option value="">Selecione a Turma *</option>
+              <option value="sem_turma" className="font-bold text-red-600">Sem Turma (Acesso Livre)</option>
               {turmas
                 .filter(t => String(t.modalidade_id) === String(form.modalidade_id))
                 .map(t => (

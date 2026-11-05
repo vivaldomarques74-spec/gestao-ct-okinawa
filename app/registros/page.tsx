@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../lib/supabase"
 import AdminGuard from "../../components/AdminGuard"
-import { Gift, Lock, FileText, Trash2, CalendarDays } from "lucide-react"
+import { Gift, Lock, FileText, Trash2, CalendarDays, Stethoscope } from "lucide-react"
 import jsPDF from "jspdf"
 
 export default function RegistrosPage() {
@@ -19,6 +19,10 @@ export default function RegistrosPage() {
   const [matriculasAluno, setMatriculasAluno] = useState<any[]>([])
   const [descontoEspecial, setDescontoEspecial] = useState<any>(null)
   
+  // HISTÓRICO DE SAÚDE
+  const [showHistoricoSaude, setShowHistoricoSaude] = useState(false)
+  const [historicoSaude, setHistoricoSaude] = useState<any[]>([])
+
   // ESTADO PARA O NOVO DIA DE VENCIMENTO
   const [diaVencimento, setDiaVencimento] = useState("")
   const [atualizandoVencimento, setAtualizandoVencimento] = useState(false)
@@ -87,7 +91,8 @@ export default function RegistrosPage() {
   async function editarAluno(aluno: any) {
     setAlunoEditando(aluno)
     setSenhaDiretor("")
-    setDiaVencimento("") // Limpa o campo ao trocar de aluno
+    setDiaVencimento("") 
+    setShowHistoricoSaude(false)
     
     setFormAluno({
       nome: aluno.nome || "", cpf: aluno.cpf || "", rg: aluno.rg || "", nascimento: aluno.nascimento || "",
@@ -111,7 +116,6 @@ export default function RegistrosPage() {
     const { data: desc } = await supabase.from("descontos_especiais").select("*").eq("aluno_id", aluno.id).eq("status", "ativo").maybeSingle()
     setDescontoEspecial(desc || null)
 
-    // Busca a primeira mensalidade pendente para mostrar o dia atual de vencimento como dica
     const { data: pendente } = await supabase.from("mensalidades").select("vencimento").eq("aluno_id", aluno.id).eq("status", "pendente").limit(1).maybeSingle()
     if (pendente) {
       const dia = new Date(pendente.vencimento + "T12:00:00").getDate()
@@ -119,7 +123,30 @@ export default function RegistrosPage() {
     }
   }
 
-  // FUNÇÃO QUE ATUALIZA O VENCIMENTO DE TODAS AS MENSALIDADES PENDENTES
+  async function carregarHistoricoSaude() {
+    if (!alunoEditando) return
+    setShowHistoricoSaude(true)
+    
+    const { data: agendamentos } = await supabase
+      .from("agendamentos_saude")
+      .select("*, profissionais_saude(nome, especialidade), servicos_saude(nome)")
+      .eq("aluno_id", alunoEditando.id)
+      .order("data_hora", { ascending: false })
+
+    const { data: prontuarios } = await supabase
+      .from("prontuarios_saude")
+      .select("*, profissionais_saude(nome)")
+      .eq("aluno_id", alunoEditando.id)
+      .order("created_at", { ascending: false })
+
+    const historico = [
+      ...(agendamentos || []).map((a: any) => ({ tipo: 'consulta', data: a.data_hora, info: a })),
+      ...(prontuarios || []).map((p: any) => ({ tipo: 'documento', data: p.created_at, info: p }))
+    ].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
+
+    setHistoricoSaude(historico)
+  }
+
   async function atualizarVencimentoMensalidades() {
     const novoDia = Number(diaVencimento)
     if (!novoDia || novoDia < 1 || novoDia > 31) {
@@ -151,20 +178,16 @@ export default function RegistrosPage() {
     let atualizadas = 0
 
     for (const m of pendentes) {
-      // Pega o ano e o mês original
       const dataOriginal = new Date(m.vencimento + "T12:00:00")
       const ano = dataOriginal.getFullYear()
       const mes = dataOriginal.getMonth()
-
-      // Cria a nova data com o novo dia
       let novaData = new Date(ano, mes, novoDia)
 
-      // Se o mês não tiver o dia (ex: dia 31 em fevereiro), ajusta para o último dia do mês
       if (novaData.getMonth() !== mes) {
         novaData = new Date(ano, mes + 1, 0) 
       }
 
-      const novaDataStr = novaData.toLocaleDateString('en-CA') // YYYY-MM-DD
+      const novaDataStr = novaData.toLocaleDateString('en-CA') 
 
       await supabase.from("mensalidades").update({ vencimento: novaDataStr }).eq("id", m.id)
       atualizadas++
@@ -202,29 +225,32 @@ export default function RegistrosPage() {
     y += 15
 
     doc.setFontSize(10)
-    const introText = `Eu, ${formAluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${formAluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
-    const splitIntro = doc.splitTextToSize(introText, 180)
-    doc.text(splitIntro, 15, y)
-    y += splitIntro.length * 6 + 5
-
-    const condicaoText = formAluno.menor 
-      ? `Na condição de: ( X ) Responsável legal pelo(a) aluno(a) menor ${formAluno.nome}` 
-      : `Na condição de: ( X ) Aluno(a) maior de idade`
-    doc.text(condicaoText, 15, y)
-    y += 10
+    
+    if (formAluno.menor) {
+      const introTextMenor = `Eu, ${formAluno.responsavel_nome || "________________________________________"}, inscrito(a) no CPF nº ${formAluno.responsavel_cpf || "____________________"}, na condição de responsável legal pelo(a) aluno(a) menor ${formAluno.nome || "________________________________________"}, declaro, para todos os fins de direito, que:`
+      const splitIntro = doc.splitTextToSize(introTextMenor, 170)
+      doc.text(splitIntro, 15, y)
+      y += splitIntro.length * 6 + 5
+    } else {
+      const introText = `Eu, ${formAluno.nome || "________________________________________"}, inscrito(a) no CPF nº ${formAluno.cpf || "____________________"}, declaro, para todos os fins de direito, que:`
+      const splitIntro = doc.splitTextToSize(introText, 170)
+      doc.text(splitIntro, 15, y)
+      y += splitIntro.length * 6 + 5
+    }
 
     const clausulas = [
       `1. DA CIÊNCIA DO REGULAMENTO: Declaro que recebi, li, compreendi e tive acesso ao Regulamento Interno do CT OKINAWA, estando plenamente ciente de todas as normas de funcionamento, conduta, disciplina e organização do espaço.`,
       `2. DA PRÁTICA DE ATIVIDADE FÍSICA E RISCOS: Declaro estar ciente de que a prática de artes marciais envolve riscos inerentes. Assumo integral responsabilidade pela participação, isentando o CT OKINAWA de acidentes que não sejam oriundos de dolo ou negligência direta.`,
       `3. DAS CONDIÇÕES DE SAÚDE: Declaro que: ( X ) O aluno encontra-se apto à prática de atividades físicas. ${formAluno.problema_saude ? `( X ) Informei previamente a seguinte condição de saúde: ${formAluno.saude_detalhes}` : `( ) Informei previamente alguma condição de saúde relevante.`}`,
       `4. DO USO DE IMAGEM, VOZ E IDENTIDADE: Autorizo o CT OKINAWA a captar e utilizar imagem, voz e nome do aluno para fins institucionais, promocionais e de divulgação, sem limitação territorial e por prazo indeterminado, sem qualquer remuneração.`,
-      `5. DAS RESPONSABILIDADES: O descumprimento das normas poderá resultar em medidas disciplinares. O CT não se responsabiliza por ocorrências fora de suas dependências ou por ações de terceiros.`,
-      `6. DAS OBRIGAÇÕES FINANCEIRAS: A mensalidade possui vencimento fixo. O não pagamento poderá acarretar restrição de acesso às atividades até a devida regularização.`,
-      `7. DECLARAÇÃO FINAL: Declaro que todas as informações prestadas são verdadeiras e que este termo possui validade jurídica, não podendo alegar desconhecimento.`
+      `5. LGPD (LEI 13.709/2018): Autorizo o tratamento dos meus dados pessoais e dos dados do aluno menor, exclusivamente para fins de gestão acadêmica, financeira e comunicação, ciente de que posso solicitar a exclusão a qualquer momento.`,
+      `6. DAS RESPONSABILIDADES: O descumprimento das normas poderá resultar em medidas disciplinares. O CT não se responsabiliza por ocorrências fora de suas dependências ou por ações de terceiros.`,
+      `7. DAS OBRIGAÇÕES FINANCEIRAS: A mensalidade possui vencimento fixo. O não pagamento poderá acarretar restrição de acesso às atividades até a devida regularização.`,
+      `8. DECLARAÇÃO FINAL: Declaro que todas as informações prestadas são verdadeiras e que este termo possui validade jurídica, não podendo alegar desconhecimento.`
     ]
 
     clausulas.forEach(clausula => {
-      const splitText = doc.splitTextToSize(clausula, 180)
+      const splitText = doc.splitTextToSize(clausula, 170)
       if (y + splitText.length * 6 > 260) { doc.addPage(); y = 20; }
       doc.text(splitText, 15, y)
       y += splitText.length * 6 + 4
@@ -233,19 +259,23 @@ export default function RegistrosPage() {
     if (y > 220) { doc.addPage(); y = 20; }
     y += 10
     
-    doc.text(`Nome: ${formAluno.nome || "_________________________________________"}`, 15, y); y += 6
-    doc.text(`CPF: ${formAluno.cpf || "____________________"}`, 15, y); y += 6
-    doc.text(`Telefone: ${formAluno.whatsapp || formAluno.responsavel_whatsapp || "____________________"}`, 15, y); y += 6
-    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 15, y); y += 15
-
-    doc.text(`( X ) Aluno maior de idade`, 15, y); y += 6
-    doc.text(`( X ) Responsável legal`, 15, y); y += 20
+    doc.text(`Nome do Aluno: ${formAluno.nome || "_________________________________________"}`, 15, y); y += 6
+    doc.text(`CPF do Aluno: ${formAluno.cpf || "____________________"}`, 15, y); y += 6
+    if (formAluno.menor) {
+      doc.text(`Responsável Legal: ${formAluno.responsavel_nome || "_________________________________________"}`, 15, y); y += 6
+    }
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, 15, y); y += 20
 
     doc.setLineWidth(0.5)
-    doc.line(15, y, 100, y)
-    doc.line(110, y, 195, y)
+    doc.line(15, y, 90, y)
+    doc.line(110, y, 185, y)
     y += 5
-    doc.text(`${formAluno.menor ? formAluno.responsavel_nome || "Assinatura do Responsável" : formAluno.nome || "Assinatura do Aluno"}`, 15, y)
+    
+    const assinaturaAluno = formAluno.menor 
+      ? formAluno.responsavel_nome || "Assinatura do Responsável" 
+      : formAluno.nome || "Assinatura do Aluno"
+
+    doc.text(assinaturaAluno, 15, y)
     doc.text(`CT OKINAWA`, 110, y)
 
     doc.save(`Termo_Responsabilidade_${formAluno.nome || "Aluno"}.pdf`)
@@ -441,6 +471,44 @@ export default function RegistrosPage() {
 
               {alunoEditando && (
                 <div className="pl-4 space-y-3 max-h-175 overflow-y-auto pr-2">
+                  
+                  {/* HISTÓRICO DE SAÚDE AQUI */}
+                  <div className="bg-teal-50 border border-teal-200 p-3 rounded mb-2 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-teal-800 flex items-center gap-2"><Stethoscope size={18}/> Histórico de Saúde</h3>
+                      <p className="text-xs text-teal-600">Consultas e prontuários deste aluno.</p>
+                    </div>
+                    <button onClick={carregarHistoricoSaude} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-teal-700 transition">
+                      Abrir Histórico
+                    </button>
+                  </div>
+
+                  {showHistoricoSaude && (
+                    <div className="bg-white border rounded p-3 mb-4 max-h-75 overflow-y-auto shadow-inner">
+                      <h4 className="font-bold text-sm mb-2 border-b pb-1">Registros Clínicos</h4>
+                      {historicoSaude.length === 0 ? (
+                        <p className="text-sm text-gray-500">Nenhum registro de saúde encontrado.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {historicoSaude.map((h, i) => (
+                            <div key={i} className="text-sm border-l-2 border-teal-500 pl-2">
+                              <p className="font-bold text-xs text-teal-700">{new Date(h.data).toLocaleDateString()} - {h.info.profissionais_saude?.nome}</p>
+                              {h.tipo === 'consulta' && (
+                                <p className="text-gray-700">Consulta: {h.info.servicos_saude?.nome} (Valor: R$ {Number(h.info.valor).toFixed(2)})</p>
+                              )}
+                              {h.tipo === 'documento' && (
+                                <div className="bg-gray-50 p-2 rounded mt-1 border">
+                                  <p className="text-xs font-bold text-gray-500 uppercase">{h.info.tipo_documento}</p>
+                                  <p className="text-gray-800 whitespace-pre-wrap">{h.info.conteudo}</p>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="bg-gray-100 p-2 rounded">
                     <label className="text-xs font-semibold text-gray-500">Nº Matrícula</label>
                     <input className="w-full p-2 border rounded bg-transparent font-bold text-red-600" readOnly value={formAluno.numero_matricula || "---"} />
@@ -479,7 +547,6 @@ export default function RegistrosPage() {
                     {convenios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
 
-                  {/* NOVO BLOCO: ALTERAR VENCIMENTO */}
                   <div className="border p-3 rounded bg-blue-50 border-blue-200 mt-4">
                     <h3 className="font-semibold text-blue-800 flex items-center gap-2 mb-2"><CalendarDays size={18}/> Alterar Vencimento</h3>
                     <div className="flex gap-2 items-end">
@@ -543,7 +610,7 @@ export default function RegistrosPage() {
                     const modalidade = modalidades.find(m => m.id === turma?.modalidade_id)
                     return (
                       <div key={mat.id} className="flex justify-between items-center border p-2 rounded mb-2">
-                        <span><strong>{modalidade?.nome || "?"}</strong> - {turma?.nome || "?"}</span>
+                        <span><strong>{modalidade?.nome || "Acesso Livre"}</strong> - {turma?.nome || "Sem Turma"}</span>
                         <button onClick={() => removerTurmaAluno(mat.id)} className="text-red-600 text-sm">Remover</button>
                       </div>
                     )
@@ -583,7 +650,7 @@ export default function RegistrosPage() {
           <div className="bg-white rounded-xl shadow p-4">
             <div className="grid md:grid-cols-4 gap-3 mb-4">
               <select className="p-2 border rounded" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-                <option value="todos">Todos</option><option value="matricula">Matrícula</option><option value="mensalidade">Mensalidade</option><option value="venda">Venda</option>
+                <option value="todos">Todos</option><option value="matricula">Matrícula</option><option value="mensalidade">Mensalidade</option><option value="venda">Venda</option><option value="saude">Saúde</option>
               </select>
               <select className="p-2 border rounded" value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)}>
                 <option value="">Todos os parceiros</option>

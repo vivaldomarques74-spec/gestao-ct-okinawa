@@ -5,28 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import {
-  Home,
-  DollarSign,
-  UserPlus,
-  ShoppingBag,
-  Calendar,
-  Bell,
-  Receipt,
-  BarChart3,
-  Database,
-  Users,
-  Key,
-  Handshake,
-  Package,
-  Boxes,
-  GraduationCap,
-  School,
-  UserCog,
-  Menu,
-  X,
-  Gift,
-  FileText,
-  FlaskConical, // Ícone para Aula Experimental
+  Home, DollarSign, UserPlus, ShoppingBag, Calendar, Bell, Receipt, BarChart3, Database, Users, Key, Handshake, Package, Boxes, GraduationCap, School, UserCog, Menu, X, Gift, FileText, FlaskConical, Stethoscope, CalendarDays
 } from "lucide-react";
 
 const menuAtendimento = [
@@ -36,6 +15,7 @@ const menuAtendimento = [
   { href: "/aula-experimental", icon: FlaskConical, label: "Aula Experimental" },
   { href: "/pdv", icon: ShoppingBag, label: "PDV" },
   { href: "/mensalidades", icon: Calendar, label: "Mensalidades" },
+  { href: "/saude", icon: CalendarDays, label: "Agenda de Saúde" }, // NOVO LINK AQUI
   { href: "/alertas", icon: Bell, label: "Central de Alertas" },
   { href: "/imprimir-recibos", icon: Receipt, label: "Imprimir Recibos" },
 ];
@@ -55,6 +35,7 @@ const menuAdmin = [
   { href: "/modalidades", icon: GraduationCap, label: "Modalidades" },
   { href: "/turmas", icon: School, label: "Turmas" },
   { href: "/professores", icon: UserCog, label: "Professores" },
+  { href: "/profissionais-saude", icon: Stethoscope, label: "Profissionais de Saúde" }, 
 ];
 
 export default function Sidebar() {
@@ -64,11 +45,7 @@ export default function Sidebar() {
 
   useEffect(() => {
     async function checkPendentes() {
-      const { count } = await supabase
-        .from("alunos")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pendente");
-      
+      const { count } = await supabase.from("alunos").select("*", { count: "exact", head: true }).eq("status", "pendente");
       setEscolasPendentes(count || 0);
     }
     checkPendentes();
@@ -79,17 +56,11 @@ export default function Sidebar() {
 
   return (
     <>
-      <button
-        onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 md:hidden bg-red-700 text-white p-2 rounded-lg shadow-lg hover:bg-red-800 transition"
-      >
+      <button onClick={toggleSidebar} className="fixed top-4 left-4 z-50 md:hidden bg-red-700 text-white p-2 rounded-lg shadow-lg hover:bg-red-800 transition">
         <Menu size={20} />
       </button>
 
-      <aside
-        className={`fixed top-0 left-0 h-screen bg-black text-white shadow-2xl border-r border-red-900 transition-all duration-300 z-40
-        ${isCollapsed ? "w-20" : "w-72"} md:w-72 md:translate-x-0 -translate-x-full md:relative`}
-      >
+      <aside className={`fixed top-0 left-0 h-screen bg-black text-white shadow-2xl border-r border-red-900 transition-all duration-300 z-40 ${isCollapsed ? "w-20" : "w-72"} md:w-72 md:translate-x-0 -translate-x-full md:relative`}>
         <div className="flex justify-between items-center p-5 border-b border-red-900">
           <div className="flex items-center gap-3">
             <div className="bg-red-700 p-2 rounded-xl">
@@ -102,10 +73,7 @@ export default function Sidebar() {
               </div>
             )}
           </div>
-          <button
-            onClick={toggleSidebar}
-            className="text-gray-400 hover:text-red-400 transition cursor-pointer"
-          >
+          <button onClick={toggleSidebar} className="text-gray-400 hover:text-red-400 transition cursor-pointer">
             {isCollapsed ? <Menu size={18} /> : <X size={18} />}
           </button>
         </div>
@@ -116,15 +84,7 @@ export default function Sidebar() {
           </div>
           <div className="space-y-1">
             {menuAtendimento.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
-                  isActive(item.href)
-                    ? "bg-red-700 text-white shadow-md"
-                    : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"
-                }`}
-              >
+              <Link key={item.href} href={item.href} className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive(item.href) ? "bg-red-700 text-white shadow-md" : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"}`}>
                 <item.icon size={18} />
                 {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
               </Link>
@@ -136,23 +96,13 @@ export default function Sidebar() {
           </div>
           <div className="space-y-1">
             {menuAdmin.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center justify-between mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
-                  isActive(item.href)
-                    ? "bg-red-700 text-white shadow-md"
-                    : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"
-                }`}
-              >
+              <Link key={item.href} href={item.href} className={`flex items-center justify-between mx-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive(item.href) ? "bg-red-700 text-white shadow-md" : "text-gray-300 hover:bg-red-900/30 hover:text-red-400"}`}>
                 <div className="flex items-center gap-3">
                   <item.icon size={18} />
                   {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
                 </div>
                 {item.href === "/escolas" && escolasPendentes > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    {escolasPendentes}
-                  </span>
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{escolasPendentes}</span>
                 )}
               </Link>
             ))}
@@ -160,21 +110,10 @@ export default function Sidebar() {
         </div>
 
         <div className="p-4 border-t border-red-900 text-center text-xs text-gray-500">
-          {!isCollapsed && (
-            <>
-              {new Date().getFullYear()} © CT Okinawa<br />
-              Versão 2.0
-            </>
-          )}
+          {!isCollapsed && (<>{new Date().getFullYear()} © CT Okinawa<br />Versão 2.0</>)}
         </div>
       </aside>
-
-      {!isCollapsed && (
-        <div
-          className="fixed inset-0 bg-black/70 z-30 md:hidden"
-          onClick={toggleSidebar}
-        />
-      )}
+      {!isCollapsed && <div className="fixed inset-0 bg-black/70 z-30 md:hidden" onClick={toggleSidebar} />}
     </>
   );
 }
