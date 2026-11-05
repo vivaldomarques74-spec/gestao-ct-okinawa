@@ -89,178 +89,172 @@ export default function AulaExperimentalPage() {
     setLoading(false)
   }
 
-  // --- COMPROVANTE DE AGENDAMENTO (COM LOGO E SEM FUNDO VERMELHO) ---
+  // --- COMPROVANTE DE AGENDAMENTO (LOGO AJUSTADA) ---
   function gerarComprovantePDF(ag: any) {
-    const doc = new jsPDF()
-    const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
-    const horario = ag.turmas?.horario || ag.turma_horario || "A confirmar"
+    // Carrega a imagem antes de gerar o PDF para não dar erro
+    const img = new Image()
+    img.src = '/logo-color.png'
 
-    // Fundo branco, sem a faixa vermelha
-    
-    // Adiciona a Logo Colorida (tamanho 120x30 para manter proporção)
-    try {
-      doc.addImage('/logo-color.png', 'PNG', 45, 10, 120, 30)
-    } catch (e) {
-      // Fallback caso a imagem não carregue
-      doc.setFontSize(22)
+    img.onload = () => {
+      const doc = new jsPDF()
+      const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
+      const horario = ag.turmas?.horario || ag.turma_horario || "A confirmar"
+
+      // Adiciona a logo centralizada (X=65, Y=10, Largura=80, Altura=45) - Mantém proporção
+      doc.addImage(img, 'PNG', 65, 10, 80, 45)
+
+      // Título
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
-      doc.text("CT OKINAWA", 105, 20, { align: "center" })
+      doc.text("COMPROVANTE DE AGENDAMENTO - AULA EXPERIMENTAL", 105, 65, { align: "center" })
+
+      doc.setDrawColor(204, 0, 0) // Linha vermelha
+      doc.setLineWidth(0.5)
+      doc.line(20, 70, 190, 70)
+
+      // DADOS DO ALUNO
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.text("DADOS DO ALUNO", 20, 80)
+      doc.line(20, 82, 190, 82)
+      
+      doc.setFontSize(11)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(50, 50, 50)
+      doc.text(`Nome: ${ag.nome}`, 20, 90)
+      doc.text(`WhatsApp: ${ag.telefone}`, 20, 98)
+      if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 106)
+
+      // DADOS DA AULA
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(0, 0, 0)
+      doc.text("DADOS DA AULA", 20, 120)
+      doc.line(20, 122, 190, 122)
+      
+      doc.setFontSize(11)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(50, 50, 50)
+      doc.text(`Modalidade: ${ag.modalidades?.nome}`, 20, 130)
+      doc.text(`Turma: ${ag.turmas?.nome}`, 20, 138)
+      doc.text(`Data: ${dataFormatada}`, 20, 146)
+      doc.text(`Horário: ${horario}`, 20, 154)
+
+      // LOCAL
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(0, 0, 0)
+      doc.text("LOCAL", 20, 170)
+      doc.line(20, 172, 190, 172)
+      
+      doc.setFontSize(11)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(50, 50, 50)
+      doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 180)
+
+      // INSTRUÇÕES
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(0, 0, 0)
+      doc.text("INSTRUÇÕES IMPORTANTES", 20, 195)
+      doc.line(20, 197, 190, 197)
+      
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(50, 50, 50)
+      const avisos = [
+        "1. Chegue com 10 minutos de antecedência.",
+        "2. Vista roupas confortáveis para a prática esportiva.",
+        "3. Traga uma garrafa de água.",
+        "4. Esta aula é experimental e não gera vínculo contratual."
+      ]
+      let y = 205
+      avisos.forEach(aviso => {
+        doc.text(aviso, 20, y)
+        y += 6
+      })
+
+      // Rodapé
+      doc.setFontSize(10)
+      doc.setTextColor(150, 150, 150)
+      doc.text("Disciplina • Respeito • Evolução", 105, 280, { align: "center" })
+
+      doc.save(`Comprovante_Aula_Experimental_${ag.nome}.pdf`)
     }
-
-    // Título
-    doc.setTextColor(0, 0, 0)
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "bold")
-    doc.text("COMPROVANTE DE AGENDAMENTO - AULA EXPERIMENTAL", 105, 50, { align: "center" })
-
-    doc.setDrawColor(204, 0, 0) // Linha vermelha apenas para separar
-    doc.setLineWidth(0.5)
-    doc.line(20, 55, 190, 55)
-
-    // DADOS DO ALUNO
-    doc.setTextColor(0, 0, 0)
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "bold")
-    doc.text("DADOS DO ALUNO", 20, 65)
-    doc.line(20, 67, 190, 67)
-    
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(50, 50, 50)
-    doc.text(`Nome: ${ag.nome}`, 20, 75)
-    doc.text(`WhatsApp: ${ag.telefone}`, 20, 83)
-    if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 91)
-
-    // DADOS DA AULA
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(0, 0, 0)
-    doc.text("DADOS DA AULA", 20, 110)
-    doc.line(20, 112, 190, 112)
-    
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(50, 50, 50)
-    doc.text(`Modalidade: ${ag.modalidades?.nome}`, 20, 120)
-    doc.text(`Turma: ${ag.turmas?.nome}`, 20, 128)
-    doc.text(`Data: ${dataFormatada}`, 20, 136)
-    doc.text(`Horário: ${horario}`, 20, 144)
-
-    // LOCAL
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(0, 0, 0)
-    doc.text("LOCAL", 20, 160)
-    doc.line(20, 162, 190, 162)
-    
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(50, 50, 50)
-    doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 170)
-
-    // INSTRUÇÕES
-    doc.setFontSize(12)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(0, 0, 0)
-    doc.text("INSTRUÇÕES IMPORTANTES", 20, 190)
-    doc.line(20, 192, 190, 192)
-    
-    doc.setFontSize(10)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(50, 50, 50)
-    const avisos = [
-      "1. Chegue com 10 minutos de antecedência.",
-      "2. Vista roupas confortáveis para a prática esportiva.",
-      "3. Traga uma garrafa de água.",
-      "4. Esta aula é experimental e não gera vínculo contratual."
-    ]
-    let y = 200
-    avisos.forEach(aviso => {
-      doc.text(aviso, 20, y)
-      y += 6
-    })
-
-    // Rodapé
-    doc.setFontSize(10)
-    doc.setTextColor(150, 150, 150)
-    doc.text("Disciplina • Respeito • Evolução", 105, 280, { align: "center" })
-
-    doc.save(`Comprovante_Aula_Experimental_${ag.nome}.pdf`)
   }
 
-  // --- TERMO DE CIÊNCIA (COM LOGO E SEM FUNDO VERMELHO) ---
+  // --- TERMO DE CIÊNCIA (LOGO AJUSTADA) ---
   function gerarTermoCienciaPDF(ag: any) {
-    const doc = new jsPDF()
-    const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
+    const img = new Image()
+    img.src = '/logo-color.png'
 
-    // Fundo branco, sem a faixa vermelha
-    
-    // Adiciona a Logo Colorida
-    try {
-      doc.addImage('/logo-color.png', 'PNG', 45, 10, 120, 30)
-    } catch (e) {
-      doc.setFontSize(16)
+    img.onload = () => {
+      const doc = new jsPDF()
+      const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
+
+      // Adiciona a logo
+      doc.addImage(img, 'PNG', 65, 10, 80, 45)
+
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(14)
       doc.setFont("helvetica", "bold")
-      doc.text("CT OKINAWA", 105, 20, { align: "center" })
-    }
+      doc.text("TERMO DE CIÊNCIA E RESPONSABILIDADE", 105, 65, { align: "center" })
+      doc.setFontSize(12)
+      doc.text("AULA EXPERIMENTAL", 105, 73, { align: "center" })
 
-    doc.setTextColor(0, 0, 0)
-    doc.setFontSize(14)
-    doc.setFont("helvetica", "bold")
-    doc.text("TERMO DE CIÊNCIA E RESPONSABILIDADE", 105, 50, { align: "center" })
-    doc.setFontSize(12)
-    doc.text("AULA EXPERIMENTAL", 105, 58, { align: "center" })
+      doc.setDrawColor(204, 0, 0) // Linha vermelha
+      doc.setLineWidth(0.5)
+      doc.line(20, 78, 190, 78)
 
-    doc.setDrawColor(204, 0, 0) // Linha vermelha
-    doc.setLineWidth(0.5)
-    doc.line(20, 63, 190, 63)
-
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(50, 50, 50)
-    
-    let texto = ""
-    if (ag.responsavel) {
-      texto = `Eu, ${ag.responsavel}, na qualidade de responsável legal pelo(a) aluno(a) ${ag.nome}, declaro para os devidos fins que:`
-    } else {
-      texto = `Eu, ${ag.nome}, declaro para os devidos fins que:`
-    }
-    
-    let splitText = doc.splitTextToSize(texto, 170)
-    doc.text(splitText, 20, 75)
-    let y = 75 + (splitText.length * 6) + 5
-
-    const clausulas = [
-      `1. Estou ciente de que a prática de artes marciais (${ag.modalidade_nome || "Artes Marciais"}) é uma atividade física de alto impacto e que envolve riscos inerentes, incluindo, mas não se limitando a, quedas, torções, contusões e lesões musculares.`,
-      `2. Declaro que o(a) aluno(a) encontra-se em plenas condições de saúde e apto(a) fisicamente para a prática da modalidade, isentando o CT OKINAWA de qualquer responsabilidade por eventuais acidentes ou lesões que possam ocorrer durante a aula.`,
-      `3. Estou ciente de que esta AULA EXPERIMENTAL tem caráter puramente demonstrativo e não gera, sob nenhuma hipótese, vínculo empregatício, contratual ou financeiro entre as partes.`,
-      `4. Comprometo-me a seguir as orientações do professor durante toda a atividade.`
-    ]
-
-    clausulas.forEach(clausula => {
-      const split = doc.splitTextToSize(clausula, 170)
-      if (y + (split.length * 6) > 260) {
-        doc.addPage()
-        y = 20
+      doc.setFontSize(11)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(50, 50, 50)
+      
+      let texto = ""
+      if (ag.responsavel) {
+        texto = `Eu, ${ag.responsavel}, na qualidade de responsável legal pelo(a) aluno(a) ${ag.nome}, declaro para os devidos fins que:`
+      } else {
+        texto = `Eu, ${ag.nome}, declaro para os devidos fins que:`
       }
-      doc.text(split, 20, y)
-      y += (split.length * 6) + 4
-    })
+      
+      let splitText = doc.splitTextToSize(texto, 170)
+      doc.text(splitText, 20, 90)
+      let y = 90 + (splitText.length * 6) + 5
 
-    y += 15
-    doc.setFontSize(11)
-    doc.text(`Data da Aula: ${dataFormatada}`, 20, y)
-    
-    y += 40
-    doc.setLineWidth(0.5)
-    doc.line(20, y, 90, y)
-    doc.line(110, y, 180, y)
-    y += 5
-    doc.setFontSize(10)
-    doc.text(ag.responsavel ? `${ag.responsavel} (Responsável)` : `${ag.nome} (Aluno)`, 20, y)
-    doc.text(`CT OKINAWA (Professor)`, 110, y)
+      const clausulas = [
+        `1. Estou ciente de que a prática de artes marciais (${ag.modalidade_nome || "Artes Marciais"}) é uma atividade física de alto impacto e que envolve riscos inerentes, incluindo, mas não se limitando a, quedas, torções, contusões e lesões musculares.`,
+        `2. Declaro que o(a) aluno(a) encontra-se em plenas condições de saúde e apto(a) fisicamente para a prática da modalidade, isentando o CT OKINAWA de qualquer responsabilidade por eventuais acidentes ou lesões que possam ocorrer durante a aula.`,
+        `3. Estou ciente de que esta AULA EXPERIMENTAL tem caráter puramente demonstrativo e não gera, sob nenhuma hipótese, vínculo empregatício, contratual ou financeiro entre as partes.`,
+        `4. Comprometo-me a seguir as orientações do professor durante toda a atividade.`
+      ]
 
-    doc.save(`Termo_Aula_Experimental_${ag.nome}.pdf`)
+      clausulas.forEach(clausula => {
+        const split = doc.splitTextToSize(clausula, 170)
+        if (y + (split.length * 6) > 260) {
+          doc.addPage()
+          y = 20
+        }
+        doc.text(split, 20, y)
+        y += (split.length * 6) + 4
+      })
+
+      y += 15
+      doc.setFontSize(11)
+      doc.text(`Data da Aula: ${dataFormatada}`, 20, y)
+      
+      y += 40
+      doc.setLineWidth(0.5)
+      doc.line(20, y, 90, y)
+      doc.line(110, y, 180, y)
+      y += 5
+      doc.setFontSize(10)
+      doc.text(ag.responsavel ? `${ag.responsavel} (Responsável)` : `${ag.nome} (Aluno)`, 20, y)
+      doc.text(`CT OKINAWA (Professor)`, 110, y)
+
+      doc.save(`Termo_Aula_Experimental_${ag.nome}.pdf`)
+    }
   }
 
   async function excluirAgendamento(id: string) {
