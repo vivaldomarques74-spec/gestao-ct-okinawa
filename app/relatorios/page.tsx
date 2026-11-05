@@ -206,23 +206,119 @@ export default function RelatoriosPage() {
     setLoadingProf(false)
   }
 
+  // --- IMPRESSÃO COM QUEBRA DE PÁGINA AUTOMÁTICA ---
   function imprimirRelatorioProfessor() {
     const professor = professores.find(p => p.id === professorSelecionado)
     const comissaoPercent = professor?.comissao || 0
-    const w = window.open("", "", "width=800,height=600")
+    const dataInicioFormatada = new Date(dataInicioProf + "T12:00:00").toLocaleDateString('pt-BR')
+    const dataFimFormatada = new Date(dataFimProf + "T12:00:00").toLocaleDateString('pt-BR')
+    const valorFormatado = totalComissaoProf.toFixed(2).replace('.', ',')
+
+    const w = window.open("", "", "width=900,height=800")
     w?.document.write(`
-      <html><head><title>Relatório Professor</title>
-      <style>body{font-family:Arial;padding:30px} table{border-collapse:collapse;width:100%} th,td{border:1px solid #ccc;padding:8px} .assinatura{margin-top:50px;display:flex;justify-content:space-between}</style>
+      <html><head><title>Relatório e Recibo de Comissão</title>
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #333; background: #fff; font-size: 10pt; margin: 0; padding: 0; }
+        
+        /* Header */
+        .header { text-align: center; border-bottom: 2px solid #cc0000; padding-bottom: 5px; margin-bottom: 15px; }
+        .header h1 { font-size: 22px; color: #cc0000; margin: 0; }
+        .header p { font-size: 11px; color: #666; margin: 3px 0 0 0; }
+        
+        /* Relatório */
+        .section-title { font-size: 13px; font-weight: bold; color: #cc0000; margin: 15px 0 10px 0; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        thead { display: table-header-group; } /* Repete o cabeçalho da tabela em novas páginas */
+        tr { page-break-inside: avoid; } /* Evita que uma linha da tabela seja cortada ao meio */
+        th { background: #f5f5f5; color: #333; padding: 6px; text-align: left; font-size: 9pt; border-bottom: 2px solid #ccc; }
+        td { padding: 6px; border-bottom: 1px solid #eee; font-size: 9pt; }
+        .total-table { font-weight: bold; text-align: right; font-size: 11pt; margin-bottom: 20px; page-break-inside: avoid; }
+        .total-table span { color: #cc0000; }
+        
+        /* Recibo */
+        .recibo-box { border: 1px solid #cc0000; padding: 15px; border-radius: 5px; margin-top: 20px; background: #fffbfb; page-break-inside: avoid; }
+        .recibo-text { line-height: 1.5; text-align: justify; font-size: 10pt; margin-bottom: 10px; }
+        .recibo-valor { font-size: 15px; font-weight: bold; text-align: center; margin: 10px 0; border-top: 1px dashed #ccc; border-bottom: 1px dashed #ccc; padding: 8px 0; }
+        
+        /* Assinaturas */
+        .assinaturas { display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid; }
+        .assinatura-linha { text-align: center; width: 45%; }
+        .linha { border-top: 1px solid #000; margin-bottom: 5px; }
+        
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style>
       </head><body>
-      <h1>CT OKINAWA</h1>
-      <h2>Relatório de Comissão - Professor ${professor?.nome}</h2>
-      <p>Período: ${new Date(dataInicioProf).toLocaleDateString()} a ${new Date(dataFimProf).toLocaleDateString()}</p>
-      <table><thead><tr><th>Aluno</th><th>Turma</th><th>Data</th><th>Tipo</th><th>Valor Base</th><th>Comissão (${comissaoPercent}%)</th></tr></thead><tbody>
-      ${movimentacoesProf.map(m => `<tr><td>${m.aluno_nome}</td><td>${m.turma_nome}</td><td>${new Date(m.data).toLocaleDateString()}</td><td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td><td>R$ ${m.valor_base.toFixed(2)}</td><td>R$ ${m.valor_comissao.toFixed(2)}</td></tr>`).join('')}
-      </tbody></table>
-      <div class="total">Total de Comissão: R$ ${totalComissaoProf.toFixed(2)}</div>
-      <div class="assinatura"><div>__________________________<br/>Professor</div><div>__________________________<br/>Coordenação</div></div>
-      <script>window.onload=()=>window.print()</script>
+        <div class="header">
+          <h1>CT OKINAWA</h1>
+          <p>Disciplina • Respeito • Evolução</p>
+        </div>
+
+        <!-- 1. RELATÓRIO -->
+        <div class="section-title">1. Relatório de Comissão</div>
+        <p><strong>Professor:</strong> ${professor?.nome} | <strong>Comissão:</strong> ${comissaoPercent}%</p>
+        <p><strong>Período:</strong> ${dataInicioFormatada} a ${dataFimFormatada}</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Aluno</th>
+              <th>Turma</th>
+              <th>Data Pgto</th>
+              <th>Tipo</th>
+              <th>Valor Base</th>
+              <th>Comissão</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${movimentacoesProf.map(m => `
+              <tr>
+                <td>${m.aluno_nome}</td>
+                <td>${m.turma_nome}</td>
+                <td>${new Date(m.data).toLocaleDateString()}</td>
+                <td>${m.tipo === 'matricula' ? 'Matrícula' : 'Mensalidade'}</td>
+                <td>R$ ${m.valor_base.toFixed(2)}</td>
+                <td>R$ ${m.valor_comissao.toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="total-table">
+          Total de Comissão: <span>R$ ${valorFormatado}</span>
+        </div>
+
+        <!-- 2. RECIBO -->
+        <div class="section-title">2. Recibo de Pagamento</div>
+        <div class="recibo-box">
+          <div class="recibo-text">
+            Eu, <strong>${professor?.nome}</strong>, declaro para os devidos fins que recebi do <strong>CENTRO DE TREINAMENTO OKINAWA – CT OKINAWA</strong> a quantia abaixo referente ao pagamento de comissão pelos serviços prestados no período supracitado.
+          </div>
+          
+          <div class="recibo-valor">
+            Valor Recebido: R$ ${valorFormatado}
+          </div>
+          
+          <div class="recibo-text" style="font-size: 9pt; color: #555;">
+            Para clareza e comprovação, assino o presente recibo, concordando com os valores e itens listados no relatório acima.
+          </div>
+        </div>
+
+        <!-- ASSINATURAS -->
+        <div class="assinaturas">
+          <div class="assinatura-linha">
+            <div class="linha"></div>
+            <p><strong>${professor?.nome}</strong></p>
+            <p style="font-size: 9px; color: #666;">Professor(a)</p>
+          </div>
+          <div class="assinatura-linha">
+            <div class="linha"></div>
+            <p><strong>CT OKINAWA</strong></p>
+            <p style="font-size: 9px; color: #666;">Coordenação</p>
+          </div>
+        </div>
+
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 300); }</script>
       </body></html>
     `)
     w?.document.close()
@@ -386,7 +482,7 @@ export default function RelatoriosPage() {
                 </div>
                 <div className="mt-4 flex justify-between items-center">
                   <p className="font-bold text-lg">Total Comissão: R$ {totalComissaoProf.toFixed(2)}</p>
-                  <button onClick={imprimirRelatorioProfessor} className="bg-red-600 text-white px-4 py-2 rounded">Imprimir</button>
+                  <button onClick={imprimirRelatorioProfessor} className="bg-red-600 text-white px-4 py-2 rounded">Imprimir Relatório e Recibo</button>
                 </div>
               </>
             )}
