@@ -20,12 +20,11 @@ type AlertaItem = {
 export default function Alertas() {
   const [alertas, setAlertas] = useState<{ [key: string]: AlertaItem[] }>({
     "🚫 Bloqueio (Mais de 5 dias atrasado)": [],
-    "🚨 Atrasado 1 a 4 dias": [],
+    "🚨 Atrasado 2 a 4 dias": [],
     "🔴 Vence hoje": [],
-    "🟠 Vence em 2 dias": [],
-    "🟡 Vence em 5 dias": [],
-    "📅 Vence em breve (6 a 15 dias)": [],
-    "⏳ Futuro (Mais de 15 dias)": []
+    "🔵 Vence em 2 a 3 dias": [],
+    "🟢 Vence em 4 a 5 dias": [],
+    "⏳ Futuro (Mais de 5 dias)": []
   })
 
   useEffect(() => {
@@ -36,15 +35,10 @@ export default function Alertas() {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
 
+    // 1. Busca TODAS as mensalidades pendentes
     const { data: mensalidades, error } = await supabase
       .from("mensalidades")
-      .select(`
-        id,
-        valor,
-        vencimento,
-        ultimo_aviso_enviado,
-        alunos ( id, nome, menor, responsavel_nome, whatsapp, whatsapp_responsavel )
-      `)
+      .select("*")
       .eq("status", "pendente")
 
     if (error) {
@@ -52,34 +46,38 @@ export default function Alertas() {
       return
     }
 
+    // 2. Busca TODOS os alunos para cruzar os dados no Javascript
+    const { data: alunos } = await supabase.from("alunos").select("*")
+
     const novosGrupos: any = {
       "🚫 Bloqueio (Mais de 5 dias atrasado)": [],
-      "🚨 Atrasado 1 a 4 dias": [],
+      "🚨 Atrasado 2 a 4 dias": [],
       "🔴 Vence hoje": [],
-      "🟠 Vence em 2 dias": [],
-      "🟡 Vence em 5 dias": [],
-      "📅 Vence em breve (6 a 15 dias)": [],
-      "⏳ Futuro (Mais de 15 dias)": []
+      "🔵 Vence em 2 a 3 dias": [],
+      "🟢 Vence em 4 a 5 dias": [],
+      "⏳ Futuro (Mais de 5 dias)": []
     }
 
     mensalidades?.forEach((mensalidade) => {
-      const aluno = mensalidade.alunos as any
-      if (!aluno) return
+      const aluno = alunos?.find(a => a.id === mensalidade.aluno_id)
+      if (!aluno) return // Se não achar o aluno, pula
 
-      const vencimento = new Date(mensalidade.vencimento)
+      const vencimento = new Date(mensalidade.vencimento + "T12:00:00")
       vencimento.setHours(0, 0, 0, 0)
 
       const diffEmDias = Math.floor((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
 
+      // LÓGICA IGUALZINHA À DO DASHBOARD
       let grupo: keyof typeof novosGrupos | null = null
       
-      if (diffEmDias < -5) grupo = "🚫 Bloqueio (Mais de 5 dias atrasado)"
-      else if (diffEmDias <= -1) grupo = "🚨 Atrasado 1 a 4 dias"
+      if (diffEmDias <= -5) grupo = "🚫 Bloqueio (Mais de 5 dias atrasado)"
+      else if (diffEmDias <= -2) grupo = "🚨 Atrasado 2 a 4 dias"
+      else if (diffEmDias === -1) grupo = "🚨 Atrasado 2 a 4 dias" // Caso especial para 1 dia atrasado
       else if (diffEmDias === 0) grupo = "🔴 Vence hoje"
-      else if (diffEmDias === 2) grupo = "🟠 Vence em 2 dias"
-      else if (diffEmDias === 5) grupo = "🟡 Vence em 5 dias"
-      else if (diffEmDias > 5 && diffEmDias <= 15) grupo = "📅 Vence em breve (6 a 15 dias)"
-      else if (diffEmDias > 15) grupo = "⏳ Futuro (Mais de 15 dias)"
+      else if (diffEmDias === 1) grupo = "🔵 Vence em 2 a 3 dias" // Caso especial para amanhã
+      else if (diffEmDias >= 2 && diffEmDias <= 3) grupo = "🔵 Vence em 2 a 3 dias"
+      else if (diffEmDias >= 4 && diffEmDias <= 5) grupo = "🟢 Vence em 4 a 5 dias"
+      else if (diffEmDias > 5) grupo = "⏳ Futuro (Mais de 5 dias)"
 
       if (grupo) {
         let telefoneContato = aluno.menor ? aluno.whatsapp_responsavel : aluno.whatsapp
@@ -106,11 +104,10 @@ export default function Alertas() {
   async function enviarWhatsApp(item: AlertaItem) {
     if (item.telefone === "Não informado") return alert("Sem WhatsApp cadastrado.")
     
-    // Formata para 55 + DDD + Numero
     let numeroLimpo = item.telefone.replace(/\D/g, "")
     if (!numeroLimpo.startsWith("55")) numeroLimpo = "55" + numeroLimpo
 
-    const dataFormatada = new Date(item.vencimento).toLocaleDateString('pt-BR')
+    const dataFormatada = new Date(item.vencimento + "T12:00:00").toLocaleDateString('pt-BR')
     const valorFormatado = item.valor.toFixed(2).replace('.', ',')
     
     const nomeSaudacao = item.aluno_menor && item.responsavel_nome ? item.responsavel_nome : item.aluno_nome
@@ -118,16 +115,16 @@ export default function Alertas() {
     
     let mensagem = ""
 
-    if (item.diasDiferenca === 5) {
-      mensagem = `Olá, ${nomeSaudacao}, tudo bem? 🥋\n\nPassando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} vence no dia ${dataFormatada} (daqui a 5 dias)!\n\nPara manter tudo em dia e continuar aproveitando nossos treinos, programe-se para realizar o pagamento dentro do prazo.\n\nQualquer dúvida, estamos à disposição!\n\nCT Okinawa – Disciplina, respeito e evolução!`
-    } else if (item.diasDiferenca === 2) {
-      mensagem = `Olá, ${nomeSaudacao}! Tudo bem? 😊\n\nO vencimento está se aproximando! Daqui a 2 dias (dia ${dataFormatada}) vence a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa.\n\nNão deixe para a última hora. Organize seu pagamento e continue treinando com a gente!\n\nContamos com você! 🥋`
-    } else if (item.diasDiferenca === 0) {
-      mensagem = `Olá, ${nomeSaudacao}! Passando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa vence hoje, ${dataFormatada}! 🥋\n\nPedimos que, por gentileza, realize o pagamento ainda hoje para manter sua situação financeira regularizada.\n\nSe já efetuou o pagamento, por favor, desconsidere esta mensagem.\n\nObrigado pela atenção!\n\nEquipe CT Okinawa.`
-    } else if (item.diasDiferenca < 0) {
-      mensagem = `Olá, ${nomeSaudacao}! Tudo bem?\n\nIdentificamos que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa está em aberto desde o dia ${dataFormatada}.\n\nPedimos que regularize o pagamento assim que possível para evitar pendências e garantir a continuidade dos seus treinos.\n\n⚠️ Informamos que, conforme nossa política de pagamentos, a permanência da pendência poderá ocasionar o bloqueio temporário do acesso aos treinos.\n\nCaso já tenha realizado o pagamento, basta nos encaminhar o comprovante.\n\nEstamos à disposição! 🥋\n\nEquipe CT Okinawa.`
-    } else {
+    if (item.diasDiferenca > 5) {
       mensagem = `Olá, ${nomeSaudacao}, tudo bem? 🥋\n\nPassando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} vence no dia ${dataFormatada}.\n\nPara manter tudo em dia, programe-se para realizar o pagamento dentro do prazo.\n\nQualquer dúvida, estamos à disposição!\n\nCT Okinawa – Disciplina, respeito e evolução!`
+    } else if (item.diasDiferenca === 5 || item.diasDiferenca === 4) {
+      mensagem = `Olá, ${nomeSaudacao}, tudo bem? 🥋\n\nPassando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} vence no dia ${dataFormatada} (daqui a poucos dias)!\n\nPara manter tudo em dia e continuar aproveitando nossos treinos, programe-se para realizar o pagamento.\n\nQualquer dúvida, estamos à disposição!`
+    } else if (item.diasDiferenca === 3 || item.diasDiferenca === 2) {
+      mensagem = `Olá, ${nomeSaudacao}! Tudo bem? 😊\n\nO vencimento está se aproximando! Daqui a ${item.diasDiferenca} dias (dia ${dataFormatada}) vence a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa.\n\nNão deixe para a última hora. Organize seu pagamento e continue treinando com a gente! 🥋`
+    } else if (item.diasDiferenca === 1 || item.diasDiferenca === 0) {
+      mensagem = `Olá, ${nomeSaudacao}! Passando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa vence hoje/amanhã! 🥋\n\nPedimos que, por gentileza, realize o pagamento para manter sua situação financeira regularizada.\n\nSe já efetuou o pagamento, por favor, desconsidere esta mensagem.`
+    } else {
+      mensagem = `Olá, ${nomeSaudacao}! Tudo bem?\n\nIdentificamos que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa está em aberto desde o dia ${dataFormatada}.\n\nPedimos que regularize o pagamento assim que possível para evitar pendências e garantir a continuidade dos seus treinos.\n\n⚠️ Informamos que, conforme nossa política de pagamentos, a permanência da pendência poderá ocasionar o bloqueio temporário do acesso aos treinos.\n\nCaso já tenha realizado o pagamento, basta nos encaminhar o comprovante.\n\nEquipe CT Okinawa.`
     }
 
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`
@@ -190,6 +187,10 @@ export default function Alertas() {
           </div>
         )
       })}
+      
+      {totalPendencias === 0 && (
+        <p className="text-center text-gray-500 py-10">Nenhum aluno com pendência no momento.</p>
+      )}
     </div>
   )
 }

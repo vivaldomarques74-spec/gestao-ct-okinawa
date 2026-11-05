@@ -12,7 +12,6 @@ export default function AulaExperimentalPage() {
   const [modalidades, setModalidades] = useState<any[]>([])
   const [turmas, setTurmas] = useState<any[]>([])
   const [agendamentos, setAgendamentos] = useState<any[]>([])
-  // Adicionado a aba "todos" para garantir que nada fique escondido
   const [abaAtiva, setAbaAtiva] = useState<"pendente" | "compareceu" | "matriculado" | "todos">("pendente")
 
   const [form, setForm] = useState({
@@ -23,7 +22,7 @@ export default function AulaExperimentalPage() {
   useEffect(() => { carregarDados() }, [])
 
   async function carregarDados() {
-    const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
+    const { data: mods } = await supabase.from("modalidades").select("*")
     setModalidades(mods || [])
     
     const { data: turs } = await supabase.from("turmas").select("*")
@@ -42,7 +41,6 @@ export default function AulaExperimentalPage() {
         horario = turma.horario
       }
 
-      // Normaliza o status antigo para não sumir
       let statusNormalizado = ag.status
       if (!statusNormalizado || statusNormalizado === "agendado") statusNormalizado = "pendente"
 
@@ -91,64 +89,82 @@ export default function AulaExperimentalPage() {
     setLoading(false)
   }
 
-  // --- COMPROVANTE DE AGENDAMENTO ---
+  // --- COMPROVANTE DE AGENDAMENTO (COM LOGO E SEM FUNDO VERMELHO) ---
   function gerarComprovantePDF(ag: any) {
     const doc = new jsPDF()
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
     const horario = ag.turmas?.horario || ag.turma_horario || "A confirmar"
 
-    doc.setFillColor(204, 0, 0)
-    doc.rect(0, 0, 210, 35, "F")
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(22)
-    doc.setFont("helvetica", "bold")
-    doc.text("CT OKINAWA", 105, 15, { align: "center" })
-    doc.setFontSize(12)
-    doc.text("Comprovante de Agendamento - Aula Experimental", 105, 25, { align: "center" })
+    // Fundo branco, sem a faixa vermelha
+    
+    // Adiciona a Logo Colorida (tamanho 120x30 para manter proporção)
+    try {
+      doc.addImage('/logo-color.png', 'PNG', 45, 10, 120, 30)
+    } catch (e) {
+      // Fallback caso a imagem não carregue
+      doc.setFontSize(22)
+      doc.setFont("helvetica", "bold")
+      doc.text("CT OKINAWA", 105, 20, { align: "center" })
+    }
 
+    // Título
     doc.setTextColor(0, 0, 0)
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
-    doc.text("DADOS DO ALUNO", 20, 55)
+    doc.text("COMPROVANTE DE AGENDAMENTO - AULA EXPERIMENTAL", 105, 50, { align: "center" })
+
+    doc.setDrawColor(204, 0, 0) // Linha vermelha apenas para separar
     doc.setLineWidth(0.5)
-    doc.setDrawColor(204, 0, 0)
-    doc.line(20, 57, 190, 57)
+    doc.line(20, 55, 190, 55)
+
+    // DADOS DO ALUNO
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(12)
+    doc.setFont("helvetica", "bold")
+    doc.text("DADOS DO ALUNO", 20, 65)
+    doc.line(20, 67, 190, 67)
     
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(50, 50, 50)
-    doc.text(`Nome: ${ag.nome}`, 20, 65)
-    doc.text(`WhatsApp: ${ag.telefone}`, 20, 73)
-    if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 81)
+    doc.text(`Nome: ${ag.nome}`, 20, 75)
+    doc.text(`WhatsApp: ${ag.telefone}`, 20, 83)
+    if (ag.responsavel) doc.text(`Responsável: ${ag.responsavel}`, 20, 91)
 
+    // DADOS DA AULA
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.setTextColor(0, 0, 0)
-    doc.text("DADOS DA AULA", 20, 100)
-    doc.line(20, 102, 190, 102)
+    doc.text("DADOS DA AULA", 20, 110)
+    doc.line(20, 112, 190, 112)
+    
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(50, 50, 50)
-    doc.text(`Modalidade: ${ag.modalidades?.nome}`, 20, 110)
-    doc.text(`Turma: ${ag.turmas?.nome}`, 20, 118)
-    doc.text(`Data: ${dataFormatada}`, 20, 126)
-    doc.text(`Horário: ${horario}`, 20, 134)
+    doc.text(`Modalidade: ${ag.modalidades?.nome}`, 20, 120)
+    doc.text(`Turma: ${ag.turmas?.nome}`, 20, 128)
+    doc.text(`Data: ${dataFormatada}`, 20, 136)
+    doc.text(`Horário: ${horario}`, 20, 144)
 
+    // LOCAL
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.setTextColor(0, 0, 0)
-    doc.text("LOCAL", 20, 150)
-    doc.line(20, 152, 190, 152)
+    doc.text("LOCAL", 20, 160)
+    doc.line(20, 162, 190, 162)
+    
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(50, 50, 50)
-    doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 160)
+    doc.text("R. Pres. Médici, 278 - Águas Claras, Salvador - BA, 41311-050", 20, 170)
 
+    // INSTRUÇÕES
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.setTextColor(0, 0, 0)
-    doc.text("INSTRUÇÕES IMPORTANTES", 20, 180)
-    doc.line(20, 182, 190, 182)
+    doc.text("INSTRUÇÕES IMPORTANTES", 20, 190)
+    doc.line(20, 192, 190, 192)
+    
     doc.setFontSize(10)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(50, 50, 50)
@@ -158,12 +174,13 @@ export default function AulaExperimentalPage() {
       "3. Traga uma garrafa de água.",
       "4. Esta aula é experimental e não gera vínculo contratual."
     ]
-    let y = 190
+    let y = 200
     avisos.forEach(aviso => {
       doc.text(aviso, 20, y)
       y += 6
     })
 
+    // Rodapé
     doc.setFontSize(10)
     doc.setTextColor(150, 150, 150)
     doc.text("Disciplina • Respeito • Evolução", 105, 280, { align: "center" })
@@ -171,30 +188,36 @@ export default function AulaExperimentalPage() {
     doc.save(`Comprovante_Aula_Experimental_${ag.nome}.pdf`)
   }
 
-  // --- TERMO DE CIÊNCIA E RESPONSABILIDADE (AULA EXPERIMENTAL) ---
+  // --- TERMO DE CIÊNCIA (COM LOGO E SEM FUNDO VERMELHO) ---
   function gerarTermoCienciaPDF(ag: any) {
     const doc = new jsPDF()
     const dataFormatada = new Date(ag.data_aula + "T12:00:00").toLocaleDateString('pt-BR')
 
-    // Cabeçalho
-    doc.setFillColor(204, 0, 0) // Vermelho
-    doc.rect(0, 0, 210, 25, "F")
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(16)
-    doc.setFont("helvetica", "bold")
-    doc.text("CT OKINAWA", 105, 12, { align: "center" })
-    doc.setFontSize(10)
-    doc.text("Disciplina • Respeito • Evolução", 105, 18, { align: "center" })
+    // Fundo branco, sem a faixa vermelha
+    
+    // Adiciona a Logo Colorida
+    try {
+      doc.addImage('/logo-color.png', 'PNG', 45, 10, 120, 30)
+    } catch (e) {
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("CT OKINAWA", 105, 20, { align: "center" })
+    }
 
     doc.setTextColor(0, 0, 0)
     doc.setFontSize(14)
     doc.setFont("helvetica", "bold")
-    doc.text("TERMO DE CIÊNCIA E RESPONSABILIDADE", 105, 40, { align: "center" })
+    doc.text("TERMO DE CIÊNCIA E RESPONSABILIDADE", 105, 50, { align: "center" })
     doc.setFontSize(12)
-    doc.text("AULA EXPERIMENTAL", 105, 48, { align: "center" })
+    doc.text("AULA EXPERIMENTAL", 105, 58, { align: "center" })
+
+    doc.setDrawColor(204, 0, 0) // Linha vermelha
+    doc.setLineWidth(0.5)
+    doc.line(20, 63, 190, 63)
 
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
+    doc.setTextColor(50, 50, 50)
     
     let texto = ""
     if (ag.responsavel) {
@@ -204,11 +227,11 @@ export default function AulaExperimentalPage() {
     }
     
     let splitText = doc.splitTextToSize(texto, 170)
-    doc.text(splitText, 20, 65)
-    let y = 65 + (splitText.length * 6) + 5
+    doc.text(splitText, 20, 75)
+    let y = 75 + (splitText.length * 6) + 5
 
     const clausulas = [
-      `1. Estou ciente de que a prática de artes marciais (${ag.modalidades?.nome || "Artes Marciais"}) é uma atividade física de alto impacto e que envolve riscos inerentes, incluindo, mas não se limitando a, quedas, torções, contusões e lesões musculares.`,
+      `1. Estou ciente de que a prática de artes marciais (${ag.modalidade_nome || "Artes Marciais"}) é uma atividade física de alto impacto e que envolve riscos inerentes, incluindo, mas não se limitando a, quedas, torções, contusões e lesões musculares.`,
       `2. Declaro que o(a) aluno(a) encontra-se em plenas condições de saúde e apto(a) fisicamente para a prática da modalidade, isentando o CT OKINAWA de qualquer responsabilidade por eventuais acidentes ou lesões que possam ocorrer durante a aula.`,
       `3. Estou ciente de que esta AULA EXPERIMENTAL tem caráter puramente demonstrativo e não gera, sob nenhuma hipótese, vínculo empregatício, contratual ou financeiro entre as partes.`,
       `4. Comprometo-me a seguir as orientações do professor durante toda a atividade.`
@@ -271,7 +294,6 @@ export default function AulaExperimentalPage() {
     window.open(url, "_blank")
   }
 
-  // Lógica de filtro robusta para não sumir ninguém
   const agendamentosFiltrados = agendamentos.filter(a => {
     if (abaAtiva === "todos") return true
     if (abaAtiva === "pendente") return a.status === "pendente" || a.status === "agendado" || !a.status
@@ -319,7 +341,6 @@ export default function AulaExperimentalPage() {
             <button onClick={() => setAbaAtiva("pendente")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'pendente' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Ainda Vão Fazer</button>
             <button onClick={() => setAbaAtiva("compareceu")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'compareceu' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Fizeram (Cobrar)</button>
             <button onClick={() => setAbaAtiva("matriculado")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'matriculado' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Já Matriculados</button>
-            {/* ABA TODOS PARA GARANTIR QUE NADA SUMIR */}
             <button onClick={() => setAbaAtiva("todos")} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${abaAtiva === 'todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Ver Todos</button>
           </div>
 

@@ -68,7 +68,6 @@ function MatriculaContent() {
     const { data: mods } = await supabase.from("modalidades").select("*").eq("status", "ativo")
     setModalidades(mods || [])
     
-    // SEM FILTRO DE STATUS PARA NÃO DAR ERRO 400
     const { data: turmasData } = await supabase.from("turmas").select("*") 
     setTodasTurmas(turmasData || [])
     
@@ -147,6 +146,7 @@ function MatriculaContent() {
 
     doc.setFontSize(10)
     
+    // --- CORREÇÃO LÓGICA DO TERMO PARA MENOR DE IDADE ---
     if (aluno.menor) {
       const introTextMenor = `Eu, ${aluno.responsavel_nome || "________________________________________"}, inscrito(a) no CPF nº ${aluno.responsavel_cpf || "____________________"}, na condição de responsável legal pelo(a) aluno(a) menor ${aluno.nome || "________________________________________"}, declaro, para todos os fins de direito, que:`
       const splitIntro = doc.splitTextToSize(introTextMenor, 170)
@@ -368,8 +368,8 @@ function MatriculaContent() {
         <label className="flex items-center gap-2"><input type="checkbox" checked={aluno.menor} onChange={e => setAluno({...aluno, menor: e.target.checked})} /> Menor de idade</label>
         {aluno.menor && (
           <div className="grid md:grid-cols-2 gap-3 pl-4">
-            <input className="p-2 border rounded" placeholder="Responsável" value={aluno.responsavel_nome} onChange={e => setAluno({...aluno, responsavel_nome: e.target.value})} />
-            <input className="p-2 border rounded" placeholder="CPF Responsável" value={aluno.responsavel_cpf} onChange={e => setAluno({...aluno, responsavel_cpf: e.target.value})} />
+            <input className="p-2 border rounded" placeholder="Nome do Responsável" value={aluno.responsavel_nome} onChange={e => setAluno({...aluno, responsavel_nome: e.target.value})} />
+            <input className="p-2 border rounded" placeholder="CPF do Responsável" value={aluno.responsavel_cpf} onChange={e => setAluno({...aluno, responsavel_cpf: e.target.value})} />
             <input className="p-2 border rounded" placeholder="WhatsApp Responsável" value={aluno.responsavel_whatsapp} onChange={e => setAluno({...aluno, responsavel_whatsapp: e.target.value})} />
             <input className="p-2 border rounded" placeholder="Email Responsável" value={aluno.responsavel_email} onChange={e => setAluno({...aluno, responsavel_email: e.target.value})} />
           </div>
