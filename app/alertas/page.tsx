@@ -22,9 +22,8 @@ export default function Alertas() {
     "🚫 Bloqueio (Mais de 5 dias atrasado)": [],
     "🚨 Atrasado 2 a 4 dias": [],
     "🔴 Vence hoje": [],
-    "🔵 Vence em 2 a 3 dias": [],
-    "🟢 Vence em 4 a 5 dias": [],
-    "⏳ Futuro (Mais de 5 dias)": []
+    "🟠 Vence em 2 dias": [],
+    "🟡 Vence em 5 dias": []
   })
 
   useEffect(() => {
@@ -35,10 +34,9 @@ export default function Alertas() {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
 
-    // 1. Busca TODAS as mensalidades pendentes
     const { data: mensalidades, error } = await supabase
       .from("mensalidades")
-      .select("*")
+      .select(`*, alunos ( id, nome, menor, responsavel_nome, whatsapp, whatsapp_responsavel )`)
       .eq("status", "pendente")
 
     if (error) {
@@ -46,39 +44,31 @@ export default function Alertas() {
       return
     }
 
-    // 2. Busca TODOS os alunos para cruzar os dados no Javascript
-    const { data: alunos } = await supabase.from("alunos").select("*")
-
     const novosGrupos: any = {
       "🚫 Bloqueio (Mais de 5 dias atrasado)": [],
       "🚨 Atrasado 2 a 4 dias": [],
       "🔴 Vence hoje": [],
-      "🔵 Vence em 2 a 3 dias": [],
-      "🟢 Vence em 4 a 5 dias": [],
-      "⏳ Futuro (Mais de 5 dias)": []
+      "🟠 Vence em 2 dias": [],
+      "🟡 Vence em 5 dias": []
     }
 
     mensalidades?.forEach((mensalidade) => {
-      const aluno = alunos?.find(a => a.id === mensalidade.aluno_id)
-      if (!aluno) return // Se não achar o aluno, pula
+      const aluno = mensalidade.alunos as any
+      if (!aluno) return
 
       const vencimento = new Date(mensalidade.vencimento + "T12:00:00")
       vencimento.setHours(0, 0, 0, 0)
-
       const diffEmDias = Math.floor((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
 
-      // LÓGICA IGUALZINHA À DO DASHBOARD
-      let grupo: keyof typeof novosGrupos | null = null
-      
+      // Agora filtramos para mostrar SÓ quem está atrasado ou vence nos próximos 5 dias
+      let grupo = null
       if (diffEmDias <= -5) grupo = "🚫 Bloqueio (Mais de 5 dias atrasado)"
       else if (diffEmDias <= -2) grupo = "🚨 Atrasado 2 a 4 dias"
-      else if (diffEmDias === -1) grupo = "🚨 Atrasado 2 a 4 dias" // Caso especial para 1 dia atrasado
       else if (diffEmDias === 0) grupo = "🔴 Vence hoje"
-      else if (diffEmDias === 1) grupo = "🔵 Vence em 2 a 3 dias" // Caso especial para amanhã
-      else if (diffEmDias >= 2 && diffEmDias <= 3) grupo = "🔵 Vence em 2 a 3 dias"
-      else if (diffEmDias >= 4 && diffEmDias <= 5) grupo = "🟢 Vence em 4 a 5 dias"
-      else if (diffEmDias > 5) grupo = "⏳ Futuro (Mais de 5 dias)"
+      else if (diffEmDias === 2) grupo = "🟠 Vence em 2 dias"
+      else if (diffEmDias === 5) grupo = "🟡 Vence em 5 dias"
 
+      // Se não estiver nos grupos acima, ignora (não mostra as mensalidades de dezembro, janeiro, etc)
       if (grupo) {
         let telefoneContato = aluno.menor ? aluno.whatsapp_responsavel : aluno.whatsapp
         if (!telefoneContato) telefoneContato = aluno.whatsapp
@@ -115,16 +105,14 @@ export default function Alertas() {
     
     let mensagem = ""
 
-    if (item.diasDiferenca > 5) {
-      mensagem = `Olá, ${nomeSaudacao}, tudo bem? 🥋\n\nPassando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} vence no dia ${dataFormatada}.\n\nPara manter tudo em dia, programe-se para realizar o pagamento dentro do prazo.\n\nQualquer dúvida, estamos à disposição!\n\nCT Okinawa – Disciplina, respeito e evolução!`
-    } else if (item.diasDiferenca === 5 || item.diasDiferenca === 4) {
-      mensagem = `Olá, ${nomeSaudacao}, tudo bem? 🥋\n\nPassando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} vence no dia ${dataFormatada} (daqui a poucos dias)!\n\nPara manter tudo em dia e continuar aproveitando nossos treinos, programe-se para realizar o pagamento.\n\nQualquer dúvida, estamos à disposição!`
-    } else if (item.diasDiferenca === 3 || item.diasDiferenca === 2) {
-      mensagem = `Olá, ${nomeSaudacao}! Tudo bem? 😊\n\nO vencimento está se aproximando! Daqui a ${item.diasDiferenca} dias (dia ${dataFormatada}) vence a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa.\n\nNão deixe para a última hora. Organize seu pagamento e continue treinando com a gente! 🥋`
-    } else if (item.diasDiferenca === 1 || item.diasDiferenca === 0) {
-      mensagem = `Olá, ${nomeSaudacao}! Passando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa vence hoje/amanhã! 🥋\n\nPedimos que, por gentileza, realize o pagamento para manter sua situação financeira regularizada.\n\nSe já efetuou o pagamento, por favor, desconsidere esta mensagem.`
+    if (item.diasDiferenca === 5) {
+      mensagem = `Olá, ${nomeSaudacao}, tudo bem? 🥋\n\nPassando para lembrar que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} vence no dia ${dataFormatada} (daqui a 5 dias)!\n\nPara manter tudo em dia...`
+    } else if (item.diasDiferenca === 2) {
+      mensagem = `Olá, ${nomeSaudacao}! Tudo bem? 😊\n\nO vencimento está se aproximando! Daqui a 2 dias (dia ${dataFormatada}) vence a mensalidade ${sujeitoMensalidade}...`
+    } else if (item.diasDiferenca === 0) {
+      mensagem = `Olá, ${nomeSaudacao}! Passando para lembrar que a mensalidade ${sujeitoMensalidade} vence hoje, ${dataFormatada}! 🥋\n\nPedimos que...`
     } else {
-      mensagem = `Olá, ${nomeSaudacao}! Tudo bem?\n\nIdentificamos que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa está em aberto desde o dia ${dataFormatada}.\n\nPedimos que regularize o pagamento assim que possível para evitar pendências e garantir a continuidade dos seus treinos.\n\n⚠️ Informamos que, conforme nossa política de pagamentos, a permanência da pendência poderá ocasionar o bloqueio temporário do acesso aos treinos.\n\nCaso já tenha realizado o pagamento, basta nos encaminhar o comprovante.\n\nEquipe CT Okinawa.`
+      mensagem = `Olá, ${nomeSaudacao}! Tudo bem?\n\nIdentificamos que a mensalidade ${sujeitoMensalidade} de R$ ${valorFormatado} do CT Okinawa está em aberto desde o dia ${dataFormatada}.\n\nPedimos que...`
     }
 
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`
@@ -141,7 +129,7 @@ export default function Alertas() {
       <h1 className="text-2xl font-bold mb-2 flex items-center gap-2">
         <AlertTriangle className="text-red-600" /> Central de Alertas - Inadimplência
       </h1>
-      <p className="text-gray-500 mb-6">Total de <b>{totalPendencias}</b> mensalidades pendentes no sistema.</p>
+      <p className="text-gray-500 mb-6">Apenas mensalidades atrasadas ou a vencer nos próximos 5 dias. Total de <b>{totalPendencias}</b> em alerta.</p>
       
       {Object.entries(alertas).map(([titulo, itens]) => {
         if (itens.length === 0) return null;
@@ -154,7 +142,6 @@ export default function Alertas() {
                 <div key={item.id} className={`p-4 rounded-xl border shadow-sm flex flex-col justify-between ${
                   titulo.includes("Bloqueio") ? "bg-red-50 border-red-300" : 
                   titulo.includes("Atrasado") ? "bg-orange-50 border-orange-300" :
-                  titulo.includes("Futuro") ? "bg-gray-50 border-gray-200" :
                   "bg-white border-gray-200"
                 }`}>
                   <div>
@@ -189,7 +176,7 @@ export default function Alertas() {
       })}
       
       {totalPendencias === 0 && (
-        <p className="text-center text-gray-500 py-10">Nenhum aluno com pendência no momento.</p>
+        <p className="text-center text-gray-500 py-10">Nenhuma mensalidade vencendo nos próximos dias. Tudo tranquilo! 🎉</p>
       )}
     </div>
   )

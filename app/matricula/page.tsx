@@ -19,7 +19,7 @@ function MatriculaContent() {
   const [escolas, setEscolas] = useState<any[]>([])
   
   const [aluno, setAluno] = useState({
-    nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "",
+    nome: "", cpf: "", nascimento: "", whatsapp: "", email: "", endereco: "",
     menor: false,
     responsavel_nome: "", responsavel_cpf: "", responsavel_whatsapp: "", responsavel_email: "",
     problema_saude: false, saude_detalhes: "",
@@ -45,7 +45,7 @@ function MatriculaContent() {
 
   useEffect(() => {
     const nome = searchParams.get("nome")
-    const cpf = searchParams.get("cpf") // PUXA O CPF
+    const cpf = searchParams.get("cpf")
     const whatsapp = searchParams.get("whatsapp")
     const escolaId = searchParams.get("escola_id")
 
@@ -53,7 +53,7 @@ function MatriculaContent() {
       setAluno(prev => ({ 
         ...prev, 
         nome: nome || prev.nome, 
-        cpf: cpf || prev.cpf, // PREENCHE O CPF
+        cpf: cpf || prev.cpf,
         whatsapp: whatsapp || prev.whatsapp, 
         escola_id: escolaId || prev.escola_id 
       }))
@@ -230,7 +230,7 @@ function MatriculaContent() {
     try {
       const numeroMatricula = await gerarNumeroMatricula()
       const alunoParaInserir = {
-        nome: aluno.nome.trim(), cpf: aluno.cpf || null, rg: aluno.rg || null,
+        nome: aluno.nome.trim(), cpf: aluno.cpf || null,
         nascimento: aluno.nascimento || null, whatsapp: aluno.whatsapp || null,
         email: aluno.email || null, endereco: aluno.endereco || null,
         menor: aluno.menor,
@@ -308,7 +308,7 @@ function MatriculaContent() {
       gerarRecibo(numeroMatricula, formatarMesReferencia(proxMes))
       
       alert(`✅ Matrícula realizada! Nº ${numeroMatricula}`)
-      setAluno({ nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "", menor: false, responsavel_nome: "", responsavel_cpf: "", responsavel_whatsapp: "", responsavel_email: "", problema_saude: false, saude_detalhes: "", usa_remedio: false, remedio_detalhes: "", convenio_id: "", escola_id: "" })
+      setAluno({ nome: "", cpf: "", nascimento: "", whatsapp: "", email: "", endereco: "", menor: false, responsavel_nome: "", responsavel_cpf: "", responsavel_whatsapp: "", responsavel_email: "", problema_saude: false, saude_detalhes: "", usa_remedio: false, remedio_detalhes: "", convenio_id: "", escola_id: "" })
       setItensMatricula([])
       setCodigoPagamento("")
       setDescValor("")
@@ -326,19 +326,44 @@ function MatriculaContent() {
     const detalhes = itensMatricula.map(item => {
       const mod = modalidades.find(m => m.id === item.modalidadeId)
       const turma = todasTurmas.find(t => t.id === item.turmaId)
-      return turma ? `${mod?.nome} - ${turma?.nome}` : `${mod?.nome} (Acesso Livre)`
-    }).join(", ")
+      
+      if (!turma) {
+        return `<div style="margin-bottom: 4px;">${mod?.nome} (Acesso Livre)</div>`
+      }
+
+      const dias = turma.dias_semana ? turma.dias_semana : ''
+      const horario = turma.hora_inicio && turma.hora_fim ? `(${turma.hora_inicio} às ${turma.hora_fim})` : ''
+      const textoHorario = dias || horario ? `<br/><span style="font-size: 8pt; color: #444;">${dias} ${horario}</span>` : ''
+
+      return `<div style="margin-bottom: 4px;">${mod?.nome} - ${turma.nome}${textoHorario}</div>`
+    }).join("")
     
     const desconto = valorGeralTotal - (valorFinal - (valorFinal * (infoPagamento.taxaAplicada/100)))
     const juros = valorFinal * (infoPagamento.taxaAplicada/100)
     const nomeEscola = aluno.escola_id ? escolas.find(e => e.id === aluno.escola_id)?.nome : null;
 
-    const w = window.open("", "", "width=400,height=650")
+    const w = window.open("", "", "width=400,height=700")
+    
     w?.document.write(`
       <html><head><title>Recibo de Matrícula</title><style>
-      * { margin: 0; padding: 0; box-sizing: border-box; } body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
-      .logo { text-align: center; margin-bottom: 4px; } .logo img { max-width: 40mm; height: auto; } .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
-      hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } .total { font-weight: bold; font-size: 11pt; } .verse { text-align: center; margin-top: 8px; font-style: italic; } .center { text-align: center; }
+      * { margin: 0; padding: 0; box-sizing: border-box; } 
+      body { 
+        width: 48mm; 
+        margin: 0 auto; 
+        padding: 2mm; 
+        font-family: monospace; 
+        font-size: 10pt; 
+        line-height: 1.2; 
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+      }
+      .logo { text-align: center; margin-bottom: 4px; } 
+      .logo img { max-width: 40mm; height: auto; } 
+      .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
+      hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } 
+      .total { font-weight: bold; font-size: 11pt; } 
+      .verse { text-align: center; margin-top: 8px; font-style: italic; font-size: 9pt; } 
+      .center { text-align: center; }
       </style></head><body>
         <div class="logo"><img src="${window.location.origin}/logo-color.png" alt="Logo" /></div>
         <div class="titulo">CT OKINAWA</div><div class="center">Disciplina • Respeito • Evolução</div><hr/>
@@ -346,7 +371,7 @@ function MatriculaContent() {
         <div><b>Nº Matrícula:</b> ${numeroMatricula}</div><div><b>Aluno:</b> ${aluno.nome}</div><div><b>CPF:</b> ${aluno.cpf || '---'}</div>
         ${aluno.menor ? `<div><b>Responsável:</b> ${aluno.responsavel_nome}</div>` : ''}
         ${nomeEscola ? `<div><b>Escola Parceira:</b> ${nomeEscola}</div>` : ''}
-        <hr/><div><b>Modalidades/Turmas:</b></div><div>${detalhes}</div><hr/>
+        <hr/><div><b>Modalidades/Turmas:</b></div>${detalhes}<hr/>
         <div><b>Valor Geral:</b> R$ ${valorGeralTotal.toFixed(2)}</div>
         <div><b>Desconto Aplicado:</b> R$ ${desconto.toFixed(2)}</div>
         ${juros > 0 ? `<div><b>Juros Parcelamento:</b> R$ ${juros.toFixed(2)}</div>` : ''}
@@ -371,7 +396,6 @@ function MatriculaContent() {
         <div className="grid md:grid-cols-2 gap-3">
           <input className="p-2 border rounded" placeholder="Nome completo" value={aluno.nome} onChange={e => setAluno({...aluno, nome: e.target.value})} />
           <input className="p-2 border rounded" placeholder="CPF" value={aluno.cpf} onChange={e => setAluno({...aluno, cpf: e.target.value})} />
-          <input className="p-2 border rounded" placeholder="RG" value={aluno.rg} onChange={e => setAluno({...aluno, rg: e.target.value})} />
           <input type="date" className="p-2 border rounded" value={aluno.nascimento} onChange={e => setAluno({...aluno, nascimento: e.target.value})} />
           <input className="p-2 border rounded" placeholder="WhatsApp" value={aluno.whatsapp} onChange={e => setAluno({...aluno, whatsapp: e.target.value})} />
           <input className="p-2 border rounded" placeholder="Email" value={aluno.email} onChange={e => setAluno({...aluno, email: e.target.value})} />
@@ -510,7 +534,7 @@ function MatriculaContent() {
           )}
         </div>
 
-        <button onClick={salvarMatricula} disabled={loading || !caixaAberto || !termoAceito} className="w-full bg-red-600 text-white p-3 rounded disabled:opacity-50">
+        <button onClick={salvarMatricula} disabled={loading || !caixaAberto || !termoAceito} className="w-full bg-red-600 text-white p-3 rounded disabled:opacity-50 font-bold">
           {loading ? "Salvando..." : "Confirmar Matrícula"}
         </button>
       </div>

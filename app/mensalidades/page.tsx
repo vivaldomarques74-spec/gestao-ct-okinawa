@@ -83,7 +83,7 @@ export default function Mensalidades() {
     const { data: mats, error } = await supabase.from("matriculas").select("*").eq("aluno_id", aluno.id).eq("status", "ativo")
     
     if (error || !mats || mats.length === 0) {
-      alert("⚠️ O aluno não possui matrícula ativa no banco. Verifique a aba de Registros e confirme se ele tem uma turma vinculada.");
+      alert("⚠️ O aluno não possui matrícula ativa no banco.");
       setLoading(false)
       return; 
     }
@@ -166,7 +166,6 @@ export default function Mensalidades() {
     .filter(m => selecionadasParaPagar.includes(m.id) && m.status === "pendente")
     .reduce((acc, m) => acc + Number(m.valor), 0)
 
-  // REGRA APLICADA AQUI (10 reais de desconto no Pix/Dinheiro)
   const resultadoPagamento = calcularPagamento(totalBaseSelecionado, formaPagamento, tipoCartao, parcelas, 10)
 
   async function aplicarDescontoNaHora() {
@@ -268,7 +267,8 @@ export default function Mensalidades() {
     const w = window.open("", "", "width=400,height=650")
     w?.document.write(`
       <html><head><title>Recibo de Mensalidade</title><style>
-      * { margin: 0; padding: 0; box-sizing: border-box; } body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
+      * { margin: 0; padding: 0; box-sizing: border-box; } 
+      body { width: 48mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; overflow-wrap: break-word; }
       .logo { text-align: center; margin-bottom: 4px; } .logo img { max-width: 40mm; height: auto; } .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
       hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } .total { font-weight: bold; font-size: 11pt; } .verse { text-align: center; margin-top: 8px; font-style: italic; } .center { text-align: center; }
       </style></head><body>

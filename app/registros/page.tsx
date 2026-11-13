@@ -32,7 +32,7 @@ export default function RegistrosPage() {
   const [aplicandoDesconto, setAplicandoDesconto] = useState(false)
 
   const [formAluno, setFormAluno] = useState<any>({
-    nome: "", cpf: "", rg: "", nascimento: "", whatsapp: "", email: "", endereco: "",
+    nome: "", cpf: "", nascimento: "", whatsapp: "", email: "", endereco: "",
     menor: false,
     responsavel_nome: "", responsavel_cpf: "", responsavel_whatsapp: "", responsavel_email: "",
     problema_saude: false, saude_detalhes: "",
@@ -95,7 +95,7 @@ export default function RegistrosPage() {
     setShowHistoricoSaude(false)
     
     setFormAluno({
-      nome: aluno.nome || "", cpf: aluno.cpf || "", rg: aluno.rg || "", nascimento: aluno.nascimento || "",
+      nome: aluno.nome || "", cpf: aluno.cpf || "", nascimento: aluno.nascimento || "",
       whatsapp: aluno.whatsapp || "", email: aluno.email || "", endereco: aluno.endereco || "",
       menor: aluno.menor || false,
       responsavel_nome: aluno.responsavel_nome || "", responsavel_cpf: aluno.responsavel_cpf || "", 
@@ -199,8 +199,9 @@ export default function RegistrosPage() {
 
   async function salvarAluno() {
     if (!alunoEditando) return
+    // REMOVIDO O CAMPO 'rg' DAQUI
     await supabase.from("alunos").update({
-      nome: formAluno.nome, cpf: formAluno.cpf, rg: formAluno.rg, nascimento: formAluno.nascimento,
+      nome: formAluno.nome, cpf: formAluno.cpf, nascimento: formAluno.nascimento,
       whatsapp: formAluno.whatsapp, email: formAluno.email, endereco: formAluno.endereco,
       menor: formAluno.menor, responsavel_nome: formAluno.responsavel_nome, responsavel_cpf: formAluno.responsavel_cpf,
       responsavel_whatsapp: formAluno.responsavel_whatsapp, responsavel_email: formAluno.responsavel_email,
@@ -516,7 +517,7 @@ export default function RegistrosPage() {
 
                   <input className="w-full p-2 border rounded" placeholder="Nome" value={formAluno.nome} onChange={e => setFormAluno({...formAluno, nome: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="CPF" value={formAluno.cpf} onChange={e => setFormAluno({...formAluno, cpf: e.target.value})} />
-                  <input className="w-full p-2 border rounded" placeholder="RG" value={formAluno.rg} onChange={e => setFormAluno({...formAluno, rg: e.target.value})} />
+                  {/* O CAMPO RG FOI REMOVIDO DEFINITIVAMENTE AQUI */}
                   <input type="date" className="w-full p-2 border rounded" value={formAluno.nascimento} onChange={e => setFormAluno({...formAluno, nascimento: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="WhatsApp" value={formAluno.whatsapp} onChange={e => setFormAluno({...formAluno, whatsapp: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="Email" value={formAluno.email} onChange={e => setFormAluno({...formAluno, email: e.target.value})} />

@@ -8,7 +8,7 @@ export default function Caixa() {
   const [valorInicial, setValorInicial] = useState("")
   const [caixa, setCaixa] = useState<any>(null)
   const [movimentacoes, setMovimentacoes] = useState<any[]>([])
-  const [resumo, setResumo] = useState({ total: 0, matricula: 0, mensalidade: 0, venda: 0 })
+  const [resumo, setResumo] = useState({ total: 0, matricula: 0, mensalidade: 0, venda: 0, saude: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export default function Caixa() {
       await carregarMovimentacoes(data.id)
     } else {
       setMovimentacoes([])
-      setResumo({ total: 0, matricula: 0, mensalidade: 0, venda: 0 })
+      setResumo({ total: 0, matricula: 0, mensalidade: 0, venda: 0, saude: 0 })
     }
     setLoading(false)
   }
@@ -45,15 +45,16 @@ export default function Caixa() {
       .order("data", { ascending: false })
 
     setMovimentacoes(data || [])
-    let total = 0, mat = 0, mens = 0, vend = 0
+    let total = 0, mat = 0, mens = 0, vend = 0, saud = 0
     for (const item of data || []) {
       const valor = Number(item.valor)
       total += valor
       if (item.tipo === "matricula") mat += valor
       else if (item.tipo === "mensalidade") mens += valor
       else if (item.tipo === "venda") vend += valor
+      else if (item.tipo === "saude") saud += valor
     }
-    setResumo({ total, matricula: mat, mensalidade: mens, venda: vend })
+    setResumo({ total, matricula: mat, mensalidade: mens, venda: vend, saude: saud })
   }
 
   async function abrirCaixa() {
@@ -117,40 +118,37 @@ export default function Caixa() {
         <title>Fechamento de Caixa</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { width: 58mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; }
-          .logo { text-align: center; margin-bottom: 4px; }
-          .logo img { max-width: 40mm; height: auto; }
+          body { width: 48mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; overflow-wrap: break-word; }
+          .logo { text-align: center; margin-bottom: 4px; } .logo img { max-width: 40mm; height: auto; }
           .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
-          hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
-          .total { font-weight: bold; font-size: 11pt; }
-          .verse { text-align: center; margin-top: 8px; font-style: italic; }
-          .center { text-align: center; }
+          hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } .total { font-weight: bold; font-size: 11pt; }
+          .verse { text-align: center; margin-top: 8px; font-style: italic; } .center { text-align: center; }
+          .assinatura { margin-top: 30px; text-align: center; }
+          .linha { border-top: 1px solid #000; margin-top: 30px; margin-bottom: 5px; }
         </style>
       </head>
       <body>
         <div class="logo"><img src="${window.location.origin}/logo.png" /></div>
         <div class="titulo">CT OKINAWA</div>
-        <div class="center">FECHAMENTO DE CAIXA</div>
-        <hr/>
-        <div>Aberto por: ${caixa.usuario}</div>
-        <div>Fechado por: ${fechou}</div>
+        <div class="center">FECHAMENTO DE CAIXA</div><hr/>
+        <div>Operador: ${caixa.usuario}</div>
         <div>Abertura: ${new Date(caixa.aberto_em).toLocaleString()}</div>
-        <div>Fechamento: ${new Date().toLocaleString()}</div>
-        <hr/>
+        <div>Fechamento: ${new Date().toLocaleString()}</div><hr/>
         <div>Valor Inicial: R$ ${Number(caixa.valor_inicial).toFixed(2)}</div>
         <div>Matrículas: R$ ${resumo.matricula.toFixed(2)}</div>
         <div>Mensalidades: R$ ${resumo.mensalidade.toFixed(2)}</div>
         <div>Vendas PDV: R$ ${resumo.venda.toFixed(2)}</div>
-        <hr/>
-        <div class="total">TOTAL FINAL: R$ ${total.toFixed(2)}</div>
-        <hr/>
+        <div>Saúde: R$ ${resumo.saude.toFixed(2)}</div><hr/>
+        <div class="total">TOTAL FINAL: R$ ${total.toFixed(2)}</div><hr/>
+        
+        <div class="assinatura">
+          <div class="linha"></div>
+          <div>Assinatura de Conferência</div>
+        </div>
+
         <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
         <div class="center">Obrigado!</div>
-        <script>
-          window.onload = () => {
-            setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200);
-          }
-        </script>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200); }</script>
       </body>
       </html>
     `)
@@ -180,7 +178,7 @@ export default function Caixa() {
           <h3 className="font-bold">Movimentações</h3>
           <div className="max-h-64 overflow-auto mb-4">
             {movimentacoes.map(m => (
-              <div key={m.id} className="border-b py-2 flex justify-between">
+              <div key={m.id} className="border-b py-2 flex justify-between text-sm">
                 <span>{new Date(m.data).toLocaleString()} - {m.tipo}</span>
                 <span>R$ {Number(m.valor).toFixed(2)}</span>
               </div>
@@ -190,6 +188,7 @@ export default function Caixa() {
           <p>Total Matrículas: R$ {resumo.matricula.toFixed(2)}</p>
           <p>Total Mensalidades: R$ {resumo.mensalidade.toFixed(2)}</p>
           <p>Total Vendas: R$ {resumo.venda.toFixed(2)}</p>
+          <p>Total Saúde: R$ {resumo.saude.toFixed(2)}</p>
           <h3 className="text-xl font-bold mt-2">Total do dia: R$ {(Number(caixa.valor_inicial) + resumo.total).toFixed(2)}</h3>
 
           <input className="w-full p-2 border rounded mt-4" placeholder="Código para fechar" value={codigo} onChange={e=>setCodigo(e.target.value)} />

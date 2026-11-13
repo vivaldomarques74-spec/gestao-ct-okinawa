@@ -130,6 +130,36 @@ export default function AgendamentoSaudePage() {
     setLoading(false)
   }
 
+  function gerarReciboConsulta(ag: any) {
+    const w = window.open("", "", "width=400,height=650")
+    w?.document.write(`
+      <html><head><title>Recibo de Consulta</title><style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { width: 48mm; margin: 0 auto; padding: 2mm; font-family: monospace; font-size: 10pt; line-height: 1.2; overflow-wrap: break-word; }
+      .logo { text-align: center; margin-bottom: 4px; } .logo img { max-width: 40mm; height: auto; }
+      .titulo { text-align: center; font-weight: bold; font-size: 12pt; margin: 4px 0; }
+      hr { border: none; border-top: 1px dashed #000; margin: 4px 0; } .total { font-weight: bold; font-size: 11pt; }
+      .verse { text-align: center; margin-top: 8px; font-style: italic; } .center { text-align: center; }
+      </style></head><body>
+        <div class="logo"><img src="${window.location.origin}/logo.png" /></div>
+        <div class="titulo">CT OKINAWA</div><div class="center">Saúde e Performance</div><hr/>
+        <div class="center"><b>RECIBO DE CONSULTA</b></div><hr/>
+        <div><b>Paciente:</b> ${ag.nome_paciente}</div>
+        <div><b>Profissional:</b> ${ag.profissionais_saude?.nome}</div>
+        <div><b>Serviço:</b> ${ag.servicos_saude?.nome}</div>
+        <div><b>Data:</b> ${new Date(ag.data_hora).toLocaleDateString('pt-BR')}</div><hr/>
+        <div><b>Valor:</b> R$ ${Number(ag.valor).toFixed(2)}</div>
+        <div><b>Pagamento:</b> ${formaPagamento} ${formaPagamento === "Cartão" ? `- ${tipoCartao} ${parcelas}` : ""}</div>
+        ${codigoPagamento ? `<div><b>Cód. Autorização:</b> ${codigoPagamento}</div>` : ''}
+        <hr/><div><b>Data do Pagamento:</b> ${new Date().toLocaleString()}</div>
+        <div class="verse">"Confie no Senhor"<br/>Provérbios 3:5</div>
+        <div class="center">Obrigado! 🙏</div>
+        <script>window.onload = () => { setTimeout(() => { window.print(); setTimeout(() => window.close(), 500); }, 200); }</script>
+      </body></html>
+    `)
+    w?.document.close()
+  }
+
   function gerarAtestadoComparecimento(ag: any) {
     const doc = new jsPDF()
     let y = 20
@@ -274,6 +304,9 @@ export default function AgendamentoSaudePage() {
         parcelas: formaPagamento === "Cartão" && tipoCartao === "Crédito" ? parcelas : null,
         codigo_pagamento: codigoPagamento || null, data: agora, cancelado: false, aluno_id: ag.aluno_id || null
       }])
+
+      // Gera o recibo logo após o pagamento
+      setTimeout(() => gerarReciboConsulta({...ag, valor: valorFinal}), 500)
     }
 
     await supabase.from("agendamentos_saude").update({ 
@@ -425,7 +458,6 @@ export default function AgendamentoSaudePage() {
               )}
             </div>
 
-            {/* FINALIZADOS HOJE (PARA SECRETARIA EMITIR ATESTADO) */}
             {finalizados.length > 0 && (
               <div className="bg-gray-50 rounded-xl shadow-sm p-4 border border-gray-200">
                 <h2 className="font-bold text-lg mb-4 text-gray-800 flex items-center gap-2"><CheckCircle size={20} /> Finalizados Hoje</h2>
@@ -437,8 +469,11 @@ export default function AgendamentoSaudePage() {
                         <p className="text-xs text-gray-600">{ag.profissionais_saude?.nome} | Chegou: {new Date(ag.hora_chegada).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})} | Saiu: {new Date(ag.hora_saida).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
                       </div>
                       <div className="flex gap-2">
+                        <button onClick={() => gerarReciboConsulta(ag)} className="bg-gray-100 text-gray-700 px-3 py-2 rounded text-sm flex items-center gap-1 font-bold hover:bg-gray-200">
+                          <Printer size={16}/> Recibo
+                        </button>
                         <button onClick={() => gerarAtestadoComparecimento(ag)} className="bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm flex items-center gap-1 font-bold hover:bg-blue-200">
-                          <Printer size={16}/> Imprimir Atestado
+                          <Printer size={16}/> Atestado
                         </button>
                       </div>
                     </div>
