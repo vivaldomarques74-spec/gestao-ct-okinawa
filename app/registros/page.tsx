@@ -19,11 +19,9 @@ export default function RegistrosPage() {
   const [matriculasAluno, setMatriculasAluno] = useState<any[]>([])
   const [descontoEspecial, setDescontoEspecial] = useState<any>(null)
   
-  // HISTÓRICO DE SAÚDE
   const [showHistoricoSaude, setShowHistoricoSaude] = useState(false)
   const [historicoSaude, setHistoricoSaude] = useState<any[]>([])
 
-  // ESTADO PARA O NOVO DIA DE VENCIMENTO
   const [diaVencimento, setDiaVencimento] = useState("")
   const [atualizandoVencimento, setAtualizandoVencimento] = useState(false)
 
@@ -73,7 +71,6 @@ export default function RegistrosPage() {
   async function carregarModalidadesTurmas() {
     const { data: mods } = await supabase.from("modalidades").select("*")
     setModalidades(mods || [])
-    
     const { data: turmasData } = await supabase.from("turmas").select("*")
     setTurmas(turmasData || [])
   }
@@ -200,25 +197,25 @@ export default function RegistrosPage() {
   async function salvarAluno() {
     if (!alunoEditando) return
     
-    // Aqui está a correção: o RG não é mais enviado, e um alerta mostra se algo der errado.
+    // AQUI ESTÁ A CORREÇÃO: Transforma campos vazios em null para evitar erro de UUID
     const { error } = await supabase.from("alunos").update({
       nome: formAluno.nome, 
       cpf: formAluno.cpf, 
-      nascimento: formAluno.nascimento,
+      nascimento: formAluno.nascimento || null,
       whatsapp: formAluno.whatsapp, 
       email: formAluno.email, 
       endereco: formAluno.endereco,
       menor: formAluno.menor, 
-      responsavel_nome: formAluno.responsavel_nome, 
-      responsavel_cpf: formAluno.responsavel_cpf,
-      responsavel_whatsapp: formAluno.responsavel_whatsapp, 
-      responsavel_email: formAluno.responsavel_email,
+      responsavel_nome: formAluno.responsavel_nome || null, 
+      responsavel_cpf: formAluno.responsavel_cpf || null,
+      responsavel_whatsapp: formAluno.responsavel_whatsapp || null, 
+      responsavel_email: formAluno.responsavel_email || null,
       problema_saude: formAluno.problema_saude, 
-      saude_detalhes: formAluno.saude_detalhes,
+      saude_detalhes: formAluno.saude_detalhes || null,
       usa_remedio: formAluno.usa_remedio, 
-      remedio_detalhes: formAluno.remedio_detalhes,
+      remedio_detalhes: formAluno.remedio_detalhes || null,
       status: formAluno.status, 
-      convenio_id: formAluno.convenio_id,
+      convenio_id: formAluno.convenio_id === "" ? null : formAluno.convenio_id, // CONVERSÃO AQUI
     }).eq("id", alunoEditando.id)
 
     if (error) {
