@@ -199,19 +199,36 @@ export default function RegistrosPage() {
 
   async function salvarAluno() {
     if (!alunoEditando) return
-    // REMOVIDO O CAMPO 'rg' DAQUI
-    await supabase.from("alunos").update({
-      nome: formAluno.nome, cpf: formAluno.cpf, nascimento: formAluno.nascimento,
-      whatsapp: formAluno.whatsapp, email: formAluno.email, endereco: formAluno.endereco,
-      menor: formAluno.menor, responsavel_nome: formAluno.responsavel_nome, responsavel_cpf: formAluno.responsavel_cpf,
-      responsavel_whatsapp: formAluno.responsavel_whatsapp, responsavel_email: formAluno.responsavel_email,
-      problema_saude: formAluno.problema_saude, saude_detalhes: formAluno.saude_detalhes,
-      usa_remedio: formAluno.usa_remedio, remedio_detalhes: formAluno.remedio_detalhes,
-      status: formAluno.status, convenio_id: formAluno.convenio_id,
+    
+    // Aqui está a correção: o RG não é mais enviado, e um alerta mostra se algo der errado.
+    const { error } = await supabase.from("alunos").update({
+      nome: formAluno.nome, 
+      cpf: formAluno.cpf, 
+      nascimento: formAluno.nascimento,
+      whatsapp: formAluno.whatsapp, 
+      email: formAluno.email, 
+      endereco: formAluno.endereco,
+      menor: formAluno.menor, 
+      responsavel_nome: formAluno.responsavel_nome, 
+      responsavel_cpf: formAluno.responsavel_cpf,
+      responsavel_whatsapp: formAluno.responsavel_whatsapp, 
+      responsavel_email: formAluno.responsavel_email,
+      problema_saude: formAluno.problema_saude, 
+      saude_detalhes: formAluno.saude_detalhes,
+      usa_remedio: formAluno.usa_remedio, 
+      remedio_detalhes: formAluno.remedio_detalhes,
+      status: formAluno.status, 
+      convenio_id: formAluno.convenio_id,
     }).eq("id", alunoEditando.id)
-    alert("Aluno atualizado")
-    carregarAlunos()
-    setAlunoEditando(null)
+
+    if (error) {
+      console.error("ERRO AO SALVAR:", error)
+      alert("❌ Erro ao salvar os dados: " + error.message + "\nDetalhes: " + error.details)
+    } else {
+      alert("✅ Aluno atualizado com sucesso!")
+      carregarAlunos()
+      setAlunoEditando(null)
+    }
   }
 
   function gerarTermoPDF() {
@@ -473,7 +490,6 @@ export default function RegistrosPage() {
               {alunoEditando && (
                 <div className="pl-4 space-y-3 max-h-175 overflow-y-auto pr-2">
                   
-                  {/* HISTÓRICO DE SAÚDE AQUI */}
                   <div className="bg-teal-50 border border-teal-200 p-3 rounded mb-2 flex justify-between items-center">
                     <div>
                       <h3 className="font-bold text-teal-800 flex items-center gap-2"><Stethoscope size={18}/> Histórico de Saúde</h3>
@@ -517,7 +533,6 @@ export default function RegistrosPage() {
 
                   <input className="w-full p-2 border rounded" placeholder="Nome" value={formAluno.nome} onChange={e => setFormAluno({...formAluno, nome: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="CPF" value={formAluno.cpf} onChange={e => setFormAluno({...formAluno, cpf: e.target.value})} />
-                  {/* O CAMPO RG FOI REMOVIDO DEFINITIVAMENTE AQUI */}
                   <input type="date" className="w-full p-2 border rounded" value={formAluno.nascimento} onChange={e => setFormAluno({...formAluno, nascimento: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="WhatsApp" value={formAluno.whatsapp} onChange={e => setFormAluno({...formAluno, whatsapp: e.target.value})} />
                   <input className="w-full p-2 border rounded" placeholder="Email" value={formAluno.email} onChange={e => setFormAluno({...formAluno, email: e.target.value})} />
